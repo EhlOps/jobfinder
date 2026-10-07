@@ -1,0 +1,1593 @@
+{
+  "product": {
+    "name": "JobFinder",
+    "summary": "A web app that learns who you are (questionnaire + resume/portfolio/GitHub/socials), scrapes and caches job postings, matches and ranks them against your profile, drafts cover letters, emails a daily digest of new matches, and emails targeted questions when it is unsure about a job. Primarily for software/engineering roles, usable for any industry.",
+    "target_users": "A small, select group of people (multi-user, low volume). Not a high-scale public service. Access is by invitation only: the owner adds accounts manually (see REQ-18 / DESIGN-01).",
+    "stack": {
+      "backend": "FastAPI + uv, async SQLAlchemy 2, Alembic",
+      "database": "Postgres 16 (also caches jobs)",
+      "frontend": "Vite + React + TypeScript, TanStack Query, react-router",
+      "ai": "Claude Code CLI (headless claude -p) on the owner's Claude subscription; no SDK, no API key",
+      "email": "Self-hosted SMTP in docker (boky/postfix); Mailpit in dev",
+      "deploy": "docker compose: db, api, worker, web (nginx), smtp, mailpit (dev profile)",
+      "storage": "Docker volume file store (backend/jobfinder/storage) for uploads and fetched link text"
+    },
+    "design_doc": "docs/PLAN.md"
+  },
+  "last_updated": "2026-10-03",
+  "requirements": [
+    {
+      "id": "REQ-01",
+      "area": "onboarding",
+      "requirement": "Ask about job-search status: new grad or not and when, when a job is needed by, where the person expects to live (locations, remote preference, relocation), salary expectations (min/target), how prestigious the job should be, company size, industries, target roles and seniority, visa sponsorship.",
+      "source": "user",
+      "status": "done",
+      "milestone": 3,
+      "implemented_in": [
+        "backend/jobfinder/api/profile.py",
+        "frontend/src/routes/onboarding/StatusStep.tsx"
+      ],
+      "notes": "Stored as profiles.status JSONB; profile version bumps on every change so match scores can be cached per version."
+    },
+    {
+      "id": "REQ-02",
+      "area": "onboarding",
+      "requirement": "Ask about background: internships/co-ops/previous jobs and what was done in each, projects, skills, education. Extract this from uploaded material, then let the user review and edit it.",
+      "source": "user",
+      "status": "done",
+      "milestone": 3,
+      "implemented_in": [
+        "backend/jobfinder/ai/tasks.py",
+        "backend/jobfinder/ai/schemas.py",
+        "backend/jobfinder/ai/prompts/profile_extract.md",
+        "backend/jobfinder/scheduling/handlers.py",
+        "backend/jobfinder/api/onboarding.py",
+        "frontend/src/routes/onboarding/BackgroundStep.tsx"
+      ],
+      "notes": "Verified with a real model call: no invented facts, and an injected 'ignore previous instructions' line in a resume was ignored. The extracted background now also has a `name` (used to sign cover letters), editable in the review step."
+    },
+    {
+      "id": "REQ-03",
+      "area": "onboarding",
+      "requirement": "Ask adaptive follow-up questions about what the person does and why they do it well (\"have you done X?\"); answers become stored facts used in matching and cover letters.",
+      "source": "user",
+      "status": "done",
+      "milestone": 3,
+      "implemented_in": [
+        "backend/jobfinder/ai/prompts/followups.md",
+        "backend/jobfinder/api/profile.py",
+        "frontend/src/routes/onboarding/FollowupsStep.tsx"
+      ],
+      "notes": "Answers are saved as profile_facts via POST /api/profile/facts."
+    },
+    {
+      "id": "REQ-04",
+      "area": "uploads",
+      "requirement": "Accept resume and portfolio files (PDF, DOCX, TXT, MD up to 10MB), and links to GitHub, portfolio sites and socials. Files and link snapshots are kept in a docker-volume file store (not Postgres) with an ID and tags for easy retrieval.",
+      "source": "user",
+      "status": "done",
+      "milestone": 2,
+      "implemented_in": [
+        "backend/jobfinder/storage/documents.py",
+        "backend/jobfinder/api/documents.py",
+        "backend/jobfinder/api/links.py",
+        "backend/jobfinder/profile/resume_parse.py",
+        "backend/jobfinder/profile/github.py",
+        "backend/jobfinder/profile/web_page.py",
+        "frontend/src/routes/onboarding/SourcesStep.tsx"
+      ],
+      "notes": "Store layout /data/store/{user_id}/{doc_id}/{meta.json,original.<ext>,text.txt}; doc_id is doc_ + ms-timestamp hex + random hex (sorts by creation time). Automatic tags (kind, ext, source, url, link_kind) plus user tags; list filter by kind and tag=key:value; GET /api/documents/{id}, /download, /text; PUT /tags; duplicate uploads (same sha256) return the existing document. Atomic writes. GitHub summarised via the public API; portfolio/other pages fetched with an SSRF guard; LinkedIn and X stored but not fetched. DocumentStore is an interface so S3/MinIO can replace it later."
+    },
+    {
+      "id": "REQ-05",
+      "area": "auth",
+      "requirement": "Multi-user accounts, kept simple: a users table and a sessions table in Postgres, httpOnly session cookie.",
+      "source": "user",
+      "status": "done",
+      "milestone": 2,
+      "implemented_in": [
+        "backend/jobfinder/auth/routes.py",
+        "backend/jobfinder/auth/security.py",
+        "backend/jobfinder/models.py",
+        "frontend/src/auth/AuthProvider.tsx",
+        "frontend/src/routes/Login.tsx",
+        "backend/alembic/versions/0004_users_is_admin.py"
+      ],
+      "notes": "argon2 password hashes. No email verification or password reset (intentionally out of scope for now). Admin role: users.is_admin; the first account created is admin and ADMIN_EMAILS can grant more (also applied at login). Signup records the browser's timezone for the daily email. PLANNED CHANGE: self-signup and the first-user-admin rule are superseded by REQ-18 (invite-only accounts activated by an emailed set-password link); admin will come only from ADMIN_EMAILS."
+    },
+    {
+      "id": "REQ-06",
+      "area": "platform",
+      "requirement": "Dockerized stack: FastAPI + uv backend, Postgres database, Vite + TypeScript frontend.",
+      "source": "user",
+      "status": "done",
+      "milestone": 1,
+      "implemented_in": [
+        "docker-compose.yml",
+        "backend/Dockerfile",
+        "backend/Dockerfile.worker",
+        "backend/pyproject.toml",
+        "frontend/Dockerfile",
+        "frontend/nginx.conf"
+      ],
+      "notes": "Host ports: web 8180, api 8100, db 5433 (all localhost-only)."
+    },
+    {
+      "id": "REQ-07",
+      "area": "ai",
+      "requirement": "Use Claude Code so the user's Claude subscription powers all AI features (no API key). AI layer is written specifically for this project.",
+      "source": "user",
+      "status": "done",
+      "milestone": 3,
+      "implemented_in": [
+        "backend/jobfinder/ai/claude_code.py",
+        "backend/jobfinder/ai/tasks.py",
+        "backend/jobfinder/scheduling/queue.py",
+        "backend/jobfinder/scheduling/handlers.py",
+        "backend/jobfinder/worker.py",
+        "backend/jobfinder/cli.py"
+      ],
+      "notes": "Runs only in the worker. No tools, restricted mode, prompt over stdin, ANTHROPIC_API_KEY scrubbed from the child env, schema-validated output with one repair retry, error classification (auth/rate_limited/timeout/bad_output/cli_missing), concurrency cap, per-call logging to ai_calls. Remaining AI functions (score_match, already_answered, cover_letter) are not written yet. Connecting Claude is done from the web app (REQ-16). Auth failures from the CLI ('Not logged in', '401 ... OAuth access token is invalid') are classified as auth."
+    },
+    {
+      "id": "REQ-08",
+      "area": "email",
+      "requirement": "Use an SMTP service run through docker for email (low volume, small group).",
+      "source": "user",
+      "status": "done",
+      "milestone": 7,
+      "implemented_in": [
+        "docker-compose.yml",
+        "backend/jobfinder/config.py",
+        "backend/jobfinder/notify/email.py",
+        "backend/jobfinder/notify/daily.py",
+        "backend/jobfinder/notify/templates/daily.html.j2",
+        "backend/jobfinder/notify/templates/daily.txt.j2",
+        "backend/jobfinder/cli.py",
+        "backend/.env.example",
+        ".env.example"
+      ],
+      "notes": "send_email() over aiosmtplib (multipart text+HTML, long headers kept as plain URLs). Dev: Mailpit (docker --profile dev, SMTP 1025, UI 8025). Production: the internal `smtp` postfix service relaying through Gmail with the owner's app password (kept only in the git-ignored root .env). Verified: a real test message went app -> postfix -> Gmail and Gmail accepted it (250 2.0.0 OK); the owner still needs to confirm it landed in the inbox rather than spam. `python -m jobfinder.cli test-email --to you@example.com` sends a test."
+    },
+    {
+      "id": "REQ-09",
+      "area": "jobs",
+      "requirement": "Scrape/collect job postings, covering ATS boards (Greenhouse, Lever, Ashby) and LinkedIn/Indeed, and cache them in Postgres.",
+      "source": "user",
+      "status": "done",
+      "milestone": 4,
+      "implemented_in": [
+        "backend/jobfinder/ingest/base.py",
+        "backend/jobfinder/ingest/service.py",
+        "backend/jobfinder/ingest/runner.py",
+        "backend/jobfinder/ingest/companies.yaml",
+        "backend/jobfinder/ingest/sources/greenhouse.py",
+        "backend/jobfinder/ingest/sources/lever.py",
+        "backend/jobfinder/ingest/sources/ashby.py",
+        "backend/jobfinder/ingest/sources/jobspy_source.py",
+        "backend/jobfinder/models.py",
+        "backend/jobfinder/cli.py",
+        "backend/jobfinder/scheduling/handlers.py",
+        "backend/alembic/versions/0003_file_store_companies_and_jobs.py"
+      ],
+      "notes": "27 verified company boards (19 Greenhouse, 2 Lever, 6 Ashby) seeded from companies.yaml; ~7,100 active jobs cached in Postgres (jobs, companies tables). Each posting is normalised to a common shape (clean-text description, workplace type, seniority, salary from structured fields or parsed from the text, dedupe hash). Upsert is idempotent (ON CONFLICT); jobs missing from a successful fetch are deactivated, with a guard so an empty response from a large board is treated as a glitch; per-company error isolation, one retry on 5xx/timeout. LinkedIn/Indeed via python-jobspy is opt-in (ENABLE_JOBSPY, `uv sync --extra jobspy`, WITH_JOBSPY build arg), queries built from users' target roles x locations, jobs expire after 14 days unseen. Run with `python -m jobfinder.cli ingest [--ats X] [--company slug] [--jobspy]`; also registered as the `ingest_jobs` worker task. Not scheduled yet (milestone 7). Ingestion now also runs on a schedule (see REQ-17)."
+    },
+    {
+      "id": "REQ-10",
+      "area": "matching",
+      "requirement": "Match each user with jobs: hard filters, cheap prefilter, then LLM scoring (score, confidence, verdict, reasons, unknowns), cached per profile version, budgeted per user per day.",
+      "source": "user",
+      "status": "done",
+      "milestone": 5,
+      "implemented_in": [
+        "backend/jobfinder/matching/prefilter.py",
+        "backend/jobfinder/matching/service.py",
+        "backend/jobfinder/ai/tasks.py",
+        "backend/jobfinder/ai/schemas.py",
+        "backend/jobfinder/ai/prompts/match.md",
+        "backend/jobfinder/api/matches.py",
+        "backend/jobfinder/models.py",
+        "backend/jobfinder/scheduling/handlers.py",
+        "backend/alembic/versions/0005_job_matches.py",
+        "frontend/src/routes/Matches.tsx",
+        "frontend/src/routes/MatchDetail.tsx",
+        "frontend/src/components/MatchBits.tsx"
+      ],
+      "notes": "Pipeline per user: hard filters (active, level, location/remote preference, salary floor when pay is known, visa-sponsorship refusals when sponsorship is needed, 'N+ years of experience' for entry-level candidates) -> prefilter score 0-100 (title similarity 45, skill overlap 35, recency 10, prestige fit 10, +/- size and industry) -> top candidates go to Claude (haiku) for a score 0-100, confidence 0-1, reasons, gaps and unknowns; verdict (strong/good/stretch/no) is derived from the score in code. Unknown data never excludes a job. Budget: MATCH_DAILY_LLM_BUDGET (default 25) LLM-scored jobs per user per rolling 24h, best prefilter first; progress is committed per job so a rate limit loses nothing and the task retries. One row per distinct posting (dedupe_hash). Profile changes: saved matches and promising new ones are re-scored (saved first), dismissed/applied are not; user status is kept. Triggers: onboarding finish, the 'Find new matches' button, and after the ingest_jobs task. Feed: tabs (To review/Saved/Applied/Dismissed with counts), filters (min score, workplace, search, sort), score badge, reasons and gaps, Save/Mark applied/Dismiss, job detail page with description and the questions that would sharpen the score; closed jobs are hidden unless saved or applied. Verified live with the real model: 701 -> 400 candidates after adding the experience filter, 7 of 10 scored jobs were good/stretch fits for a new-grad backend profile."
+    },
+    {
+      "id": "REQ-11",
+      "area": "cover_letters",
+      "requirement": "Draft a cover letter for a job from the user's profile and facts, never inventing experience; editable, regenerable, downloadable.",
+      "source": "user",
+      "status": "done",
+      "milestone": 6,
+      "implemented_in": [
+        "backend/jobfinder/ai/tasks.py",
+        "backend/jobfinder/ai/prompts/cover_letter.md",
+        "backend/jobfinder/letters/service.py",
+        "backend/jobfinder/letters/docx_export.py",
+        "backend/jobfinder/api/cover_letters.py",
+        "backend/jobfinder/scheduling/handlers.py",
+        "backend/jobfinder/scheduling/queue.py",
+        "backend/jobfinder/models.py",
+        "backend/alembic/versions/0006_cover_letters.py",
+        "frontend/src/components/CoverLetterPanel.tsx",
+        "frontend/src/routes/MatchDetail.tsx"
+      ],
+      "notes": "Drafted on demand from a match (job detail page) by Claude (sonnet) in the worker, from the candidate's real background, the answers they gave, the job posting and the match analysis (strengths/gaps). Four tones (professional, warm, concise, enthusiastic) and an optional 'anything to emphasize' note. Prompt guardrails: use only facts in the profile, never invent employers/metrics/skills/feelings, never state that the candidate lacks something, no salary or visa talk, no placeholders; untrusted posting text is delimited as data; output with [placeholders] or too short is retried once then rejected. One current letter per user+job in Postgres (cover_letters); editable in the app (marks it 'edited'), redraft needs confirmation (API requires force) when edited, delete, copy, download as a plain Word .docx; a letter drafted before a profile update is flagged. The page resumes watching a draft after a reload. The sign-off uses a new `name` field extracted from the resume and editable in the background review step. Verified with the real model: facts, metrics, dates and employers match the profile; after tightening the prompt the letter no longer asserts missing skills or invented enjoyment."
+    },
+    {
+      "id": "REQ-12",
+      "area": "digest",
+      "requirement": "Daily digest email of new matching job openings, sent at the user's local digest hour.",
+      "source": "user",
+      "status": "done",
+      "milestone": 7,
+      "implemented_in": [
+        "backend/jobfinder/notify/daily.py",
+        "backend/jobfinder/notify/templates/daily.html.j2",
+        "backend/jobfinder/notify/templates/daily.txt.j2",
+        "backend/jobfinder/scheduling/handlers.py",
+        "backend/jobfinder/worker.py",
+        "backend/jobfinder/api/settings.py",
+        "backend/jobfinder/api/questions.py",
+        "frontend/src/routes/Settings.tsx"
+      ],
+      "notes": "One daily email per user at their chosen local hour (timezone captured at signup, editable in Settings), sent by an hourly worker task: due from the chosen hour for 6 hours, once per local day, never an empty email. Contents: up to 10 new good matches (score 65+, status new, not yet emailed, job still open) with score, reasons, View and Apply links, plus the clarifying questions section; matches/questions are marked sent only after the SMTP server accepts the message. Separate opt-outs (digest, question emails); one-click unsubscribe link and List-Unsubscribe headers; Settings page with hour/timezone/toggles and a 'send me a preview' button (marks nothing as sent). HTML output is escaped (job text is untrusted)."
+    },
+    {
+      "id": "REQ-13",
+      "area": "clarifying_questions",
+      "requirement": "When unsure about a job (could be good but low confidence), email the user questions about the opening (\"have you done X?\"); answers feed back into the profile and the job is rescored.",
+      "source": "user",
+      "status": "done",
+      "milestone": 7,
+      "implemented_in": [
+        "backend/jobfinder/questions/service.py",
+        "backend/jobfinder/ai/tasks.py",
+        "backend/jobfinder/ai/prompts/consolidate_questions.md",
+        "backend/jobfinder/api/questions.py",
+        "backend/jobfinder/notify/tokens.py",
+        "backend/jobfinder/models.py",
+        "backend/alembic/versions/0007_daily_email_and_questions.py",
+        "frontend/src/routes/Questions.tsx",
+        "frontend/src/routes/QuestionsByLink.tsx",
+        "frontend/src/components/QuestionForm.tsx"
+      ],
+      "notes": "Matches with confidence below 0.6 but score 50+ (could be good, we're unsure) have their `unknowns` collected; a haiku call merges duplicates and paraphrases across jobs, drops anything the profile facts already answer or that was asked/skipped before, and caps the list (max 8 open, 6 per email). Questions go out in the daily email with a signed 14-day link that works without logging in (separate salts per purpose, tamper/expiry checked), and also appear in the in-app Questions inbox with a nav badge. Answers become profile facts (source job_question), bump the profile version and queue a matching run so affected matches are re-scored; users can skip. Verified with the real model: 5 raw questions became 2 (three AI-tool variants merged, the already-answered one dropped), the email link answered/skipped questions from a logged-out browser, and the matches were re-scored afterwards."
+    },
+    {
+      "id": "REQ-14",
+      "area": "frontend",
+      "requirement": "Pages for matches feed, job detail with cover letter, questions inbox, profile editing and settings (digest time/enabled).",
+      "source": "decision",
+      "status": "done",
+      "milestone": 7,
+      "implemented_in": [
+        "frontend/src/App.tsx",
+        "frontend/src/components/CoverLetterPanel.tsx",
+        "frontend/src/routes/AiSettings.tsx",
+        "frontend/src/routes/MatchDetail.tsx",
+        "frontend/src/routes/Matches.tsx",
+        "frontend/src/routes/Profile.tsx",
+        "frontend/src/routes/Questions.tsx",
+        "frontend/src/routes/QuestionsByLink.tsx",
+        "frontend/src/routes/Settings.tsx"
+      ],
+      "notes": "All planned pages exist: login/signup (with redirect back after login), onboarding wizard, matches feed, job detail with cover letter, Questions inbox, no-login question link page, Profile (edit preferences, background, resume & links, delete answers), Settings (email schedule, timezone, preview) and AI setup (admin). Header navigation with a questions badge."
+    },
+    {
+      "id": "REQ-15",
+      "area": "storage",
+      "requirement": "Documents and similar blobs (uploads, fetched link text) are kept in a bucket/docker volume rather than Postgres tables, each with an ID and tags so they are easy to retrieve.",
+      "source": "user",
+      "status": "done",
+      "milestone": 3,
+      "implemented_in": [
+        "backend/jobfinder/storage/documents.py",
+        "backend/jobfinder/api/documents.py",
+        "backend/jobfinder/api/links.py",
+        "backend/jobfinder/scheduling/handlers.py",
+        "backend/alembic/versions/0003_file_store_companies_and_jobs.py",
+        "docker-compose.yml"
+      ],
+      "notes": "Docker volume `store` mounted at /data/store in api and worker. Layout: /data/store/{user_id}/{doc_id}/{meta.json, original.<ext>, text.txt}. doc_id = 'doc_' + millisecond-timestamp hex + random hex, so IDs sort by creation time. Automatic tags (kind, ext, source, url, link_kind) plus user-defined tags; list filter ?kind= and ?tag=key:value (repeatable); GET /api/documents/{id}, /download, /text; PUT /tags; identical uploads deduplicated by sha256; writes are atomic (temp dir then rename); IDs validated so paths cannot escape the user directory. DocumentStore is an interface: an S3/MinIO implementation can replace it without touching callers. Postgres keeps only structured relational data; cover letters (milestone 6) stay in Postgres. Retrieval examples: GET /api/documents?tag=target:backend, GET /api/documents/{id}/download."
+    },
+    {
+      "id": "REQ-16",
+      "area": "ai",
+      "requirement": "Claude Code can be connected from outside the worker container: an admin pastes the long-lived token from `claude setup-token` into an in-app page, tests it, and can disconnect it, with no .env editing, container shell or restart.",
+      "source": "user",
+      "status": "done",
+      "milestone": 3,
+      "implemented_in": [
+        "backend/jobfinder/ai/credentials.py",
+        "backend/jobfinder/ai/claude_code.py",
+        "backend/jobfinder/api/ai_admin.py",
+        "backend/jobfinder/auth/security.py",
+        "backend/jobfinder/auth/routes.py",
+        "backend/jobfinder/scheduling/handlers.py",
+        "backend/alembic/versions/0004_users_is_admin.py",
+        "docker-compose.yml",
+        "frontend/src/routes/AiSettings.tsx",
+        "frontend/src/components/AiErrorNotice.tsx",
+        "frontend/src/components/AiBanner.tsx"
+      ],
+      "notes": "Token stored as a 0600 file on the `claude-auth` docker volume (/data/claude/oauth_token) shared by api (writes) and worker (reads before every call, so changes apply immediately). Precedence: saved token, then CLAUDE_CODE_OAUTH_TOKEN env, then the CLI's own login. Endpoints: GET /api/ai/status (any user; never returns the token), PUT/DELETE /api/admin/ai/token and POST /api/admin/ai/check (admin only); the check runs an `ai_check` task in the worker and reports the real error. Frontend: admin-only /settings/ai page (status, steps, paste token, Test connection, Disconnect), an 'AI isn't connected' banner on the wizard's resume step, and failure notices that send admins to the setup page and tell other users to ask the admin. Verified in a browser against the docker stack: the worker used the pasted token (the CLI reached Anthropic and got a 401 for a fake one) and the page showed the real error. Still to confirm with a real token: a successful call from the docker worker."
+    },
+    {
+      "id": "REQ-17",
+      "area": "scheduling",
+      "requirement": "Ingestion, matching and emails run automatically without anyone pressing a button.",
+      "source": "decision",
+      "status": "done",
+      "milestone": 7,
+      "implemented_in": [
+        "backend/jobfinder/worker.py",
+        "backend/jobfinder/scheduling/handlers.py",
+        "backend/jobfinder/scheduling/queue.py",
+        "backend/jobfinder/config.py"
+      ],
+      "notes": "APScheduler in the worker enqueues `ingest_jobs` every INGEST_INTERVAL_HOURS (default 6; first run 2 minutes after start) and `daily_emails` hourly at :05, through the same Postgres queue as everything else (deduped so runs never pile up). After ingestion a matching run is queued for every user who finished onboarding; after matching, question collection is queued. Queue dedupe now distinguishes tasks by payload. SCHEDULER_ENABLED=false turns it off. Verified live: the scheduler enqueued and ran an ingest of all 27 boards, which queued matching and question collection."
+    },
+    {
+      "id": "REQ-18",
+      "area": "auth",
+      "requirement": "Access is by invitation only: there is no self-signup. The owner adds accounts manually as email-only rows (everything else NULL). On the sign-in page, anyone whose email is in the table but has no password set, or who forgot theirs, can request an emailed link to set a password; setting it activates the account and populates the row.",
+      "source": "user",
+      "status": "done",
+      "milestone": "H1",
+      "implemented_in": [
+        "backend/jobfinder/auth/routes.py",
+        "backend/jobfinder/auth/security.py",
+        "backend/jobfinder/auth/ratelimit.py",
+        "backend/jobfinder/notify/tokens.py",
+        "backend/alembic/versions/0008_invite_only_access.py",
+        "backend/jobfinder/cli.py",
+        "frontend/src/routes/Login.tsx",
+        "frontend/src/routes/ResetPassword.tsx"
+      ],
+      "design": "DESIGN-01",
+      "acceptance": [
+        "POST /api/auth/signup and the sign-up UI no longer exist",
+        "Signing in with an unknown email, a pending (no password yet) account or a wrong password gives the same generic error, with equal work done so timing does not reveal which",
+        "Requesting a link for an unknown email sends nothing and returns exactly the same response as for a known email",
+        "A set-password link works once, expires after 60 minutes, and is invalidated by the password change itself",
+        "Setting the password signs the user in, ends all of their other sessions, and fills in their timezone, email settings and an empty profile",
+        "Pending (never-activated) rows receive no emails, no matching and no scheduler work",
+        "Admin status comes only from ADMIN_EMAILS; the 'first account created is admin' rule is removed",
+        "Link requests and failed logins are rate limited per email and per real client IP"
+      ],
+      "notes": "Built 2026-10-04 (H1)."
+    }
+  ],
+  "decisions": [
+    {
+      "id": "DEC-01",
+      "topic": "Users",
+      "decision": "Multi-user with simple users + sessions tables; no auth library, OAuth or email verification.",
+      "reason": "User asked to keep auth shallow for now."
+    },
+    {
+      "id": "DEC-02",
+      "topic": "Job sources",
+      "decision": "Public ATS APIs (Greenhouse, Lever, Ashby) plus opt-in LinkedIn/Indeed via python-jobspy.",
+      "reason": "ATS APIs are stable and structured; user also wants LinkedIn/Indeed coverage, so it is isolated behind a flag and allowed to fail."
+    },
+    {
+      "id": "DEC-03",
+      "topic": "AI provider",
+      "decision": "Own AI layer on the Claude Code CLI using the user's subscription; nothing ported from the samai project; no Anthropic SDK or API key.",
+      "reason": "User's explicit instruction. Usage limits are therefore shared by all users, so calls are budgeted and concurrency-capped."
+    },
+    {
+      "id": "DEC-04",
+      "topic": "Email",
+      "decision": "Self-hosted SMTP in docker (boky/postfix), relay mode through Gmail/Outlook by default, direct mode optional; Mailpit in dev. Users answer questions via signed in-app links.",
+      "reason": "User asked for SMTP via docker for a small group; relay mode gets inbox delivery without DNS/port-25 setup."
+    },
+    {
+      "id": "DEC-05",
+      "topic": "AI execution model",
+      "decision": "AI runs only in the worker container; the API enqueues Postgres tasks and the UI polls GET /api/tasks/{id}.",
+      "reason": "Keeps the claude CLI out of the request path and the api image; gives retries and backoff for rate limits."
+    },
+    {
+      "id": "DEC-06",
+      "topic": "Host ports",
+      "decision": "API 8100, web 8180, db 5433, all bound to 127.0.0.1.",
+      "reason": "Port 8000 is used by another local project; db port lets host-side pytest and alembic reach Postgres."
+    },
+    {
+      "id": "DEC-07",
+      "topic": "Document storage",
+      "decision": "Documents and fetched-link text live in a docker volume file store with generated IDs and tags (meta.json per document); Postgres keeps only structured relational data. Cover letters (milestone 6) stay in Postgres.",
+      "reason": "User asked for a bucket/volume instead of Postgres tables; a plain volume is the simplest option for a small group and the DocumentStore interface allows moving to S3/MinIO later."
+    },
+    {
+      "id": "DEC-08",
+      "topic": "Job cache semantics",
+      "decision": "Jobs are keyed by (source, external_id) and cross-source duplicates are found via dedupe_hash (company+title+location, normalised) rather than merged at write time; a job missing from a successful board fetch is marked inactive, never deleted.",
+      "reason": "Keeps ingestion simple and idempotent; matching (milestone 5) can pick one row per dedupe_hash. Inactive rows preserve history for matches already shown."
+    },
+    {
+      "id": "DEC-09",
+      "topic": "Connecting Claude",
+      "decision": "One shared subscription token, set by an admin on an in-app page and stored as a 0600 file on a dedicated credentials docker volume that the worker re-reads on every call. The first account created is admin (ADMIN_EMAILS can add more); once DEC-14 is built, admin comes only from ADMIN_EMAILS. The env var stays as a fallback.",
+      "reason": "The token flow is the supported headless path; driving an interactive browser login inside the container would mean parsing a terminal session. A volume file keeps the secret out of Postgres, the file store and the repo, and avoids restarts."
+    },
+    {
+      "id": "DEC-10",
+      "topic": "Matching design",
+      "decision": "Deterministic hard filters and a cheap prefilter rank the cached jobs first; only the top few per user per day reach the LLM (haiku, one job per call, strict JSON schema). The verdict is computed from the score in code, not trusted from the model. Unknown job data never excludes a job. Entry-level candidates are not shown roles asking for 3+ years of experience.",
+      "reason": "Your Claude subscription limits and ~25s per scored job make blind LLM scoring of ~7,000 jobs impossible; live testing showed 7 of 10 early calls were wasted on obviously over-level roles before the experience filter was added."
+    },
+    {
+      "id": "DEC-11",
+      "topic": "Cover letters",
+      "decision": "Letters are generated asynchronously in the worker per match, stored as one editable current draft per user+job in Postgres (not the file store), and the API refuses to overwrite a user-edited draft unless forced. The queue's dedupe now distinguishes tasks by payload so different matches/options are separate tasks.",
+      "reason": "Generation takes seconds to a minute and must survive page reloads; letters are small, relational (tied to a job) and user-edited, so Postgres fits; protecting user edits avoids silent data loss."
+    },
+    {
+      "id": "DEC-12",
+      "topic": "One daily email",
+      "decision": "New matches and clarifying questions share one daily email per user at their chosen local hour (with separate opt-outs and a one-click unsubscribe), rather than separate emails per job or per question. Question links use signed tokens so they work without logging in; every other link (view/apply) goes through the normal login.",
+      "reason": "Avoids spamming a small group of users; answering a question should take seconds from a phone, so it can't require a login; the signed, expiring, purpose-scoped token keeps that safe."
+    },
+    {
+      "id": "DEC-13",
+      "topic": "Question deduplication",
+      "decision": "One LLM call per collection run merges paraphrased questions across jobs and drops those already answered or previously asked, instead of one 'already answered?' call per question.",
+      "reason": "Cheaper on the shared subscription and sees all questions at once, so it can merge duplicates across jobs, which per-question checks cannot."
+    },
+    {
+      "id": "DEC-14",
+      "topic": "Access model",
+      "decision": "Invite-only accounts with an emailed set/reset-password link. There is no self-signup: the owner adds each account manually as a row containing only an email (all other columns NULL). Signing in with a known email that has no password yet, or a forgotten one, offers 'email me a link'; the link lets the person choose a password, which activates the account and populates the row. Unknown emails get nothing. Supersedes the open signup and the first-user-admin rule (admin only via ADMIN_EMAILS); partly supersedes DEC-01 and the admin part of DEC-09.",
+      "reason": "The app is for a small hand-picked group, so public signup (code review finding CR-01) was the top risk: anyone could spend the shared Claude subscription and make the owner's Gmail relay email third parties. Proving mailbox ownership with an emailed link doubles as email verification and as the missing password reset (GAP-04). Rejected: invite codes or an allowlist with open signup (people could still create accounts before being vetted) and an admin approval queue (more UI for no gain)."
+    }
+  ],
+  "milestones": [
+    {
+      "id": 1,
+      "title": "Scaffold",
+      "status": "done",
+      "delivered": [
+        "docker compose stack (db, api, worker, web, smtp, mailpit)",
+        "FastAPI skeleton with /healthz, async SQLAlchemy, Alembic",
+        "Vite + React + TypeScript skeleton served by nginx with /api proxy",
+        "Dockerfiles for api and worker (worker bundles the claude CLI)"
+      ],
+      "verified_by": [
+        "docker compose up; /healthz directly and through nginx",
+        "frontend npm run build"
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Auth, profile, documents, links",
+      "status": "done",
+      "delivered": [
+        "users, sessions, profiles, profile_facts tables (migration 0001; the documents and links tables created here were later replaced by the file store, see REQ-15)",
+        "signup/login/logout/me with httpOnly cookie sessions",
+        "profile status/background/facts API with version bumping",
+        "document upload with PDF/DOCX/TXT/MD text extraction (now stored in the file store)",
+        "link storage with GitHub summary and SSRF-guarded web page fetch (now stored in the file store)"
+      ],
+      "verified_by": [
+        "pytest: tests/test_auth.py, test_profile.py, test_documents.py, test_links.py",
+        "signup + profile read through nginx on the running stack"
+      ]
+    },
+    {
+      "id": 3,
+      "title": "AI layer, task queue, onboarding wizard",
+      "status": "done",
+      "delivered": [
+        "ClaudeCode runner (flags checked against the installed CLI 2.1.288)",
+        "tasks and ai_calls tables (migration 0002); Postgres queue with SKIP LOCKED, retry/backoff, stuck-task reaping",
+        "worker loop consuming the queue with bounded concurrency",
+        "extract_profile and followup_questions AI functions with prompts",
+        "GET /api/tasks/{id}, POST /api/onboarding/extract and /followups",
+        "jobfinder.cli ai-check",
+        "frontend: login/signup and 4-step onboarding wizard; new users are redirected into it"
+      ],
+      "verified_by": [
+        "pytest: test_claude_code.py (stub claude binary), test_queue.py, test_onboarding.py (40 tests total, all passing)",
+        "one real extraction + follow-up run against the logged-in CLI",
+        "Playwright run of the full wizard against the docker stack with a host worker",
+        "docker worker without a token fails cleanly with an auth error recorded in ai_calls"
+      ]
+    },
+    {
+      "id": "3b",
+      "title": "Task: documents move to a docker-volume file store",
+      "status": "done",
+      "delivered": [
+        "DocumentStore with generated IDs, tags, sha256 dedupe, atomic writes, path-traversal-safe IDs",
+        "documents and links tables dropped (migration 0003); /api/documents and /api/links rebuilt on the store",
+        "download, text and tags endpoints; ?kind= and ?tag= filters",
+        "compose volume `store` shared by api and worker, STORE_DIR config"
+      ],
+      "verified_by": [
+        "pytest: tests/test_store.py, test_documents.py, test_links.py",
+        "docker: upload lands in /data/store, visible from the worker, survives an api restart",
+        "Playwright onboarding run with the AI reading the resume from the store"
+      ]
+    },
+    {
+      "id": "3c",
+      "title": "Task: connect Claude from the web app",
+      "status": "done",
+      "delivered": [
+        "credentials volume + credentials module (0600 token file, precedence file > env > CLI login)",
+        "users.is_admin (first user admin, ADMIN_EMAILS), migration 0004 with backfill",
+        "GET /api/ai/status, PUT/DELETE /api/admin/ai/token, POST /api/admin/ai/check, ai_check worker task",
+        "AI setup page, banner and admin-aware failure notices in the frontend",
+        "auth-failure classification fixed for '401 ... OAuth access token is invalid'"
+      ],
+      "verified_by": [
+        "pytest: test_credentials.py, test_ai_admin.py, classification cases in test_claude_code.py (139 tests total)",
+        "Playwright against the docker stack as admin and non-admin: banner, failure notice with link, bad-format rejection, fake token rejected by the real CLI and shown as 'auth', token not echoed to the page",
+        "fake token absent from container logs and DB; token file persists across a worker restart and is mode 0600"
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Job ingestion and cache",
+      "status": "done",
+      "delivered": [
+        "companies and jobs tables (migration 0003)",
+        "Greenhouse, Lever and Ashby parsers built from real payload fixtures",
+        "companies.yaml seed list of 27 verified boards",
+        "ingestion service: bulk upsert, deactivate-missing with empty-response guard, retry, bounded concurrency, per-company error isolation",
+        "salary/workplace/seniority extraction and dedupe hash",
+        "opt-in JobSpy (LinkedIn/Indeed) source with query builder and 14-day expiry",
+        "jobfinder.cli ingest and the ingest_jobs worker task",
+        "WITH_JOBSPY build arg for the worker image"
+      ],
+      "verified_by": [
+        "pytest: test_ingest_parsers.py and test_ingest_service.py (116 tests total, all passing)",
+        "live ingest of all 27 boards: 7,091 jobs, 0 errors; second run 0 new / 7,091 updated (idempotent)",
+        "live JobSpy scrape: LinkedIn+Indeed rows mapped correctly; full CLI ingest with a temporary profile gave 6 new then 0 new on rerun",
+        "ingest run inside the docker worker container"
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Matching pipeline and matches feed UI",
+      "status": "done",
+      "delivered": [
+        "job_matches table and profiles.match_summary (migration 0005)",
+        "hard filters + prefilter ranking (level, place, salary, sponsorship, required years, skills, title, recency, prestige)",
+        "score_match AI function with prompt, MatchScore schema, derived verdict",
+        "matching service with rolling-24h LLM budget, per-job commits, stale re-scoring on profile change, posting dedupe",
+        "match_user worker task; queued after onboarding, on refresh and after the ingest_jobs task",
+        "GET/PATCH /api/matches, GET /api/matches/{id}, POST /api/matches/refresh",
+        "frontend matches feed with tabs, filters and actions, job detail page, onboarding finish starts matching",
+        "level inference now understands Engineer II/III/IV"
+      ],
+      "verified_by": [
+        "pytest: test_matching_prefilter.py, test_matching_service.py, test_matches_api.py (204 tests total, all passing)",
+        "live run with the real model on the cached jobs (scores, reasons, gaps and questions are grounded in the profile)",
+        "Playwright run: sign up, onboarding with real AI, matching starts on finish, first matches appear while scoring runs, save/filter/search/detail, no console errors"
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Cover letters",
+      "status": "done",
+      "delivered": [
+        "cover_letters table (migration 0006)",
+        "cover_letter AI function with tone guidance, guardrail prompt, placeholder/length retry",
+        "worker task cover_letter and payload-aware queue dedupe",
+        "GET/POST/PUT/DELETE /api/matches/{id}/cover-letter and /download (.docx)",
+        "cover letter panel (draft, tone, notes, edit, save, copy, download, redraft with confirm, delete) and feed chip",
+        "resume name extraction and 'Your name' field in the background review step"
+      ],
+      "verified_by": [
+        "pytest: test_cover_letter_ai.py, test_cover_letters_api.py (229 tests total, all passing)",
+        "Playwright with the real model: draft, resume after reload mid-draft, edit+save+persist, copy, .docx download, declined redraft keeps edits, delete",
+        "two real front-end bugs found and fixed by that run: an infinite request loop between the 'resume watching' and 'task finished' effects, and the editor rendering empty for one render",
+        "letter content audited against the profile; prompt tightened after a first draft asserted an unknown absence"
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Scheduling, email sending, digest, clarifying-question emails",
+      "status": "done",
+      "delivered": [
+        "clarifying_questions table, users.last_digest_at/question_emails_enabled, job_matches.questions_collected (migration 0007)",
+        "send_email() over SMTP, HTML+text templates (Jinja, autoescaped), signed expiring tokens",
+        "question collection with LLM consolidation, answering (in-app and by email link), re-scoring after answers",
+        "daily email: due-time logic per timezone, content selection, preview, one-click unsubscribe, List-Unsubscribe headers",
+        "APScheduler in the worker (ingest every 6h, daily email tick hourly), tasks collect_questions and daily_emails",
+        "APIs: /api/questions, /api/q/{token}, /api/unsubscribe/{token}, /api/settings (+preview), DELETE /api/profile/facts/{id}",
+        "frontend: Questions inbox, no-login link page, Settings, Profile editing, navigation with badge, login redirect back",
+        "CLI: daily, questions, test-email"
+      ],
+      "verified_by": [
+        "pytest: test_notify_basics, test_questions_service, test_daily, test_questions_api, test_scheduler (284 tests total, all passing)",
+        "end-to-end run with the real model and Mailpit: signup with timezone, question consolidation (5 -> 2), inbox, preview email, hourly tick sent the real email over SMTP and marked everything sent, answering/skipping from the emailed link in a logged-out browser, fact saved + profile version bumped + matching queued, re-scoring of the matches, unsubscribe, bad-link rejection, profile page edits",
+        "the scheduler enqueued and ran an ingest of all 27 boards on its own",
+        "real relay test: postfix delivered a test message to Gmail (250 2.0.0 OK)",
+        "bug found by the run and fixed: the long List-Unsubscribe header was being RFC 2047-encoded"
+      ]
+    }
+  ],
+  "remaining": [
+    {
+      "id": "H6",
+      "priority": "P1",
+      "title": "Owner verification",
+      "findings": [],
+      "gaps": [
+        "GAP-13",
+        "GAP-21"
+      ],
+      "actions": [
+        "Owner: paste a real Claude token on the AI setup page and confirm a successful call from the Docker worker (GAP-13)",
+        "Owner: confirm the Gmail test message reached the inbox, not spam (GAP-21)",
+        "Optional: run /code-review now that the project is under git, so it reviews a real diff"
+      ]
+    }
+  ],
+  "known_gaps": [
+    {
+      "id": "GAP-01",
+      "area": "uploads",
+      "type": "test-debt",
+      "status": "mitigated",
+      "summary": "PDF parsing has not been exercised with a real PDF; tests only cover TXT and DOCX uploads.",
+      "source": "testing",
+      "related_findings": [
+        "CR-06",
+        "CR-17"
+      ],
+      "from_legacy": [
+        1
+      ],
+      "note": "H4 added tests that parse a real (hand-built) PDF, a page cap and a corrupt PDF. Still worth trying once with a real-world multi-page resume PDF; tracked in H6."
+    },
+    {
+      "id": "GAP-02",
+      "area": "ai",
+      "type": "risk",
+      "status": "accepted",
+      "summary": "Every user shares the owner's Claude subscription usage limits.",
+      "source": "planning",
+      "related_findings": [
+        "CR-01"
+      ],
+      "from_legacy": [
+        2
+      ],
+      "note": "Calls are budgeted per user (25/day by default) and concurrency-capped."
+    },
+    {
+      "id": "GAP-03",
+      "area": "ingestion",
+      "type": "risk",
+      "status": "accepted",
+      "summary": "python-jobspy scraping of LinkedIn/Indeed violates those sites' terms and is fragile (rate limits, blocks); it must stay opt-in and isolated. results_per_query applies per site (3 -> up to 6 jobs).",
+      "source": "planning",
+      "related_findings": [],
+      "from_legacy": [
+        3,
+        12
+      ],
+      "note": "The old claim that ingestion is not scheduled is obsolete: the worker schedules it since milestone 7."
+    },
+    {
+      "id": "GAP-04",
+      "area": "auth",
+      "type": "risk",
+      "status": "resolved",
+      "summary": "No email verification or password reset. Any admin can replace the shared Claude token, and the question/unsubscribe links rely on signed tokens only, so account and admin passwords must be strong.",
+      "source": "planning",
+      "related_findings": [
+        "CR-01",
+        "CR-02",
+        "CR-03",
+        "CR-04"
+      ],
+      "from_legacy": [
+        4,
+        16,
+        29
+      ],
+      "note": "Addressed by backlog item H1. Planned fix: REQ-18 / DESIGN-01. The emailed set-password link proves mailbox ownership, so it doubles as email verification and as the missing password reset."
+    },
+    {
+      "id": "GAP-05",
+      "area": "email",
+      "type": "operational",
+      "status": "accepted",
+      "summary": "Postfix direct-delivery mode needs SPF/DKIM/DMARC records and a host that allows outbound port 25; relay mode (Gmail) is the safe default.",
+      "source": "planning",
+      "related_findings": [],
+      "from_legacy": [
+        5
+      ],
+      "note": ""
+    },
+    {
+      "id": "GAP-06",
+      "area": "onboarding",
+      "type": "limitation",
+      "status": "open",
+      "summary": "Follow-up questions may re-ask for status fields left as 'Not sure' in the questionnaire (e.g. visa sponsorship).",
+      "source": "testing",
+      "related_findings": [],
+      "from_legacy": [
+        6
+      ],
+      "note": ""
+    },
+    {
+      "id": "GAP-07",
+      "area": "storage",
+      "type": "operational",
+      "status": "accepted",
+      "summary": "Documents/links data from before the file store was not migrated (only test data existed); the unused docker volume jobfinder_uploads can be removed.",
+      "source": "planning",
+      "related_findings": [],
+      "from_legacy": [
+        7
+      ],
+      "note": ""
+    },
+    {
+      "id": "GAP-08",
+      "area": "development",
+      "type": "operational",
+      "status": "accepted",
+      "summary": "Dev-only quirks: running the worker on the host (for the logged-in claude CLI) needs STORE_DIR pointing at the same files as the api because the docker volume is not visible from the host; the first SMTP connection from a host process to the Mailpit container can take several seconds on macOS.",
+      "source": "testing",
+      "related_findings": [],
+      "from_legacy": [
+        8,
+        28
+      ],
+      "note": "Neither affects the Docker network."
+    },
+    {
+      "id": "GAP-09",
+      "area": "matching",
+      "type": "limitation",
+      "status": "accepted",
+      "summary": "Seniority is inferred from the job title only and is coarse (e.g. 'Account Manager' is labelled manager).",
+      "source": "testing",
+      "related_findings": [],
+      "from_legacy": [
+        9
+      ],
+      "note": "The LLM scoring is the real judgement."
+    },
+    {
+      "id": "GAP-10",
+      "area": "matching",
+      "type": "limitation",
+      "status": "accepted",
+      "summary": "Salary is known for roughly half of the cached jobs (structured fields or parsed from the description); unknown pay never excludes a job.",
+      "source": "testing",
+      "related_findings": [],
+      "from_legacy": [
+        10
+      ],
+      "note": ""
+    },
+    {
+      "id": "GAP-11",
+      "area": "ingestion",
+      "type": "limitation",
+      "status": "resolved",
+      "summary": "The same posting repeated on one board (different requisitions) is cached as separate rows (~90 same-title groups).",
+      "source": "testing",
+      "related_findings": [],
+      "from_legacy": [
+        11
+      ],
+      "note": "Matching collapses to one row per dedupe_hash since milestone 5; the cache keeps the duplicates, which is harmless."
+    },
+    {
+      "id": "GAP-12",
+      "area": "ingestion",
+      "type": "limitation",
+      "status": "open",
+      "summary": "companies.yaml covers 27 companies only; add rows to widen coverage (slugs must be verified against the live board APIs).",
+      "source": "planning",
+      "related_findings": [],
+      "from_legacy": [
+        13
+      ],
+      "note": ""
+    },
+    {
+      "id": "GAP-13",
+      "area": "ai",
+      "type": "risk",
+      "status": "open",
+      "summary": "A successful AI call from the Docker worker with a REAL token has not been seen yet (only the failure path with a fake token). The owner must paste a real `claude setup-token` token on the AI setup page and run Test connection.",
+      "source": "testing",
+      "related_findings": [],
+      "from_legacy": [
+        14
+      ],
+      "note": "Needs the owner; tracked in backlog item H6."
+    },
+    {
+      "id": "GAP-14",
+      "area": "ai",
+      "type": "risk",
+      "status": "accepted",
+      "summary": "The shared token can expire or be revoked; the AI setup page then shows 'Last call failed (auth)' and the wizard shows the connect notice.",
+      "source": "planning",
+      "related_findings": [],
+      "from_legacy": [
+        15
+      ],
+      "note": ""
+    },
+    {
+      "id": "GAP-15",
+      "area": "matching",
+      "type": "limitation",
+      "status": "accepted",
+      "summary": "Scoring is slow and limited: about 25 seconds per job with the CLI, so the default 25 jobs/day is roughly an 11-minute background run; the rest wait ('N more promising jobs are waiting').",
+      "source": "testing",
+      "related_findings": [
+        "CR-10"
+      ],
+      "from_legacy": [
+        17
+      ],
+      "note": "Raise MATCH_DAILY_LLM_BUDGET / AI_MAX_CONCURRENCY only if the subscription allows."
+    },
+    {
+      "id": "GAP-16",
+      "area": "matching",
+      "type": "limitation",
+      "status": "accepted",
+      "summary": "Location matching is heuristic (substring/alias based, e.g. NYC, SF, US states); odd location strings can be missed or over-matched, and remote roles restricted to other countries still reach the LLM.",
+      "source": "testing",
+      "related_findings": [],
+      "from_legacy": [
+        18
+      ],
+      "note": ""
+    },
+    {
+      "id": "GAP-17",
+      "area": "ingestion",
+      "type": "limitation",
+      "status": "accepted",
+      "summary": "Some postings in the cache are months old and still active on the company's board; the feed shows 'Posted X months ago' and the prefilter down-weights stale ones.",
+      "source": "testing",
+      "related_findings": [],
+      "from_legacy": [
+        19
+      ],
+      "note": ""
+    },
+    {
+      "id": "GAP-18",
+      "area": "frontend",
+      "type": "test-debt",
+      "status": "resolved",
+      "summary": "Frontend has no automated tests beyond one-off Playwright runs.",
+      "source": "testing",
+      "related_findings": [
+        "CR-17"
+      ],
+      "from_legacy": [
+        20
+      ],
+      "note": "27 Vitest + Testing Library tests: sign-in, set/reset password, matches feed (Apply links), emailed questions link, routing/admin nav, safeHttpUrl. Run with `cd frontend && npm test`."
+    },
+    {
+      "id": "GAP-19",
+      "area": "cover_letters",
+      "type": "risk",
+      "status": "open",
+      "summary": "Generated letters can still lightly embellish (e.g. 'I also enjoy building across the stack', linking two true facts that the profile doesn't link). There is no automatic fact-check pass.",
+      "source": "testing",
+      "related_findings": [],
+      "from_legacy": [
+        21
+      ],
+      "note": "Mitigated by prompt rules that forbid invented facts, absences and feelings, and an on-page warning to read the letter before sending."
+    },
+    {
+      "id": "GAP-20",
+      "area": "cover_letters",
+      "type": "limitation",
+      "status": "accepted",
+      "summary": "Letters are plain text/Word without a contact header or date (the profile has no phone/address); the user adds those when sending.",
+      "source": "planning",
+      "related_findings": [],
+      "from_legacy": [
+        22
+      ],
+      "note": ""
+    },
+    {
+      "id": "GAP-21",
+      "area": "email",
+      "type": "operational",
+      "status": "open",
+      "summary": "Email delivery to the inbox (not spam) is unverified: Gmail accepted a test message from the relay, but only the owner can confirm where it landed.",
+      "source": "testing",
+      "related_findings": [
+        "CR-12",
+        "CR-13"
+      ],
+      "from_legacy": [
+        23
+      ],
+      "note": "Needs the owner; tracked in backlog item H6. (H3 changed delivery to at-most-once per day: the digest is claimed before SMTP and released if SMTP fails.)"
+    },
+    {
+      "id": "GAP-22",
+      "area": "operations",
+      "type": "operational",
+      "status": "accepted",
+      "summary": "The scheduler and daily emails are live in the Docker stack: real users whose chosen hour arrives receive real email through the owner's Gmail relay (Gmail's ~500/day limit applies) and ingestion/matching consume the shared Claude subscription.",
+      "source": "planning",
+      "related_findings": [
+        "CR-01"
+      ],
+      "from_legacy": [
+        24
+      ],
+      "note": "SCHEDULER_ENABLED=false or the per-user Settings toggles turn this off. Once REQ-18 ships, only emails the owner has added can receive any of this."
+    },
+    {
+      "id": "GAP-23",
+      "area": "email",
+      "type": "limitation",
+      "status": "accepted",
+      "summary": "Question emails are sent once; there are no reminder emails for unanswered questions (they stay in the in-app inbox).",
+      "source": "planning",
+      "related_findings": [],
+      "from_legacy": [
+        25
+      ],
+      "note": ""
+    },
+    {
+      "id": "GAP-24",
+      "area": "settings",
+      "type": "limitation",
+      "status": "accepted",
+      "summary": "Users created before timezone capture have timezone UTC until they change it in Settings.",
+      "source": "testing",
+      "related_findings": [],
+      "from_legacy": [
+        26
+      ],
+      "note": ""
+    },
+    {
+      "id": "GAP-25",
+      "area": "profile",
+      "type": "limitation",
+      "status": "mitigated",
+      "summary": "Profiles extracted before the `name` field have no name (cover letters end with just 'Sincerely,').",
+      "source": "testing",
+      "related_findings": [],
+      "from_legacy": [
+        27
+      ],
+      "note": "Mitigated: the Profile > Background page can now set the name."
+    },
+    {
+      "id": "GAP-26",
+      "area": "auth",
+      "type": "risk",
+      "status": "mitigated",
+      "summary": "Once DESIGN-01 is built, signing in for the first time (and resetting a password) depends on outbound email working: if the SMTP relay fails, nobody can set or reset a password. A mistyped invitee email also means the person never receives the link.",
+      "source": "planning",
+      "related_findings": [
+        "CR-02",
+        "CR-03"
+      ],
+      "from_legacy": [],
+      "note": "Mitigated by the planned owner break-glass CLI (reset-link prints a one-time link instead of emailing it) and by the existing SQL route for adding users. Tracked in backlog item H1."
+    }
+  ],
+  "code_review": {
+    "date": "2026-10-03",
+    "scope": "Whole repository as it stands. The project is not a git repository, so there was no diff to review.",
+    "method": "The /code-review skill could not review anything (no git history to diff, and it treated an extra argument as part of the path). Three parallel reviewer agents and then shell commands were blocked by the auto-mode safety check. The review was therefore done directly by reading the highest-risk files and tracing each suspected defect through the code; every finding marked 'read in this review' was confirmed against the code.",
+    "limitations": [
+      "Targeted, not exhaustive: only the files listed in files_read were re-read in this review.",
+      "No dynamic testing, dependency audit or penetration testing was done.",
+      "Findings marked 'from authorship, not re-read' rest on knowledge of code written earlier in the project and should be re-checked when fixed."
+    ],
+    "files_read": [
+      "backend/jobfinder/auth/routes.py",
+      "backend/jobfinder/auth/security.py",
+      "backend/jobfinder/config.py",
+      "backend/jobfinder/profile/web_page.py",
+      "backend/jobfinder/worker.py",
+      "backend/jobfinder/scheduling/queue.py",
+      "backend/jobfinder/api/questions.py",
+      "backend/jobfinder/matching/service.py",
+      "backend/jobfinder/api/documents.py",
+      "backend/jobfinder/ai/claude_code.py",
+      "backend/jobfinder/notify/daily.py",
+      "frontend/nginx.conf",
+      "frontend/src/components/MatchBits.tsx",
+      "frontend/src/routes/MatchDetail.tsx"
+    ],
+    "not_reread": [
+      "backend/jobfinder/ingest/*",
+      "backend/jobfinder/notify/templates/*",
+      "backend/jobfinder/ai/prompts/*",
+      "backend/jobfinder/api/ (other than documents.py and questions.py)",
+      "most of frontend/src",
+      "backend/tests/*"
+    ],
+    "recommendation": "Put the project under git with a committed baseline and run /code-review again so it reviews a real diff; re-verify each finding when fixing it.",
+    "summary": {
+      "total": 17,
+      "high": 2,
+      "medium": 8,
+      "low": 7
+    },
+    "findings": [
+      {
+        "id": "CR-01",
+        "severity": "high",
+        "category": "security",
+        "file": "backend/jobfinder/auth/routes.py",
+        "lines": "65-84",
+        "summary": "Self-signup is open to anyone who can reach the app: there is no invite, allowlist or email verification.",
+        "failure_scenario": "An outsider signs up with victim@example.com and finishes a minimal profile; the daily email and questions are then sent to the victim through the owner's Gmail relay. Many accounts each trigger matching (up to 25 LLM calls per day each) on the shared Claude subscription.",
+        "suggested_fix": "Remove self-signup: invite-only accounts activated by an emailed set-password link, per DESIGN-01 (REQ-18).",
+        "resolution_plan": "REQ-18 / DESIGN-01 (decided 2026-10-03, not built)",
+        "verified": "read in this review",
+        "status": "resolved",
+        "backlog": "H1"
+      },
+      {
+        "id": "CR-02",
+        "severity": "high",
+        "category": "security",
+        "file": "backend/jobfinder/config.py",
+        "lines": "10",
+        "summary": "SECRET_KEY defaults to the public string 'dev-insecure-change-me' and backend/.env does not set it, so the running stack signs tokens with a publicly known key.",
+        "failure_scenario": "Anyone who has read the source can forge a question-link or unsubscribe token for any user id: read that user's open questions and job titles, answer or skip them, or unsubscribe them. Once DESIGN-01 adds emailed password-reset links signed with the same key, the same forgery would also let them reset any account's password: full account takeover.",
+        "suggested_fix": "Refuse to start with the default key outside dev (or generate and persist a random one) and set it in backend/.env. This must ship together with DESIGN-01, not after it.",
+        "verified": "read in this review",
+        "status": "resolved",
+        "backlog": "H1"
+      },
+      {
+        "id": "CR-03",
+        "severity": "medium",
+        "category": "reliability/security",
+        "file": "backend/jobfinder/auth/security.py",
+        "lines": "19-27",
+        "summary": "argon2 hashing and verification run synchronously inside async handlers, and nothing in the API is rate-limited.",
+        "failure_scenario": "A flood of login or signup requests blocks the event loop for tens of milliseconds each, stalling every other request; passwords can be brute-forced without throttling and the preview-email endpoint can be called without limit.",
+        "suggested_fix": "Run hashing in a threadpool and add per-IP/per-email rate limits (app or nginx limit_req). DESIGN-01 requires this for login and the password-reset endpoints, and needs nginx's forwarded client IP to be trusted so per-IP limits are meaningful.",
+        "verified": "read in this review",
+        "status": "resolved",
+        "backlog": "H1"
+      },
+      {
+        "id": "CR-04",
+        "severity": "low",
+        "category": "security",
+        "file": "backend/jobfinder/auth/routes.py",
+        "lines": "78-80, 89-93",
+        "summary": "Account enumeration: signup answers 409 'Email already registered', and login for an unknown email skips password hashing so it returns noticeably faster.",
+        "failure_scenario": "An attacker probes a list of addresses and learns which have accounts, by message or by response time.",
+        "suggested_fix": "Planned in DESIGN-01: signup (and its 409) is removed; login and link requests return identical generic responses and verify against a dummy hash for unknown or pending emails.",
+        "verified": "read in this review",
+        "status": "resolved",
+        "backlog": "H1"
+      },
+      {
+        "id": "CR-05",
+        "severity": "medium",
+        "category": "security/DoS",
+        "file": "backend/jobfinder/profile/web_page.py",
+        "lines": "34-44, 50",
+        "summary": "The SSRF guard resolves DNS and then httpx resolves again (rebinding window), and the response body is not size-capped before resp.text and synchronous text extraction.",
+        "failure_scenario": "A user submits a URL whose DNS answers a public address for the check and an internal one for the fetch, or points at a huge or slow-drip response: the API fetches an internal address or exhausts memory and blocks the event loop.",
+        "suggested_fix": "Stream with a byte cap and a total deadline, connect to the validated IP, and run extraction in a thread.",
+        "verified": "read in this review",
+        "status": "resolved",
+        "backlog": "H4"
+      },
+      {
+        "id": "CR-06",
+        "severity": "medium",
+        "category": "reliability",
+        "file": "backend/jobfinder/api/documents.py",
+        "lines": "84-87",
+        "summary": "Uploaded files are parsed synchronously inside the async handler with no page limit beyond the 10 MB cap.",
+        "failure_scenario": "A large or crafted PDF keeps pdfplumber busy for seconds and the whole API stops answering other requests.",
+        "suggested_fix": "Parse in a threadpool with a page cap and a timeout.",
+        "verified": "read in this review",
+        "status": "resolved",
+        "backlog": "H4"
+      },
+      {
+        "id": "CR-07",
+        "severity": "medium",
+        "category": "reliability",
+        "file": "backend/jobfinder/worker.py",
+        "lines": "26-40 (with scheduling/queue.py:81-89)",
+        "summary": "A task whose handler leaves the DB session in a failed state makes queue.fail raise inside run_task; the exception is never retrieved, the task stays 'running', and reap_stuck requeues it every 15 minutes with no attempt cap. run_task also crashes if the task row is missing.",
+        "failure_scenario": "A poison task (for example one hitting a DB error) is re-run forever, repeating its LLM calls, while the worker logs nothing useful.",
+        "suggested_fix": "Roll back before queue.fail, add a done-callback that logs task-future exceptions, and mark tasks failed in reap_stuck once attempts reach the cap.",
+        "verified": "read in this review",
+        "status": "resolved",
+        "backlog": "H2"
+      },
+      {
+        "id": "CR-08",
+        "severity": "medium",
+        "category": "reliability",
+        "file": "backend/jobfinder/scheduling/queue.py",
+        "lines": "11, 81-89 (with worker.py:73-75)",
+        "summary": "STUCK_AFTER is 15 minutes but nothing refreshes locked_at while a task runs, and the reaper only runs every 300 loop iterations.",
+        "failure_scenario": "A long task (a bigger match budget, or the sequential daily-email tick doing LLM and SMTP per user) is requeued while still running and executed twice: double LLM spend and a duplicate daily email.",
+        "suggested_fix": "Heartbeat locked_at while running, or use per-kind timeouts, and reap on a fixed schedule.",
+        "verified": "read in this review",
+        "status": "resolved",
+        "backlog": "H2"
+      },
+      {
+        "id": "CR-09",
+        "severity": "low",
+        "category": "concurrency",
+        "file": "backend/jobfinder/scheduling/queue.py",
+        "lines": "28-45",
+        "summary": "enqueue(dedupe=True) is a check-then-insert with no unique constraint, so it is not atomic.",
+        "failure_scenario": "A double-click on 'Find new matches' (or an API request racing the scheduler) inserts two tasks and runs two matching passes for the same user at once, doubling LLM spend.",
+        "suggested_fix": "Add a partial unique index on (kind, user_id, payload) for queued/running tasks, or take an advisory lock.",
+        "verified": "read in this review",
+        "status": "resolved",
+        "backlog": "H2"
+      },
+      {
+        "id": "CR-10",
+        "severity": "medium",
+        "category": "performance",
+        "file": "backend/jobfinder/matching/service.py",
+        "lines": "69-102",
+        "summary": "find_candidates loads every active job with its full description (about 7,000 rows of up to 20 KB) per user per run and does CPU-bound filtering inside the async worker.",
+        "failure_scenario": "With several users, each matching run spikes memory by tens to hundreds of MB and blocks the worker's event loop for seconds, delaying other tasks and heartbeats; cost grows with users times jobs.",
+        "suggested_fix": "Select only the needed columns, push more filtering into SQL, and run the CPU-bound scoring off the event loop.",
+        "verified": "read in this review",
+        "status": "resolved",
+        "backlog": "H4"
+      },
+      {
+        "id": "CR-11",
+        "severity": "medium",
+        "category": "security",
+        "file": "frontend/src/routes/MatchDetail.tsx",
+        "lines": "29",
+        "summary": "job.url (from ATS or JobSpy data) is rendered as an href with no scheme check and is not validated at ingestion; the same pattern is used in Matches.tsx and the email's Apply link (those two not re-read).",
+        "failure_scenario": "A scraped posting with a javascript: URL runs script in the app's origin when a user clicks Apply.",
+        "suggested_fix": "Accept only http(s) URLs at ingestion and when rendering in the UI and the email.",
+        "verified": "MatchDetail.tsx read in this review; Matches.tsx and the email template from authorship, not re-read",
+        "status": "resolved",
+        "backlog": "H5"
+      },
+      {
+        "id": "CR-12",
+        "severity": "low",
+        "category": "reliability",
+        "file": "backend/jobfinder/notify/daily.py",
+        "lines": "137-150",
+        "summary": "The daily email is at-least-once: the message is sent over SMTP first and the matches/questions are marked sent afterwards.",
+        "failure_scenario": "A crash or DB error between the send and the commit (or a duplicate run from CR-08) makes the next hourly tick send the same email again.",
+        "suggested_fix": "Record a 'sending' state before the SMTP call or otherwise make the send idempotent, or accept and document at-least-once delivery.",
+        "verified": "read in this review",
+        "status": "resolved",
+        "backlog": "H3"
+      },
+      {
+        "id": "CR-13",
+        "severity": "medium",
+        "category": "security",
+        "file": "backend/jobfinder/api/questions.py",
+        "lines": "90-100",
+        "summary": "The unsubscribe link changes state on GET.",
+        "failure_scenario": "Email security scanners and link previewers fetch the URL and silently unsubscribe users who never clicked it (RFC 8058 reserves state changes for the POST one-click).",
+        "suggested_fix": "Make GET show a confirmation page with a POST button; only POST unsubscribes.",
+        "verified": "read in this review",
+        "status": "resolved",
+        "backlog": "H3"
+      },
+      {
+        "id": "CR-14",
+        "severity": "low",
+        "category": "security",
+        "file": "frontend/nginx.conf",
+        "lines": "1-22",
+        "summary": "nginx sets no security headers: no CSP, frame-ancestors/X-Frame-Options, X-Content-Type-Options or Referrer-Policy.",
+        "failure_scenario": "The settings and AI-setup pages can be framed by another site (clickjacking), and nothing limits the impact of an injected script.",
+        "suggested_fix": "Add the standard security headers in nginx.",
+        "verified": "read in this review",
+        "status": "resolved",
+        "backlog": "H5"
+      },
+      {
+        "id": "CR-15",
+        "severity": "low",
+        "category": "security",
+        "file": "backend/jobfinder/auth/security.py",
+        "lines": "30-38",
+        "summary": "Session tokens are stored in plaintext in the database and expired sessions are never pruned.",
+        "failure_scenario": "Anyone who can read the sessions table can use live tokens as-is, and the table grows without bound.",
+        "suggested_fix": "Store a hash of the token and prune expired rows on login or on a schedule.",
+        "verified": "read in this review",
+        "status": "resolved",
+        "backlog": "H5"
+      },
+      {
+        "id": "CR-16",
+        "severity": "low",
+        "category": "reliability",
+        "file": "backend/jobfinder/ai/claude_code.py",
+        "lines": "147-152",
+        "summary": "On timeout the Claude process group is killed with SIGKILL but proc.wait() is never awaited.",
+        "failure_scenario": "Each timed-out call leaves a zombie process until the event loop reaps it, so repeated timeouts accumulate defunct processes in the worker container.",
+        "suggested_fix": "await proc.wait() after killing the process group (and on cancellation).",
+        "verified": "read in this review",
+        "status": "resolved",
+        "backlog": "H2"
+      },
+      {
+        "id": "CR-17",
+        "severity": "low",
+        "category": "test-gap",
+        "file": "backend/tests",
+        "lines": "",
+        "summary": "Several important behaviours have no tests: the worker main loop and reaper, the run_task failure path with a DB error, concurrent enqueue dedupe, fetch_page_text redirect/size handling, real PDF parsing, and the whole frontend.",
+        "failure_scenario": "Regressions in the queue, worker and fetch paths (where CR-05, CR-07, CR-08 and CR-09 live) would go unnoticed by the test suite.",
+        "suggested_fix": "Add the missing backend tests and automated frontend tests for the core flows.",
+        "verified": "from authorship, not re-read",
+        "status": "mitigated",
+        "backlog": "H6",
+        "resolution_note": "Added tests for run_task failures, heartbeat, reaper, concurrent dedupe, fetch_page_text (IP pinning, redirects, size, deadline), real/corrupt/page-capped PDFs, and frontend tests (27). Not covered: the worker's main() polling loop as a whole (its parts are tested)."
+      }
+    ]
+  },
+  "planned_designs": [
+    {
+      "id": "DESIGN-01",
+      "title": "Invite-only access with an emailed set/reset password link",
+      "status": "built",
+      "decided_on": "2026-10-03",
+      "requirement": "REQ-18",
+      "decision": "DEC-14",
+      "backlog": "H1",
+      "goals": [
+        "Only people the owner has added can ever get an account or receive email from the system",
+        "No separate password-reset feature to build: first-time password setup and forgotten-password use the same emailed link",
+        "Give a pending person a clear way in without revealing to outsiders which emails exist"
+      ],
+      "non_goals": [
+        "An admin screen for adding users (the owner inserts rows manually)",
+        "Two-factor authentication or social login",
+        "Self-service signup in any form"
+      ],
+      "data_model": {
+        "users": [
+          "Make these columns nullable and drop their DB defaults so that INSERT INTO users (email) VALUES ('x@y.com') works with everything else NULL: password_hash, timezone, digest_hour, digest_enabled, question_emails_enabled, is_admin",
+          "Add activated_at timestamptz NULL; created_at keeps its default",
+          "Store emails lowercase and add CHECK (email = lower(email)) so manual inserts cannot create look-alike duplicates",
+          "pending = password_hash IS NULL; active = password_hash IS NOT NULL"
+        ],
+        "rate_events": "New table rate_events(id, kind, key, created_at) with index (kind, key, created_at); the worker prunes old rows. Used for login-failure and link-request limits.",
+        "migration": [
+          "Relax the NOT NULL constraints and drop the server defaults listed above",
+          "Backfill activated_at = created_at for existing users (they already have passwords)",
+          "Existing accounts, passwords, sessions and profiles are untouched"
+        ],
+        "activation_populates": [
+          "timezone (browser value, else UTC)",
+          "digest_hour = 8, digest_enabled = true, question_emails_enabled = true",
+          "is_admin = (email is in ADMIN_EMAILS)",
+          "activated_at = now()",
+          "an empty profiles row (status {}, background {}, version 1)"
+        ]
+      },
+      "flows": [
+        {
+          "name": "Sign-in page (/login)",
+          "steps": [
+            "Fields: email and password, a Sign in button, and an always-visible link 'First time here, or forgot your password? Email me a link'",
+            "There is no sign-up toggle"
+          ]
+        },
+        {
+          "name": "POST /api/auth/login",
+          "steps": [
+            "Unknown email, pending account and wrong password all return the same 401 'Invalid email or password'",
+            "When there is no password hash to check, verify against a dummy argon2 hash so response time does not reveal the difference",
+            "Hash verification runs in a threadpool; throttled by the rate limits below"
+          ]
+        },
+        {
+          "name": "POST /api/auth/password-reset/request {email}",
+          "steps": [
+            "Always answers 202 with the same text: 'If that address has access, we've emailed a link. It expires in 60 minutes.'",
+            "Only an existing row (pending or active) that is not rate limited gets an email, sent in the background so response time does not leak existence",
+            "Subject is 'Set your JobFinder password' for pending accounts and 'Reset your JobFinder password' for active ones",
+            "Unknown emails receive nothing, so the endpoint cannot be used to email strangers"
+          ]
+        },
+        {
+          "name": "The emailed link",
+          "steps": [
+            "{PUBLIC_BASE_URL}/reset-password#token=...  The token is in the URL fragment so it never reaches server logs or the Referer header",
+            "Signed with its own salt/purpose ('password-reset') so a question-link or unsubscribe token cannot be replayed here",
+            "Contains a fingerprint of the current password hash (empty for pending accounts), so the link stops working as soon as the password is set or changed: single use",
+            "Expires after PASSWORD_LINK_TTL_MINUTES (default 60)"
+          ]
+        },
+        {
+          "name": "POST /api/auth/password-reset/confirm {token, password, timezone}",
+          "steps": [
+            "Validate signature, purpose, age and the password fingerprint; any failure returns one generic 400 with a pointer to request a new link",
+            "Password rules: 10 to 256 characters and not equal to the email",
+            "In one transaction: hash the password in a threadpool and set password_hash; if the user was pending, populate the fields listed under activation_populates and create the profile row",
+            "Delete all existing sessions for the user, create a fresh session and set the cookie: the user is signed in and lands in onboarding"
+          ]
+        },
+        {
+          "name": "Owner break-glass (planned CLI, SQL also works)",
+          "steps": [
+            "python -m jobfinder.cli add-user --email x@y.com  (inserts the email-only row)",
+            "python -m jobfinder.cli reset-link --email x@y.com  (prints a one-time link instead of emailing it, for when SMTP is down)",
+            "python -m jobfinder.cli list-users"
+          ]
+        }
+      ],
+      "removed": [
+        "POST /api/auth/signup and the SignupBody model",
+        "The sign-up form, the Sign up / Log in toggle and AuthProvider.signup in the frontend",
+        "The first-account-is-admin rule (admin only via ADMIN_EMAILS)",
+        "Signup tests and the signup-time timezone capture (timezone moves to the set-password step)"
+      ],
+      "active_only_touchpoints": [
+        "notify/daily.py: due_users and is_due must skip rows with NULL digest_hour / not active",
+        "api/settings.py and the UserOut model: nullable-safe",
+        "matching enqueue (enqueue_for_active_users): pending users have no profile row, so they are naturally skipped",
+        "scheduling/handlers.py daily_emails and collect_questions: only active users",
+        "auth/security.py current_user: only active users can hold sessions"
+      ],
+      "config": [
+        "PASSWORD_LINK_TTL_MINUTES=60",
+        "Login and link-request rate limit settings",
+        "ADMIN_EMAILS becomes the only way to be admin",
+        "Configure uvicorn to trust nginx's forwarded headers (--forwarded-allow-ips) so per-IP limits see the real client address instead of nginx's"
+      ],
+      "rate_limits": {
+        "link_requests": "3 per hour per email with a 60 second cooldown, and 10 per hour per IP",
+        "failed_logins": "10 per 15 minutes per email and 30 per 15 minutes per IP, then HTTP 429"
+      },
+      "security_notes": [
+        "CR-01 (open signup) is removed by design: only emails the owner adds can ever receive mail",
+        "CR-04 (enumeration): generic login error, identical link-request response, equalised timing",
+        "CR-03: hashing off the event loop and the rate limits above are required parts of this work",
+        "CR-02 becomes more serious: reset links are signed with SECRET_KEY, so a forged token would be full account takeover. The startup guard that refuses the default key must ship together with this feature, not after it",
+        "CR-14: send Referrer-Policy: no-referrer on the reset page; CR-15 (hashed session tokens) is a natural companion change",
+        "Inherent risk: whoever controls a user's mailbox can take over the account (true of any email-based reset)"
+      ],
+      "choices_made": [
+        {
+          "choice": "Message for a pending account that tries to sign in",
+          "chosen": "Same generic error as any failed login, with the 'email me a link' option always visible on the page",
+          "alternative": "Tell the person explicitly that no password is set yet (friendlier, but reveals which invited emails are not activated)"
+        },
+        {
+          "choice": "Where the token travels",
+          "chosen": "URL fragment (#token=), read by the page and posted to the API",
+          "alternative": "Query string or path (simpler, but ends up in logs and Referer headers)"
+        },
+        {
+          "choice": "Link lifetime",
+          "chosen": "60 minutes, configurable; people can request a new link at any time",
+          "alternative": "24 hours for first-time setup (more convenient, larger exposure window)"
+        }
+      ],
+      "risks": [
+        "Sign-in now depends on outbound email: if the SMTP relay fails nobody can set or reset a password (mitigated by the break-glass CLI; tracked as GAP-26)",
+        "Many code paths assume non-null user columns; each must be reviewed for NULL safety (see active_only_touchpoints)",
+        "A typo in an email the owner types means the invitee never gets the link"
+      ],
+      "tests": [
+        "Signup endpoint is gone (404)",
+        "Unknown, pending and wrong-password logins return identical responses and comparable timing",
+        "Link request for an unknown vs a known email returns identical responses; only the known one sends mail",
+        "Token: single use, expiry, tampering and wrong-purpose rejection, and invalidation after the password changes",
+        "Confirm populates a pending row, creates the profile, signs the user in and removes their other sessions",
+        "Pending users receive no digest, no questions and no matching",
+        "Admin only via ADMIN_EMAILS",
+        "Rate limiting for logins and link requests, using the real client IP behind nginx",
+        "NULL-safe code paths for pending rows",
+        "Playwright run: owner inserts an email row -> person requests a link -> opens it -> sets a password -> is signed in -> completes onboarding"
+      ]
+    }
+  ],
+  "how_to_verify": {
+    "backend_tests": "docker compose up -d db && cd backend && uv run pytest (tests reset and use a jobfinder_test database on localhost:5433; 341 tests)",
+    "frontend_build": "cd frontend && npm run build",
+    "stack": "docker compose up -d --build, then GET http://localhost:8180/healthz",
+    "ai": "Sign in as the admin, open 'AI setup', paste the token from `claude setup-token`, click Save & test (or run docker compose exec worker python -m jobfinder.cli ai-check)",
+    "store": "docker compose exec api ls -R /data/store ; GET /api/documents?tag=key:value ; GET /api/documents/{id}/download",
+    "ingest": "docker compose exec worker python -m jobfinder.cli ingest (or --company discord for one board); then select count(*) from jobs",
+    "matching": "Sign in, finish onboarding (or click 'Find new matches'); watch docker compose logs worker; select count(*) from job_matches",
+    "cover_letters": "Open a match, click 'Draft cover letter', edit, then Download .docx; or POST /api/matches/{id}/cover-letter",
+    "email": "docker compose --profile dev up -d mailpit (UI http://localhost:8025); Settings > 'Send me a preview'; or python -m jobfinder.cli daily --email you@x.com [--preview]; relay check: docker compose exec worker python -m jobfinder.cli test-email --to you@gmail.com and docker compose logs smtp",
+    "scheduler": "docker compose logs worker | grep scheduled (ingest 2 minutes after start, then every INGEST_INTERVAL_HOURS; daily_emails at :05 each hour)",
+    "code_review": "The project is under git (first commit 2026-10-07). Run /code-review for a review of a real diff; re-verify each code_review finding when fixing it.",
+    "access": "PLANNED (REQ-18 / DESIGN-01, not built): add a person with INSERT INTO users (email) VALUES ('name@example.com') using a lowercase address; they open /login, choose 'email me a link', open it, set a password and land in onboarding; confirm an unknown email gets the same response and no email, and that /api/auth/signup is gone",
+    "frontend_tests": "cd frontend && npm test (27 tests, Vitest + Testing Library, fetch mocked)"
+  },
+  "work_log": [
+    {
+      "date": "2026-10-03",
+      "task": "Move documents and links out of Postgres into a docker-volume file store",
+      "summary": "Added DocumentStore (IDs, tags, sha256 dedupe, atomic writes, path-traversal-safe), rewired /api/documents and /api/links, the extract_profile handler and onboarding check to it, added download/text/tags endpoints, dropped the documents and links tables (migration 0003), renamed config to STORE_DIR and the volume to store.",
+      "verified_by": [
+        "pytest: 65 tests passing (new tests/test_store.py; updated test_documents.py, test_links.py)",
+        "docker: upload through nginx lands in /data/store, visible from the worker container, survives an api restart",
+        "Playwright onboarding run against host api/worker/vite with real AI reading the resume from the store"
+      ]
+    },
+    {
+      "date": "2026-10-03",
+      "task": "Milestone 4: job ingestion and cache",
+      "summary": "Seed list of verified ATS boards, Greenhouse/Lever/Ashby parsers, idempotent ingestion service with expiry, opt-in JobSpy LinkedIn/Indeed source, CLI and worker task.",
+      "verified_by": [
+        "116 tests passing",
+        "live ingest of 27 boards (7,091 jobs, 0 errors, idempotent rerun)",
+        "live JobSpy scrape and end-to-end CLI ingest",
+        "ingest inside the worker container"
+      ]
+    },
+    {
+      "date": "2026-10-03",
+      "task": "PRD: document the file store (bucket) as its own requirement",
+      "summary": "Added REQ-15, fixed the stale milestone 2 entry, added a milestone-view entry for the file-store task.",
+      "verified_by": [
+        "PRD.json parses and every implemented_in path exists"
+      ]
+    },
+    {
+      "date": "2026-10-03",
+      "task": "Connect Claude from the web app (no worker access needed)",
+      "summary": "Diagnosed 'Analyze my background' failures (docker worker had no Claude credentials). Added an admin-only AI setup page that stores the setup-token token on a shared credentials volume, a status endpoint, an ai_check worker task, admin role, and clearer failure messages. Fixed the CLI auth-error classifier after the real CLI's 401 wording was labelled 'unknown'.",
+      "verified_by": [
+        "139 tests passing",
+        "browser run against docker as admin and non-admin",
+        "token never in logs or DB; survives worker restart"
+      ]
+    },
+    {
+      "date": "2026-10-03",
+      "task": "Milestone 5: matching pipeline and matches feed",
+      "summary": "Hard filters + prefilter + budgeted LLM scoring, stored matches with reasons/gaps/unknowns, matches API, feed and detail UI, matching triggered from onboarding, refresh and ingestion. Live testing with the real model led to an experience-years filter, roman-numeral level inference and a tighter scoring prompt.",
+      "verified_by": [
+        "204 tests passing",
+        "live scoring with the real model",
+        "browser run of onboarding -> matches"
+      ]
+    },
+    {
+      "date": "2026-10-03",
+      "task": "Milestone 6: cover letters",
+      "summary": "Cover letter drafting from a match with tones and notes, editable drafts, .docx download, redraft protection, worker task, UI panel. Browser runs with the real model exposed a request-loop bug and an empty-editor flash (both fixed) and a prompt weakness (asserting missing skills) that was tightened.",
+      "verified_by": [
+        "229 tests passing",
+        "browser run with the real model"
+      ]
+    },
+    {
+      "date": "2026-10-03",
+      "task": "Milestone 7: scheduling, email, daily digest, clarifying questions, settings and profile pages",
+      "summary": "Everything planned for the product is now built: scheduled ingestion and matching, the daily email with new matches and questions, signed no-login question links with re-scoring after answers, unsubscribe, settings and profile pages. Real-model and SMTP runs found one bug (List-Unsubscribe encoding), fixed with a test.",
+      "verified_by": [
+        "284 tests passing",
+        "end-to-end browser + Mailpit + real model run",
+        "real Gmail relay test message accepted"
+      ]
+    },
+    {
+      "date": "2026-10-03",
+      "task": "Code review and known-gap consolidation",
+      "summary": "Reviewed the highest-risk code by reading it (the /code-review skill had no git diff to work on and the reviewer agents were blocked by the safety check). Recorded 17 verified findings (2 high, 8 medium, 7 low) under code_review, restructured the 29 free-text known gaps into 25 structured, de-duplicated known_gaps with status and links to the findings, and turned `remaining` into a prioritised hardening backlog (H1-H6). No code was changed.",
+      "verified_by": [
+        "every finding marked 'read in this review' was confirmed against the code at the cited lines",
+        "PRD.json was re-read in full after editing: structure, the severity counts (2/8/7), finding-to-backlog links and the mapping of all 29 legacy gaps were checked by hand; the planned validation script could not be run because shell commands were blocked, so run `python3 -m json.tool docs/PRD.json` to confirm it parses"
+      ]
+    },
+    {
+      "date": "2026-10-03",
+      "task": "Access model decision: invite-only accounts with emailed set/reset password",
+      "summary": "Recorded the owner's decision for backlog item H1: no self-signup; the owner adds accounts manually as email-only rows; signing in offers an emailed link to set or reset the password, which activates and populates the row; unknown emails get nothing. Added REQ-18, DEC-14, the full design DESIGN-01 (data model, flows, rate limits, security notes, tests), GAP-26, and updated H1, CR-01 to CR-04, GAP-04 and GAP-22. No code, migration or configuration was changed.",
+      "verified_by": [
+        "the edited regions were re-read after editing; the file has not been parsed by a tool in this step, so run `python3 -m json.tool docs/PRD.json` to confirm it is valid JSON"
+      ]
+    },
+    {
+      "date": "2026-10-04",
+      "task": "H1: invite-only access, emailed set/reset-password link, SECRET_KEY guard, rate limits",
+      "summary": "Removed self-signup and the first-user-admin rule (admin only via ADMIN_EMAILS). Added nullable user columns + activated_at + rate_events (migration 0008), password-reset request/confirm endpoints with single-use 60-minute fragment tokens, argon2 off the event loop with a dummy verify for unknown/pending logins, DB-backed rate limits (login, link request, preview email), startup refusal for a missing/default/short SECRET_KEY, nginx forwarding the real client IP, the add-user/reset-link/list-users CLI, and the new sign-in and /reset-password pages. Existing owner account kept admin via ADMIN_EMAILS in backend/.env.",
+      "verified_by": [
+        "uv run ruff check . clean",
+        "uv run pytest: 309 passed",
+        "npm run build ok",
+        "live stack: signup 404, identical 202 for known/unknown, link single use, 429 after 10 failed logins"
+      ]
+    },
+    {
+      "date": "2026-10-04",
+      "task": "H2: worker reliability",
+      "summary": "Atomic enqueue dedupe via tasks.dedupe_key and a partial unique index (migration 0009); heartbeat of locked_at every 60s while a task runs; stuck threshold 5 minutes; reaper and rate-event prune on a 60s clock instead of loop ticks; reap_stuck fails tasks that used all attempts; run_task rolls back, records failures on a fresh session, tolerates a missing task row, and runner exceptions are logged by a done-callback; timed-out or cancelled Claude subprocesses are killed and awaited.",
+      "verified_by": [
+        "uv run ruff check . clean",
+        "uv run pytest: 318 passed (new: concurrent dedupe, heartbeat, reaper cap, poison handler, missing task, subprocess reaped)",
+        "docker compose up -d --build api worker: migration 0009 applied, partial unique index present, worker started",
+        "not run live: concurrent POST /api/matches/refresh (would spend the shared Claude subscription); covered by the concurrent enqueue test on real Postgres"
+      ]
+    },
+    {
+      "date": "2026-10-04",
+      "task": "H3: email correctness",
+      "summary": "GET /api/unsubscribe/{token} now only shows a confirmation page with a POST button; POST (the button and the List-Unsubscribe one-click header) unsubscribes. The daily send claims its matches, questions and users.last_digest_at (compare-and-set) before the SMTP call and releases them if SMTP fails, so concurrent or repeated runs cannot send twice. Trade-off: a crash between the claim and the send loses that day's email instead of repeating it.",
+      "verified_by": [
+        "uv run ruff check . clean",
+        "uv run pytest: 321 passed (new: GET changes nothing, one-click POST, claim-before-send, 4 concurrent runs send one email, failed send restores last_digest_at)",
+        "live: GET with a valid token shows the form and leaves digest settings unchanged; bad token 400"
+      ]
+    },
+    {
+      "date": "2026-10-04",
+      "task": "H4: resource safety",
+      "summary": "Web pages: each hop is resolved once, validated and connected to by that IP (Host header and TLS name kept), body streamed with a 2 MB cap and 20 s overall deadline, non-page content types refused, extraction in a thread. Uploads: parsed in a thread with a 30-page PDF cap, 20 s timeout and at most 2 concurrent parses. Matching: find_candidates uses a light column query for the cheap filters, loads descriptions 500 at a time and scores them in a thread; only the jobs that will be scored are loaded in full (Candidate is now light, hydrate() loads the rest).",
+      "verified_by": [
+        "uv run ruff check . clean",
+        "uv run pytest: 335 passed (new: IP pinning, DNS rebinding via redirect, redirects re-resolved, size cap, slow-drip deadline, real PDF, page cap, corrupt PDF, parse timeout keeps API responsive, batched candidates)",
+        "live in the api container: https://example.com and https://www.python.org fetched through the pinned IP with TLS verified; localhost, 169.254.169.254 refused; expired.badssl.com rejected"
+      ],
+      "limits": "A parse thread cannot be killed on timeout; it finishes in the background, bounded by the page cap. Matching still reads all light rows of active jobs per run (cheap columns only)."
+    },
+    {
+      "date": "2026-10-05",
+      "task": "H5: web hardening",
+      "summary": "Job URLs: ingestion keeps only absolute http(s) URLs (safe_http_url), the matches API blanks any other stored URL, the daily email omits the Apply link, and the UI renders Apply only for http(s) (safeHttpUrl). nginx now sends CSP (script-src 'self', frame-ancestors 'none', form-action 'self'), X-Frame-Options, X-Content-Type-Options, Permissions-Policy and Referrer-Policy at server level (no-referrer on /reset-password via a map on $request_uri). Sessions: the database stores SHA-256 of the token (migration 0010 converts existing rows so current cookies keep working), create_session returns the raw token for the cookie, and the worker prunes expired sessions every minute.",
+      "verified_by": [
+        "uv run ruff check . clean",
+        "uv run pytest: 341 passed",
+        "npm run build ok",
+        "live: headers on /, /login, /reset-password (no-referrer), /api; sessions table holds 64-char hashes after migration",
+        "built index.html has no inline script, so the CSP fits it"
+      ],
+      "not_verified": "Not opened in a real browser, so a CSP violation in the running app (for example from a style or script pattern not seen in the build output) would not have been caught. No HSTS header: add it at the TLS-terminating proxy if the app is served over HTTPS."
+    },
+    {
+      "date": "2026-10-07",
+      "task": "H6: tests and verification (what Claude can do)",
+      "summary": "Added Vitest + Testing Library with 27 frontend tests (sign-in, set/reset password, matches Apply links, questions-by-link, routing and admin nav, safeHttpUrl). Ran the live app in headless Chromium under the new CSP: pages render, no CSP violations, an injected inline script and an image from another origin are both blocked. Remaining H6 items need the owner (GAP-13 real Claude token, GAP-21 inbox vs spam).",
+      "verified_by": [
+        "cd frontend && npm test: 27 passed",
+        "npm run build ok",
+        "Playwright (scratchpad, not in the repo): login, link mode, reset page, bad-token error render; securitypolicyviolation fired for script-src-elem and img-src"
+      ]
+    }
+  ]
+}

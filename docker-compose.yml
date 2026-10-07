@@ -1,0 +1,96 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    # Published on localhost only so host-side pytest/alembic can reach it.
+    ports:
+      - "127.0.0.1:${DB_PORT:-5433}:5432"
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - path: ./backend/.env
+        required: false
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      STORE_DIR: /data/store
+      CLAUDE_AUTH_DIR: /data/claude
+      FORWARDED_ALLOW_IPS: "*"  # trust nginx's X-Forwarded-For (only nginx and localhost can reach the api)
+    volumes:
+      - store:/data/store
+      - claude-auth:/data/claude
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${API_PORT:-8100}:8000"
+
+  # Runs scheduled ingestion/matching/digests and consumes the Postgres task queue.
+  # Only this image carries the `claude` CLI; the api never calls the LLM.
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.worker
+      args:
+        WITH_JOBSPY: ${WITH_JOBSPY:-false}
+    env_file:
+      - path: ./backend/.env
+        required: false
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      STORE_DIR: /data/store
+      CLAUDE_AUTH_DIR: /data/claude
+    volumes:
+      - store:/data/store
+      - claude-auth:/data/claude
+    depends_on:
+      api:
+        condition: service_started
+      db:
+        condition: service_healthy
+
+  web:
+    build: ./frontend
+    depends_on:
+      - api
+    ports:
+      - "127.0.0.1:${WEB_PORT:-8180}:80"
+
+  # Outbound mail. Internal only (no published port): the app sends to smtp:587.
+  # Relay mode (default): set RELAYHOST + credentials in .env to send via Gmail/Outlook.
+  # Direct mode: leave RELAYHOST empty, set up SPF/DKIM/DMARC and a host with outbound :25.
+  smtp:
+    image: boky/postfix
+    environment:
+      ALLOWED_SENDER_DOMAINS: ${ALLOWED_SENDER_DOMAINS:-localhost}
+      RELAYHOST: ${RELAYHOST:-}
+      RELAYHOST_USERNAME: ${RELAYHOST_USERNAME:-}
+      RELAYHOST_PASSWORD: ${RELAYHOST_PASSWORD:-}
+    volumes:
+      - dkim:/etc/opendkim/keys
+
+  # Dev-only SMTP sink: `docker compose --profile dev up`, UI at http://localhost:8025
+  mailpit:
+    image: axllent/mailpit
+    profiles: ["dev"]
+    ports:
+      - "127.0.0.1:8025:8025"   # web UI
+      - "127.0.0.1:1025:1025"   # SMTP, for processes running on the host
+
+volumes:
+  pgdata:
+  store:
+  claude-auth:
+  dkim:

@@ -1,0 +1,124 @@
+{
+ "jobs": [
+  {
+   "absolute_url": "https://job-boards.greenhouse.io/discord/jobs/8806482002",
+   "data_compliance": [
+    {
+     "type": "gdpr",
+     "requires_consent": false,
+     "requires_processing_consent": false,
+     "requires_retention_consent": false,
+     "retention_period": null,
+     "demographic_data_consent_applies": true
+    }
+   ],
+   "internal_job_id": 6524134002,
+   "location": {
+    "name": "San Francisco Bay Area"
+   },
+   "metadata": [
+    {
+     "id": 4105571002,
+     "name": "Featured on Website",
+     "value": [],
+     "value_type": "multi_select"
+    },
+    {
+     "id": 96196709002,
+     "name": "Careers Site Department",
+     "value": null,
+     "value_type": "single_select"
+    }
+   ],
+   "id": 8806482002,
+   "updated_at": "2026-09-15T12:52:11-04:00",
+   "requisition_id": "R-107406",
+   "title": "Commercial Policy Lead",
+   "company_name": "Discord",
+   "first_published": "2026-09-15T12:52:11-04:00",
+   "language": "en",
+   "application_deadline": null,
+   "content": "&lt;div class=&quot;content-intro&quot;&gt;&lt;p&gt;Discord has a highly engaged community of millions of daily active users who use the platform for many different reasons, but there\u2019s one thing that nearly everyone does: &lt;strong&gt;play video games.&lt;/strong&gt; Discord plays a uniquely important role in the future of gaming, and we are focused on making it easier and more fun for people to hang out before, during, and after playing games.&lt;/p&gt;&lt;/div&gt;&lt;p&gt;We are seeking a strategic Commercial Policy Lead to shape Discord&#39;s approach to monetization and revenue products. As a key member of the Product Policy organization, you will develop and implement advertising and commerce policies that enable Discord&#39;s business while maintaining platform safety and user trust. This role requires a deep understanding of digital commerce, creator economies, and advertising ecosystems, with the ability to balance business objectives with responsible platform practices.&lt;/p&gt;\n&lt;p&gt;Please note: This role involves regular exposure to potentially disturbing content, including violence, hate speech, and other harmful material.&lt;/p&gt;\n&lt;p&gt;&lt;strong&gt;What you&#39;ll be doing&lt;/strong&gt;&lt;/p&gt;\n&lt;ul&gt;\n&lt;li&gt;Lead policy development for Discord\u2019s ads and/or commerce business. Flex into policy work for Discords other products as needed.&lt;/li&gt;\n&lt;li&gt;Create frameworks that enable sustainable business growth while protecting users from deceptive practices, fraud, and economic harm.&lt;/li&gt;\n&lt;li&gt;Partner with Legal and Compliance to ensure policies meet regulatory requirements across global markets.&lt;/li&gt;\n&lt;li&gt;Develop clear guidelines for acceptable advertising and commerce.&lt;/li&gt;\n&lt;li&gt;Leverage AI tools and data analytics to identify emerging commercial risks and policy gaps.&lt;/li&gt;\n&lt;li&gt;Represent Discord externally to key business partners, advertisers and other external industry organizations parties where needed.&lt;/li&gt;\n&lt;li&gt;Translate complex policy requirements into actionable business guidelines that sales and product teams can implement effectively.&lt;/li&gt;\n&lt;li&gt;Provide policy guidance to product teams throughout the development lifecycle.&lt;/li&gt;\n&lt;li&gt;Collaborate with Trust &amp;amp; Safety to ensure commercial policies can be effectively enforced at scale with AI and human review.&lt;/li&gt;\n&lt;/ul&gt;\n&lt;p&gt;&lt;strong&gt;What you should have&lt;/strong&gt;&lt;/p&gt;\n&lt;ul&gt;\n&lt;li&gt;5+ years of experience in advertising policy, platform monetization or related roles within technology companies.&lt;/li&gt;\n&lt;li&gt;Proven experience with at least two areas: digital advertising, third party data providers, brand safety and suitability, subscription business models or developer APIs/SDKs.&lt;/li&gt;\n&lt;li&gt;Experience using AI in day-to-day projects and workflows.&lt;/li&gt;\n&lt;li&gt;Comfort and sound decision-making in ambiguous ",
+   "departments": [
+    {
+     "id": 4054683002,
+     "name": "Policy",
+     "child_ids": [],
+     "parent_id": 4094263002
+    }
+   ],
+   "offices": [
+    {
+     "id": 4000383002,
+     "name": "San Francisco, CA",
+     "location": "San Francisco, California, United States",
+     "child_ids": [],
+     "parent_id": null
+    }
+   ],
+   "ai_disclaimer": null,
+   "include_ai_disclaimer": false,
+   "ai_opt_out_request_url": "http://app2.greenhouse.io/ai_opt_out_request/job_post/8806482002/ai_opt_out"
+  },
+  {
+   "absolute_url": "https://job-boards.greenhouse.io/discord/jobs/8840756002",
+   "data_compliance": [
+    {
+     "type": "gdpr",
+     "requires_consent": false,
+     "requires_processing_consent": false,
+     "requires_retention_consent": false,
+     "retention_period": null,
+     "demographic_data_consent_applies": true
+    }
+   ],
+   "internal_job_id": 6539280002,
+   "location": {
+    "name": "San Francisco Bay Area"
+   },
+   "metadata": [
+    {
+     "id": 4105571002,
+     "name": "Featured on Website",
+     "value": [],
+     "value_type": "multi_select"
+    },
+    {
+     "id": 96196709002,
+     "name": "Careers Site Department",
+     "value": null,
+     "value_type": "single_select"
+    }
+   ],
+   "id": 8840756002,
+   "updated_at": "2026-09-24T17:26:49-04:00",
+   "requisition_id": "R-107434",
+   "title": "Data Scientist - Client Platform",
+   "company_name": "Discord",
+   "first_published": "2026-09-24T17:26:49-04:00",
+   "language": "en",
+   "application_deadline": null,
+   "content": "&lt;div class=&quot;content-intro&quot;&gt;&lt;p&gt;Discord has a highly engaged community of millions of daily active users who use the platform for many different reasons, but there\u2019s one thing that nearly everyone does: &lt;strong&gt;play video games.&lt;/strong&gt; Discord plays a uniquely important role in the future of gaming, and we are focused on making it easier and more fun for people to hang out before, during, and after playing games.&lt;/p&gt;&lt;/div&gt;&lt;p&gt;Discord is where millions of people hang out every day - 90% of them play games, spending over 5 billion hours across thousands of titles each month. We are focused on making it easier and more fun for people to talk and hang out before, during, and after playing games.&lt;/p&gt;\n&lt;p&gt;We\u2019re looking for a Data Scientist to join our Client Platform Data Science team, where you\u2019ll help make sure that Discord just works. You\u2019ll partner with the teams that design, build, and support Discord - improving app performance, enhancing the user experience, and driving growth. Your work will span strategic analyses, experimentation, and dashboarding. Specifically, we\u2019re looking for someone who can help us take Discord\u2019s mobile and desktop reliability to the next level through better metrics, monitoring, and automation.&lt;/p&gt;\n&lt;p&gt;If you\u2019re passionate about data and want to make a real impact, we\u2019d love to hear from you!&lt;/p&gt;\n&lt;p&gt;&lt;strong&gt;What you&#39;ll be doing&lt;/strong&gt;&lt;/p&gt;\n&lt;ul&gt;\n&lt;li&gt;Partner with teams throughout Discord through the full analytics lifecycle - from exploratory analyses to dashboards, reports, and A/B testing&lt;/li&gt;\n&lt;li&gt;Define KPIs and diagnostic metrics that improve the user experience, and build dashboards to make them timely and actionable&lt;/li&gt;\n&lt;li&gt;Build custom datasets to monitor novel product features and processes&lt;/li&gt;\n&lt;li&gt;Share insights with technical and non-technical audiences, and iterate based on feedback&lt;/li&gt;\n&lt;li&gt;Champion A/B testing best practices - helping teams design, analyze, and interpret experiments correctly&lt;/li&gt;\n&lt;li&gt;Collaborate with data and engineering teams to design scalable and future-proof instrumentation and self-serve tooling&lt;/li&gt;\n&lt;/ul&gt;\n&lt;p&gt;&lt;strong&gt;What you should have&lt;/strong&gt;&lt;/p&gt;\n&lt;ul&gt;\n&lt;li&gt;2+ years of hands-on analytics experience turning ambiguous business problems into clear, actionable insights&lt;/li&gt;\n&lt;li&gt;Experience designing, analyzing, and interpreting A/B tests at scale&lt;/li&gt;\n&lt;li&gt;Strong SQL skills and experience building clean, performant dashboards (Tableau, Looker, or similar)&lt;/li&gt;\n&lt;li&gt;Clear communication skills, with the ability to make complex findings easy to understand&lt;/li&gt;\n&lt;li&gt;Curiosity, a collaborative attitude, and a drive to solve hard problems&lt;/li&gt;\n&lt;/ul&gt;\n&lt;p&gt;&lt;strong&gt;Bonus Points&lt;/strong&gt;&lt;/p&gt;\n&lt;",
+   "departments": [
+    {
+     "id": 4022531002,
+     "name": "Data Science & Engineering",
+     "child_ids": [],
+     "parent_id": 4094266002
+    }
+   ],
+   "offices": [
+    {
+     "id": 4000383002,
+     "name": "San Francisco, CA",
+     "location": "San Francisco, California, United States",
+     "child_ids": [],
+     "parent_id": null
+    }
+   ],
+   "ai_disclaimer": null,
+   "include_ai_disclaimer": false,
+   "ai_opt_out_request_url": "http://app2.greenhouse.io/ai_opt_out_request/job_post/8840756002/ai_opt_out"
+  }
+ ]
+}

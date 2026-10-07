@@ -1,0 +1,50 @@
+# ── Secrets (never commit) ────────────────────────────────────────────────
+# Real env files are ignored; the *.example templates stay tracked.
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
+*.pem
+*.key
+*.p12
+*.token
+secrets/
+# DKIM key material (postfix direct mode)
+dkim/
+*.private
+
+# ── Python ────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+.coverage
+htmlcov/
+
+# ── Node / frontend ───────────────────────────────────────────────────────
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo
+npm-debug.log*
+
+# ── App data ──────────────────────────────────────────────────────────────
+uploads/
+store/
+claude-auth/
+pgdata/
+*.log
+
+# ── Docker ────────────────────────────────────────────────────────────────
+docker-compose.override.yml
+
+# ── OS / editor ───────────────────────────────────────────────────────────
+.DS_Store
+.idea/
+.vscode/
+*.swp

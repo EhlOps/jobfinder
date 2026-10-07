@@ -1,0 +1,25 @@
+{{ greeting }}
+{% if preview %}
+(This is a preview you asked for. Nothing was marked as sent.)
+{% endif %}
+{% if matches %}
+{{ matches|length }} new job match{{ "es" if matches|length != 1 else "" }} for you:
+{% for m in matches %}
+{{ loop.index }}. {{ m.title }} - {{ m.company }}  [{{ m.score }} - {{ m.verdict }}]
+   {{ m.details }}
+{% for r in m.reasons %}   * {{ r }}
+{% endfor %}   View: {{ m.view_url }}
+{% if m.apply_url %}   Apply: {{ m.apply_url }}
+{% endif %}{% endfor %}
+{% if more_count %}...and {{ more_count }} more in the app: {{ matches_url }}
+{% endif %}{% endif %}
+{% if questions %}
+{{ questions|length }} quick question{{ "s" if questions|length != 1 else "" }} that would sharpen your matches (answer in a minute, no login needed):
+{% for q in questions %}
+ - {{ q.question }}
+{% endfor %}
+Answer here: {{ questions_url }}
+{% endif %}
+--
+Manage this email (time, topics): {{ settings_url }}
+Stop the daily email: {{ unsubscribe_url }}

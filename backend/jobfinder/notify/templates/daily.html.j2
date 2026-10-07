@@ -1,0 +1,46 @@
+<!doctype html>
+<html>
+<body style="margin:0;padding:0;background:#f6f7f9;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#1b1f24;">
+<div style="max-width:620px;margin:0 auto;padding:20px 14px;">
+  <p style="font-size:16px;margin:0 0 6px;">{{ greeting }}</p>
+  {% if preview %}<p style="font-size:13px;color:#667085;margin:0 0 12px;">This is a preview you asked for. Nothing was marked as sent.</p>{% endif %}
+
+  {% if matches %}
+  <h2 style="font-size:18px;margin:14px 0 10px;">{{ matches|length }} new job match{{ "es" if matches|length != 1 else "" }} for you</h2>
+  {% for m in matches %}
+  <div style="background:#fff;border:1px solid #dde1e7;border-radius:10px;padding:14px;margin-bottom:10px;">
+    <div style="display:flex;">
+      <div style="min-width:54px;text-align:center;border:1px solid #2f5bea;border-radius:8px;padding:6px 4px;margin-right:12px;height:fit-content;">
+        <div style="font-size:20px;font-weight:700;line-height:1.1;">{{ m.score }}</div>
+        <div style="font-size:10px;color:#667085;">{{ m.verdict }}</div>
+      </div>
+      <div>
+        <div style="font-size:16px;font-weight:600;"><a href="{{ m.view_url }}" style="color:#1b1f24;text-decoration:none;">{{ m.title }}</a></div>
+        <div style="color:#667085;font-size:14px;">{{ m.company }}</div>
+        <div style="color:#667085;font-size:13px;margin-top:2px;">{{ m.details }}</div>
+      </div>
+    </div>
+    <ul style="margin:10px 0 8px;padding-left:18px;font-size:14px;">{% for r in m.reasons %}<li style="margin:2px 0;">{{ r }}</li>{% endfor %}</ul>
+    <a href="{{ m.view_url }}" style="color:#2f5bea;font-size:14px;margin-right:14px;">View &amp; draft a cover letter</a>
+    {% if m.apply_url %}<a href="{{ m.apply_url }}" style="color:#2f5bea;font-size:14px;">Apply &#8599;</a>{% endif %}
+  </div>
+  {% endfor %}
+  {% if more_count %}<p style="font-size:14px;"><a href="{{ matches_url }}" style="color:#2f5bea;">See {{ more_count }} more in the app</a></p>{% endif %}
+  {% endif %}
+
+  {% if questions %}
+  <div style="background:#fff;border:1px solid #d99a00;border-radius:10px;padding:14px;margin:14px 0;">
+    <h2 style="font-size:16px;margin:0 0 6px;">{{ questions|length }} quick question{{ "s" if questions|length != 1 else "" }} to sharpen your matches</h2>
+    <p style="font-size:14px;color:#667085;margin:0 0 8px;">Some jobs look promising but we're not sure about a few things. A one-line answer is plenty; no login needed.</p>
+    <ul style="margin:0 0 10px;padding-left:18px;font-size:14px;">{% for q in questions %}<li style="margin:3px 0;">{{ q.question }}</li>{% endfor %}</ul>
+    <a href="{{ questions_url }}" style="display:inline-block;background:#2f5bea;color:#fff;text-decoration:none;padding:8px 14px;border-radius:6px;font-size:14px;font-weight:600;">Answer the questions</a>
+  </div>
+  {% endif %}
+
+  <p style="font-size:12px;color:#667085;margin-top:18px;">
+    <a href="{{ settings_url }}" style="color:#667085;">Manage this email</a> &middot;
+    <a href="{{ unsubscribe_url }}" style="color:#667085;">Stop the daily email</a>
+  </p>
+</div>
+</body>
+</html>
