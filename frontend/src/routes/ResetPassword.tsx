@@ -5,15 +5,15 @@ import { ErrorText } from "../components/fields";
 
 export default function ResetPassword() {
   const { user, confirmReset } = useAuth();
-  const [token, setToken] = useState("");
+  // Read once, in an initializer: it runs before any effect, so React StrictMode's double effect in dev can't lose it.
+  const [token] = useState(() => new URLSearchParams(window.location.hash.slice(1)).get("token") ?? "");
   const [password, setPassword] = useState("");
   const [again, setAgain] = useState("");
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
 
-  // The token travels in the URL fragment so it never reaches server logs; read it once, then clear it from the address bar.
+  // The token travels in the URL fragment so it never reaches server logs; clear it from the address bar once read.
   useEffect(() => {
-    setToken(new URLSearchParams(window.location.hash.slice(1)).get("token") ?? "");
     if (window.location.hash) history.replaceState(null, "", window.location.pathname);
   }, []);
 

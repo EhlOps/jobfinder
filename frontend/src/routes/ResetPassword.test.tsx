@@ -1,5 +1,6 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { StrictMode } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import ResetPassword from "./ResetPassword";
 import { NOT_SIGNED_IN, USER, mockApi, renderApp } from "../test/helpers";
@@ -49,5 +50,13 @@ describe("set / reset password page", () => {
     renderApp(<ResetPassword />, { route: "/reset-password" });
     expect(await screen.findByText(/missing or has already been used/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /request a new link/i })).toHaveAttribute("href", "/login");
+  });
+
+  it("still has the token when React StrictMode runs effects twice (development)", async () => {
+    window.history.replaceState(null, "", "/reset-password#token=abc.def");
+    mockApi(NOT_SIGNED_IN);
+    renderApp(<StrictMode><ResetPassword /></StrictMode>, { route: "/reset-password" });
+    expect(await screen.findByRole("heading", { name: "Choose a password" })).toBeInTheDocument();
+    expect(window.location.hash).toBe("");
   });
 });

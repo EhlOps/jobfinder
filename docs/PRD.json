@@ -1260,6 +1260,50 @@
         "status": "mitigated",
         "backlog": "H6",
         "resolution_note": "Added tests for run_task failures, heartbeat, reaper, concurrent dedupe, fetch_page_text (IP pinning, redirects, size, deadline), real/corrupt/page-capped PDFs, and frontend tests (27). Not covered: the worker's main() polling loop as a whole (its parts are tested)."
+      },
+      {
+        "id": "CR-18",
+        "severity": "medium",
+        "category": "correctness",
+        "file": "backend/jobfinder/notify/daily.py",
+        "lines": "26",
+        "summary": "The plain-text daily email was HTML-escaped (select_autoescape matched .j2), so & became &amp; and apply URLs with several query parameters were corrupted.",
+        "suggested_fix": "Escape only html.j2 and not txt.j2; text and HTML parts tested separately.",
+        "verified": "found by /code-review of baseline commit 59a1be8; CR-18 reproduced by rendering the template",
+        "status": "resolved"
+      },
+      {
+        "id": "CR-19",
+        "severity": "medium",
+        "category": "reliability",
+        "file": "backend/jobfinder/profile/resume_parse.py",
+        "lines": "46-60",
+        "summary": "The two-parse cap was released on timeout while the thread kept running, so repeated slow uploads could pile up threads and occupy the default executor used for DNS lookups.",
+        "suggested_fix": "Dedicated 2-thread pool and a slot released only when the parse really finishes; a full parser answers 503.",
+        "verified": "found by /code-review of baseline commit 59a1be8; CR-18 reproduced by rendering the template",
+        "status": "resolved"
+      },
+      {
+        "id": "CR-20",
+        "severity": "low",
+        "category": "correctness",
+        "file": "backend/jobfinder/notify/daily.py",
+        "lines": "47",
+        "summary": "The 6-hour catch-up window did not cross local midnight, so an evening digest missed at its hour was never sent (digest_hour 19 or later).",
+        "suggested_fix": "is_due now compares against the most recent scheduled instant, which may be yesterday's.",
+        "verified": "found by /code-review of baseline commit 59a1be8; CR-18 reproduced by rendering the template",
+        "status": "resolved"
+      },
+      {
+        "id": "CR-21",
+        "severity": "low",
+        "category": "correctness",
+        "file": "frontend/src/routes/ResetPassword.tsx",
+        "lines": "15-18",
+        "summary": "In development React StrictMode ran the effect twice; the first run cleared the URL fragment so the second found no token.",
+        "suggested_fix": "Token read once in a useState initializer; the effect only clears the address bar.",
+        "verified": "found by /code-review of baseline commit 59a1be8; CR-18 reproduced by rendering the template",
+        "status": "resolved"
       }
     ]
   },
@@ -1423,7 +1467,7 @@
     }
   ],
   "how_to_verify": {
-    "backend_tests": "docker compose up -d db && cd backend && uv run pytest (tests reset and use a jobfinder_test database on localhost:5433; 341 tests)",
+    "backend_tests": "docker compose up -d db && cd backend && uv run pytest (tests reset and use a jobfinder_test database on localhost:5433; 345 tests)",
     "frontend_build": "cd frontend && npm run build",
     "stack": "docker compose up -d --build, then GET http://localhost:8180/healthz",
     "ai": "Sign in as the admin, open 'AI setup', paste the token from `claude setup-token`, click Save & test (or run docker compose exec worker python -m jobfinder.cli ai-check)",
@@ -1435,7 +1479,7 @@
     "scheduler": "docker compose logs worker | grep scheduled (ingest 2 minutes after start, then every INGEST_INTERVAL_HOURS; daily_emails at :05 each hour)",
     "code_review": "The project is under git (first commit 2026-10-07). Run /code-review for a review of a real diff; re-verify each code_review finding when fixing it.",
     "access": "PLANNED (REQ-18 / DESIGN-01, not built): add a person with INSERT INTO users (email) VALUES ('name@example.com') using a lowercase address; they open /login, choose 'email me a link', open it, set a password and land in onboarding; confirm an unknown email gets the same response and no email, and that /api/auth/signup is gone",
-    "frontend_tests": "cd frontend && npm test (27 tests, Vitest + Testing Library, fetch mocked)"
+    "frontend_tests": "cd frontend && npm test (28 tests, Vitest + Testing Library, fetch mocked)"
   },
   "work_log": [
     {
@@ -1587,6 +1631,16 @@
         "cd frontend && npm test: 27 passed",
         "npm run build ok",
         "Playwright (scratchpad, not in the repo): login, link mode, reset page, bad-token error render; securitypolicyviolation fired for script-src-elem and img-src"
+      ]
+    },
+    {
+      "date": "2026-10-07",
+      "task": "Fix /code-review findings CR-18 to CR-21",
+      "summary": "Plain-text email no longer HTML-escaped; upload parsing capped by a dedicated pool whose slots are held until the thread finishes (503 when full); the digest catch-up window crosses midnight; the reset token survives React StrictMode in development.",
+      "verified_by": [
+        "uv run ruff check . clean",
+        "uv run pytest: 345 passed",
+        "frontend npm test: 28 passed, npm run build ok"
       ]
     }
   ]

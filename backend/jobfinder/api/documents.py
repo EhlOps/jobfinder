@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 from jobfinder.auth.security import current_user
 from jobfinder.models import User
-from jobfinder.profile.resume_parse import ALLOWED_EXTENSIONS, extract_text_async
+from jobfinder.profile.resume_parse import ALLOWED_EXTENSIONS, ParserBusy, extract_text_async
 from jobfinder.storage.documents import DocumentMeta, DocumentStore, NotFound, StoreError, get_store
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
@@ -83,6 +83,8 @@ async def upload_document(
         raise HTTPException(413, "File too large (10MB max)")
     try:
         text = await extract_text_async(data, ext)
+    except ParserBusy:
+        raise HTTPException(503, "Busy reading other files, try again in a minute") from None
     except Exception:
         raise HTTPException(422, "Could not read that file") from None
 

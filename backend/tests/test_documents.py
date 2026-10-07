@@ -105,6 +105,19 @@ async def test_corrupt_pdf_is_a_422(authed):
     assert r.status_code == 422
 
 
+async def _parser_idle():
+    """Parses that timed out keep running to the end; wait until their slots are back so tests don't leak into each other."""
+    import asyncio
+
+    from jobfinder.profile import resume_parse
+
+    for _ in range(100):
+        if resume_parse._slots._value == resume_parse.MAX_PARSES:
+            return
+        await asyncio.sleep(0.05)
+    raise AssertionError("parser slots never came back")
+
+
 async def test_slow_parse_times_out_without_blocking_the_api(authed, monkeypatch):
     import asyncio
     import time
@@ -119,3 +132,26 @@ async def test_slow_parse_times_out_without_blocking_the_api(authed, monkeypatch
     assert (await authed.get("/api/auth/me")).status_code == 200  # still answering while the parse runs
     r = await upload
     assert r.status_code == 422 and asyncio.get_running_loop().time() - started < 0.9
+    await _parser_idle()
+
+
+async def test_stuck_parses_keep_their_slots_so_uploads_get_503_not_more_threads(authed, monkeypatch):
+    import threading
+
+    from jobfinder.profile import resume_parse
+
+    await _parser_idle()
+    release = threading.Event()
+    monkeypatch.setattr(resume_parse, "PARSE_TIMEOUT_S", 0.2)
+    monkeypatch.setattr(resume_parse, "extract_text", lambda data, ext: release.wait(5) and "late")
+    try:
+        for i in range(resume_parse.MAX_PARSES):  # each times out for the client but its thread is still running
+            assert (await authed.post("/api/documents", files={"file": (f"{i}.txt", b"hi", "text/plain")})).status_code == 422
+        r = await authed.post("/api/documents", files={"file": ("third.txt", b"hi", "text/plain")})
+        assert r.status_code == 503 and "try again" in r.json()["detail"]
+        assert (await authed.get("/api/auth/me")).status_code == 200
+    finally:
+        release.set()
+    await _parser_idle()  # slots come back once the threads really finish
+    monkeypatch.undo()
+    assert (await authed.post("/api/documents", files={"file": ("ok.txt", b"hello", "text/plain")})).status_code == 201

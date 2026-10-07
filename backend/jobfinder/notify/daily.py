@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -25,7 +25,8 @@ VERDICT_LABEL = {"strong": "Strong fit", "good": "Good fit", "stretch": "Stretch
 
 _env = Environment(
     loader=FileSystemLoader(Path(__file__).parent / "templates"),
-    autoescape=select_autoescape(["html", "j2"], default_for_string=True),
+    # Escape the HTML part only: "j2" alone would also match daily.txt.j2 and corrupt "&" in the plain text.
+    autoescape=select_autoescape(enabled_extensions=("html.j2",), disabled_extensions=("txt.j2",), default_for_string=True),
     trim_blocks=True, lstrip_blocks=True,
 )
 
@@ -50,9 +51,13 @@ def is_due(user: User, now: datetime) -> bool:
     if user.digest_hour is None:
         return False
     local = now.astimezone(user_zone(user))
-    if not 0 <= local.hour - user.digest_hour < SEND_WINDOW_HOURS:
+    # The most recent local digest_hour o'clock; before today's, that was yesterday's (so the window can cross midnight).
+    scheduled = local.replace(hour=user.digest_hour, minute=0, second=0, microsecond=0)
+    if local < scheduled:
+        scheduled = (scheduled.replace(tzinfo=None) - timedelta(days=1)).replace(tzinfo=local.tzinfo)
+    if not timedelta(0) <= local - scheduled < timedelta(hours=SEND_WINDOW_HOURS):
         return False
-    return not (user.last_digest_at and user.last_digest_at.astimezone(user_zone(user)).date() >= local.date())
+    return not (user.last_digest_at and user.last_digest_at >= scheduled)
 
 
 async def build_content(db: AsyncSession, user: User, *, preview: bool = False) -> Content:

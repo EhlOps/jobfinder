@@ -305,3 +305,31 @@ async def test_email_has_no_apply_link_for_unsafe_job_urls(maker, outbox):
     (msg,) = outbox
     assert "javascript:" not in msg["text"] and "javascript:" not in msg["html"]
     assert msg["text"].count("Apply:") == 1 and "https://jobs.example/good" in msg["html"]
+
+
+async def test_plain_text_email_is_not_html_escaped_but_html_is(maker, outbox):
+    async with maker() as db:
+        u = await make_user(db)
+        await make_match(db, u.id, title="R&D <b>Engineer</b>", company="AT&T", url="https://boards.example/j?gh_jid=1&gh_src=x")
+        await daily.send_daily(db, u, now=at(9))
+    (msg,) = outbox
+    assert "AT&T" in msg["text"] and "&amp;" not in msg["text"] and "?gh_jid=1&gh_src=x" in msg["text"]
+    assert "AT&amp;T" in msg["html"] and "<b>Engineer</b>" not in msg["html"] and "&lt;b&gt;" in msg["html"]
+
+
+def test_catch_up_window_crosses_local_midnight():
+    u = user_obj(hour=22)
+    assert not daily.is_due(u, at(21, minute=59))
+    assert daily.is_due(u, at(22)) and daily.is_due(u, at(23, minute=30))
+    assert daily.is_due(u, at(0, day=4, minute=30))                       # missed 22:05 and 23:05, still sent at 00:30
+    assert daily.is_due(u, at(3, day=4, minute=59))
+    assert not daily.is_due(u, at(4, day=4, minute=0))                    # window (6h) is over
+    sent = user_obj(hour=22, last=at(22, minute=10))
+    assert not daily.is_due(sent, at(0, day=4, minute=30))                # already sent for that evening
+    assert daily.is_due(sent, at(22, day=4))                              # next evening is fine
+
+
+def test_catch_up_window_across_midnight_in_another_timezone():
+    tokyo = user_obj("Asia/Tokyo", 23)                                    # 23:00 JST == 14:00 UTC
+    assert daily.is_due(tokyo, at(15, day=3, minute=30)) and daily.is_due(tokyo, at(19, day=3))   # 00:30 and 04:00 JST next day
+    assert not daily.is_due(tokyo, at(13, day=3, minute=59)) and not daily.is_due(tokyo, at(20, day=3))
