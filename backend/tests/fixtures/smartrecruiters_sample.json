@@ -1,0 +1,55 @@
+{
+  "list": {
+    "offset": 0,
+    "limit": 100,
+    "totalFound": 2,
+    "content": [
+      {
+        "id": "743999000111222",
+        "name": "Senior Data Engineer",
+        "uuid": "11111111-2222-3333-4444-555555555555",
+        "refNumber": "REF1234",
+        "releasedDate": "2026-09-10T14:03:22.000Z",
+        "location": {"city": "Dublin", "region": "Leinster", "country": "ie", "remote": true, "hybrid": false, "fullLocation": "Dublin, Leinster, Ireland"},
+        "typeOfEmployment": {"id": "permanent", "label": "Full-time"},
+        "experienceLevel": {"id": "mid_senior_level", "label": "Mid-Senior Level"}
+      },
+      {
+        "id": "743999000333444",
+        "name": "Account Executive",
+        "releasedDate": "2026-09-18T09:00:00.000Z",
+        "location": {"city": "Chicago", "region": "IL", "country": "us", "remote": false, "hybrid": true, "fullLocation": "Chicago, IL, United States"},
+        "typeOfEmployment": {"id": "permanent", "label": "Full-time"}
+      }
+    ]
+  },
+  "details": {
+    "743999000111222": {
+      "id": "743999000111222",
+      "name": "Senior Data Engineer",
+      "releasedDate": "2026-09-10T14:03:22.000Z",
+      "location": {"city": "Dublin", "region": "Leinster", "country": "ie", "remote": true, "hybrid": false, "fullLocation": "Dublin, Leinster, Ireland"},
+      "typeOfEmployment": {"id": "permanent", "label": "Full-time"},
+      "postingUrl": "https://jobs.smartrecruiters.com/ExampleCo/743999000111222-senior-data-engineer",
+      "applyUrl": "https://jobs.smartrecruiters.com/ExampleCo/743999000111222-senior-data-engineer?oga=true",
+      "jobAd": {
+        "sections": {
+          "companyDescription": {"title": "Company Description", "text": "<p>Example Co makes widgets.</p>"},
+          "jobDescription": {"title": "Job Description", "text": "<p>Build pipelines with Spark.</p><ul><li>Airflow</li><li>dbt</li></ul>"},
+          "qualifications": {"title": "Qualifications", "text": "<p>5+ years of experience. Pay: $140,000 - $170,000.</p>"},
+          "additionalInformation": {"title": "Additional Information", "text": "<p>Equal opportunity employer.</p>"}
+        }
+      }
+    },
+    "743999000333444": {
+      "id": "743999000333444",
+      "name": "Account Executive",
+      "releasedDate": "2026-09-18T09:00:00.000Z",
+      "location": {"city": "Chicago", "region": "IL", "country": "us", "remote": false, "hybrid": true, "fullLocation": "Chicago, IL, United States"},
+      "typeOfEmployment": {"id": "permanent", "label": "Full-time"},
+      "postingUrl": "https://jobs.smartrecruiters.com/ExampleCo/743999000333444-account-executive",
+      "applyUrl": "https://jobs.smartrecruiters.com/ExampleCo/743999000333444-account-executive?oga=true",
+      "jobAd": {"sections": {"jobDescription": {"title": "Job Description", "text": "<p>Sell to enterprise customers.</p>"}}}
+    }
+  }
+}

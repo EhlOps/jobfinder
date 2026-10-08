@@ -1,0 +1,49 @@
+{
+  "name": "Example Co",
+  "description": "We build things.",
+  "jobs": [
+    {
+      "title": "Senior Backend Engineer",
+      "shortcode": "A1B2C3D4E5",
+      "code": "",
+      "employment_type": "Full-time",
+      "telecommuting": true,
+      "department": "Engineering",
+      "url": "https://apply.workable.com/j/A1B2C3D4E5",
+      "shortlink": "https://apply.workable.com/j/A1B2C3D4E5",
+      "application_url": "https://apply.workable.com/j/A1B2C3D4E5/apply",
+      "published_on": "2026-09-14",
+      "created_at": "2026-09-12",
+      "country": "United States",
+      "city": "Austin",
+      "state": "Texas",
+      "education": "Bachelor's Degree",
+      "experience": "Mid-Senior level",
+      "function": "Engineering",
+      "industry": "Computer Software",
+      "locations": [
+        {"country": "United States", "countryCode": "US", "city": "Austin", "region": "Texas", "hidden": false},
+        {"country": "Canada", "countryCode": "CA", "city": "Toronto", "region": "Ontario", "hidden": true}
+      ],
+      "description": "<p><strong>About the role</strong></p><ul><li>Build APIs in Python</li><li>Own services end to end</li></ul><p>Salary range: $150,000 - $190,000 per year.</p>"
+    },
+    {
+      "title": "Product Designer",
+      "shortcode": "F6G7H8I9J0",
+      "employment_type": "Contract",
+      "telecommuting": false,
+      "url": "https://apply.workable.com/j/F6G7H8I9J0",
+      "published_on": "2026-09-20",
+      "country": "United Kingdom",
+      "city": "London",
+      "state": "",
+      "locations": [{"country": "United Kingdom", "countryCode": "GB", "city": "London", "region": "England", "hidden": false}],
+      "description": "<p>Design delightful hybrid experiences.</p>"
+    },
+    {
+      "title": "  ",
+      "shortcode": "ZZZZZZZZZZ",
+      "description": "<p>Untitled</p>"
+    }
+  ]
+}
