@@ -75,15 +75,21 @@ async def fetch_bamboohr(client: httpx.AsyncClient, slug: str, company_name: str
     listing = resp.json()
     sem = asyncio.Semaphore(DETAIL_CONCURRENCY)
 
+    failed = 0
+
     async def detail(jid: str) -> tuple[str, dict]:
+        nonlocal failed
         async with sem:
             try:
                 r = await client.get(f"{base}/{jid}/detail", headers={"Accept": "application/json"})
                 r.raise_for_status()
                 return jid, r.json()
             except (httpx.HTTPError, ValueError):
-                return jid, {}  # keep the job, just without a description
+                failed += 1
+                return jid, {}  # keep the job (the upsert preserves any stored description)
 
     ids = [str(j["id"]) for j in listing.get("result") or [] if j.get("id")]
     details = dict(await asyncio.gather(*(detail(i) for i in ids)))
+    if ids and failed == len(ids):
+        raise RuntimeError(f"all {failed} opening detail requests failed")
     return parse_bamboohr(listing, details, company_name, slug)

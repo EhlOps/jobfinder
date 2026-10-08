@@ -82,14 +82,22 @@ async def fetch_smartrecruiters(client: httpx.AsyncClient, slug: str, company_na
 
     sem = asyncio.Semaphore(DETAIL_CONCURRENCY)
 
+    failed = 0
+
     async def detail(item: dict) -> dict:
+        nonlocal failed
         async with sem:
             try:
                 r = await client.get(f"{API.format(slug=slug)}/{item.get('id')}")
                 r.raise_for_status()
                 return r.json()
             except (httpx.HTTPError, ValueError):
-                # still ingest the posting, just without a description
+                # keep the posting (so it isn't deactivated) with an empty description; the upsert
+                # preserves any stored description
+                failed += 1
                 return {**item, "postingUrl": f"https://jobs.smartrecruiters.com/{slug}/{item.get('id')}"}
 
-    return parse_smartrecruiters(list(await asyncio.gather(*(detail(i) for i in listed))), company_name)
+    details = list(await asyncio.gather(*(detail(i) for i in listed)))
+    if listed and failed == len(listed):
+        raise RuntimeError(f"all {failed} posting detail requests failed")
+    return parse_smartrecruiters(details, company_name)

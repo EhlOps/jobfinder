@@ -81,6 +81,19 @@ async def test_upsert_new_then_update_then_dedupe_within_batch(maker):
         assert titles["2"] == "Renamed" and len(titles) == 3
 
 
+async def test_upsert_keeps_stored_description_when_incoming_is_empty(maker):
+    async with maker() as db:
+        c = await make_company(db)
+        full = posting(1, salary_min=100, salary_max=200, salary_currency="USD", workplace_type="remote")
+        await service.upsert_postings(db, [full, posting(2)], c.id)
+        empty, fresh = posting(1), posting(2)
+        empty.description_text, fresh.description_text = "", "new text"
+        await service.upsert_postings(db, [empty, fresh], c.id)
+        rows = {j.external_id: j for j in await db.scalars(sa.select(Job))}
+        assert rows["1"].description_text == "desc" and rows["2"].description_text == "new text"
+        assert (rows["1"].salary_min, rows["1"].salary_max, rows["1"].workplace_type) == (100, 200, "remote")
+
+
 async def test_upsert_preserves_first_seen_and_reactivates(maker):
     async with maker() as db:
         c = await make_company(db)
