@@ -9,6 +9,7 @@ import Home from "./routes/Home";
 import Onboarding from "./routes/Onboarding";
 import AiSettings from "./routes/AiSettings";
 import AdminSchedule from "./routes/AdminSchedule";
+import AdminSources from "./routes/AdminSources";
 import MatchDetail from "./routes/MatchDetail";
 import Interview from "./routes/Interview";
 import Questions from "./routes/Questions";
@@ -38,6 +39,7 @@ function Shell() {
           <NavLink to="/settings">Settings</NavLink>
           {user.is_admin && <NavLink to="/settings/ai">AI setup</NavLink>}
           {user.is_admin && <NavLink to="/settings/schedule">Schedule</NavLink>}
+          {user.is_admin && <NavLink to="/settings/sources">Sources</NavLink>}
         </nav>
         <span className="muted">{user.email}</span>
         <button className="link" onClick={() => logout()}>Log out</button>
@@ -63,6 +65,7 @@ export default function App() {
         <Route path="/settings" element={<Settings />} />
         <Route path="/settings/ai" element={<AiSettings />} />
         <Route path="/settings/schedule" element={<AdminSchedule />} />
+        <Route path="/settings/sources" element={<AdminSources />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

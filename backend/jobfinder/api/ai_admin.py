@@ -4,7 +4,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jobfinder.ai import credentials
@@ -12,7 +12,7 @@ from jobfinder.auth.security import current_user, require_admin
 from jobfinder.config import get_settings
 from jobfinder.db import get_db
 from jobfinder.matching.service import UNLIMITED, remaining_budget
-from jobfinder.models import AICall, PlannerState, Profile, Task, User
+from jobfinder.models import AICall, Company, Job, PlannerState, Profile, Task, User
 from jobfinder.scheduling import planner, queue
 
 router = APIRouter(tags=["ai"])
@@ -137,3 +137,54 @@ async def schedule(_: Admin, db: DB):
         backoff_until=_iso(await planner.backoff_until(db, now)), in_flight=len(await planner.in_flight_users(db)),
         max_per_tick=get_settings().planner_max_per_tick, next_tick=_iso(next_tick), users=users,
     )
+
+
+class SourceRow(BaseModel):
+    id: int
+    name: str
+    ats: str
+    slug: str
+    origin: str
+    enabled: bool
+    consecutive_failures: int
+    last_success_at: str | None
+    last_fetched_at: str | None
+    last_error: str | None
+    disabled_reason: str | None
+    validated_at: str | None
+    job_count: int
+
+
+def _source_row(c: Company, job_count: int) -> SourceRow:
+    return SourceRow(
+        id=c.id, name=c.name, ats=c.ats, slug=c.slug, origin=c.origin, enabled=c.enabled,
+        consecutive_failures=c.consecutive_failures, last_success_at=_iso(c.last_success_at),
+        last_fetched_at=_iso(c.last_fetched_at), last_error=c.last_error, disabled_reason=c.disabled_reason,
+        validated_at=_iso(c.validated_at), job_count=job_count,
+    )
+
+
+@router.get("/api/admin/sources", response_model=list[SourceRow])
+async def sources(_: Admin, db: DB):
+    """Per-board ingest health, failing boards first."""
+    counts = dict(
+        (await db.execute(select(Job.company_id, func.count()).where(Job.is_active.is_(True)).group_by(Job.company_id))).all()
+    )
+    rows = (await db.scalars(select(Company).order_by(Company.enabled, Company.consecutive_failures.desc(), Company.name, Company.id))).all()
+    return [_source_row(c, counts.get(c.id, 0)) for c in rows]
+
+
+@router.post("/api/admin/sources/{company_id}/enable", response_model=SourceRow)
+async def enable_source(company_id: int, _: Admin, db: DB):
+    """Re-enable a disabled board; counters reset so one more failure does not disable it again."""
+    c = await db.get(Company, company_id)
+    if c is None:
+        raise HTTPException(404, "No such source")
+    if not c.enabled:  # a board that is merely failing keeps its count and error
+        c.enabled = True
+        c.consecutive_failures = 0
+        c.disabled_reason = None
+        c.last_error = None
+        await db.commit()
+    n = await db.scalar(select(func.count()).select_from(Job).where(Job.company_id == c.id, Job.is_active.is_(True)))
+    return _source_row(c, n or 0)

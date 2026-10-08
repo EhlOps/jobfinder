@@ -230,3 +230,9 @@ export interface TailoredResume {
 export interface ResumeCoverage { percent: number; covered: string[]; missing: string[]; loose: string[]; ats: string; notes: string[] }
 export interface Resume { content: TailoredResume; edited: boolean; coverage: ResumeCoverage; generated_at: string; updated_at: string }
 export interface ResumeState { resume: Resume | null; pending_task_id: number | null }
+
+export interface SourceRow {
+  id: number; name: string; ats: string; slug: string; origin: string; enabled: boolean;
+  consecutive_failures: number; last_success_at: string | null; last_fetched_at: string | null;
+  last_error: string | null; disabled_reason: string | null; validated_at: string | null; job_count: number;
+}
