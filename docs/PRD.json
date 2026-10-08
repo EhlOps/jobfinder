@@ -14,7 +14,7 @@
     },
     "design_doc": "docs/PLAN.md"
   },
-  "last_updated": "2026-10-07",
+  "last_updated": "2026-10-08",
   "requirements": [
     {
       "id": "REQ-01",
@@ -412,6 +412,95 @@
         "'Strengthen' page shows a readiness score, a recruiter-view dossier and one question at a time; answers re-run the audit and re-score",
         "Requirements on a job can be answered inline on the match page"
       ]
+    },
+    {
+      "id": "REQ-21",
+      "area": "scheduling",
+      "status": "planned",
+      "source": "user",
+      "requirement": "The system works for users while they are offline: it finds jobs, scores matches and generates questions without anyone prompting it. A planner fans out per-user tasks and spreads them over time, ordered by need and remaining budget, to make the best use of the shared Claude quota and worker capacity. Builds on REQ-17's queue and dedupe.",
+      "implemented_in": [],
+      "acceptance": [
+        "A periodic planner enqueues per-user match, question and audit tasks, never only on user action",
+        "Users are prioritized by staleness, new jobs since their last run and remaining daily AI budget",
+        "Work is staggered and capped per tick, so there is no thundering herd on the Claude CLI",
+        "Idle or inactive users are throttled",
+        "A rate-limit error backs off the whole fan-out",
+        "An admin can see the last and next run per user"
+      ]
+    },
+    {
+      "id": "REQ-22",
+      "area": "frontend",
+      "status": "planned",
+      "source": "user",
+      "requirement": "Refresh the UI, add a site icon, and show confetti whenever the user marks a job as applied.",
+      "implemented_in": [],
+      "acceptance": [
+        "Visual refresh of the main pages (matches feed, job detail, navigation)",
+        "A favicon and app icon (SVG plus PNG and apple-touch) linked from frontend/index.html",
+        "A confetti burst when a match is marked Applied, skipped when prefers-reduced-motion is set"
+      ]
+    },
+    {
+      "id": "REQ-23",
+      "area": "resume",
+      "status": "planned",
+      "source": "user",
+      "requirement": "Help the user update their resume for each application, taking into account the ATS the posting is likely to go through.",
+      "implemented_in": [],
+      "acceptance": [
+        "From a match, generate a tailored resume using only facts from the profile, documents and answers; nothing invented",
+        "Reorder and reword to mirror the posting's keywords",
+        "Output is ATS-safe: single column, standard section headings, no tables, images or text boxes, plain fonts, DOCX and PDF export",
+        "The posting's ATS (Greenhouse, Lever, Ashby and others, known from ingest) is taken into account, with a keyword-coverage check that shows which posting terms are missing",
+        "The resume is editable, regenerable and downloadable, and stored in the file store per match"
+      ]
+    },
+    {
+      "id": "REQ-24",
+      "area": "matching",
+      "status": "planned",
+      "source": "user",
+      "requirement": "Visa sponsorship is a real matching factor for users who are international and need sponsorship. Today it is collected (needs_visa_sponsorship) and used only to drop postings whose text refuses sponsorship.",
+      "implemented_in": [],
+      "acceptance": [
+        "Detect positive signals as well as refusals: 'will sponsor', H-1B, OPT/CPT and STEM-OPT friendly",
+        "Use company sponsorship history where known, for example a per-company flag in companies.yaml",
+        "Feed sponsorship into the prefilter score and the LLM preference_fit; unknown stays neutral",
+        "Show a sponsorship badge on matches",
+        "Capture the user's work-authorization type (citizen, permanent resident, F-1 OPT/STEM-OPT, H-1B transfer, other) in the profile"
+      ]
+    },
+    {
+      "id": "REQ-25",
+      "area": "matching",
+      "status": "planned",
+      "source": "user",
+      "requirement": "Students who are graduating soon get new-grad roles as a factor. Today is_new_grad and graduation_date are collected, but graduation_date is not used in matching.",
+      "implemented_in": [],
+      "acceptance": [
+        "Use graduation_date to decide eligibility: new-grad roles open to the user's graduation window, internships while still enrolled, and 'graduating by X' requirements",
+        "Boost roles labelled new grad, university or early career for soon-to-graduate users",
+        "Do not penalize missing full-time experience for these users",
+        "A 'New grad' filter or tab in the matches feed",
+        "Re-evaluate automatically once the graduation date passes"
+      ]
+    },
+    {
+      "id": "REQ-26",
+      "area": "jobs",
+      "status": "planned",
+      "source": "user",
+      "requirement": "Search far and wide for jobs, not just the main companies: smaller startups hire too. Today coverage is 27 hand-curated Greenhouse, Lever and Ashby boards plus opt-in jobspy.",
+      "implemented_in": [],
+      "acceptance": [
+        "Auto-discover companies and their ATS boards from startup and job directories (for example YC Work at a Startup, Wellfound, Hacker News 'Who is hiring', new-grad GitHub lists) and from other ATS providers (Workable, SmartRecruiters, Recruitee, BambooHR)",
+        "Validate each board before it is added",
+        "Per-source health tracking and error isolation",
+        "Choose which boards to ingest based on users' targets so cost scales sensibly",
+        "Respect each site's terms and robots rules"
+      ]
     }
   ],
   "decisions": [
@@ -709,6 +798,84 @@
         "Owner: on the server, set DNS, SITE_ADDRESS, COMPOSE_FILE and PUBLIC_BASE_URL, run docker compose up -d --build, and confirm a real certificate is issued and http redirects to https",
         "Owner: install the nightly cron entry for deploy/backup.sh, copy backups off the host, and rehearse one restore",
         "Owner: reboot the server once and confirm every service comes back"
+      ]
+    },
+    {
+      "id": "H9",
+      "priority": "P2",
+      "title": "Background fan-out scheduler (REQ-21)",
+      "findings": [],
+      "gaps": [],
+      "actions": [
+        "Add a planner task in backend/jobfinder/scheduling/handlers.py that ranks users by staleness, new jobs and remaining budget, and enqueues staggered per-user tasks",
+        "Register the planner tick in backend/jobfinder/worker.py and add caps and backoff settings in config.py",
+        "Add an admin view of last and next run per user",
+        "Tests in test_scheduler for ordering, caps and rate-limit backoff"
+      ]
+    },
+    {
+      "id": "H10",
+      "priority": "P2",
+      "title": "UI refresh, site icon and apply confetti (REQ-22)",
+      "findings": [],
+      "gaps": [],
+      "actions": [
+        "Add icon files and link them from frontend/index.html",
+        "Restyle frontend/src/routes/Matches.tsx, MatchDetail.tsx and the nav",
+        "Fire confetti from the Mark applied action, honouring prefers-reduced-motion",
+        "Verify in a browser at desktop and phone width"
+      ]
+    },
+    {
+      "id": "H11",
+      "priority": "P2",
+      "title": "ATS-tailored resume per application (REQ-23)",
+      "findings": [],
+      "gaps": [],
+      "actions": [
+        "Add a resume prompt and schema under backend/jobfinder/ai/prompts and ai/schemas.py, grounded only in profile facts",
+        "Add a resume_tailor task and API endpoints on matches, storing output in the file store",
+        "Add keyword-coverage check and DOCX/PDF export",
+        "Add a resume panel to frontend/src/routes/MatchDetail.tsx"
+      ]
+    },
+    {
+      "id": "H12",
+      "priority": "P2",
+      "title": "Visa sponsorship as a matching factor (REQ-24)",
+      "findings": [],
+      "gaps": [],
+      "actions": [
+        "Extend backend/jobfinder/matching/prefilter.py with positive sponsorship signals and a score component",
+        "Add a work-authorization field to backend/jobfinder/api/profile.py and frontend/src/routes/onboarding/StatusStep.tsx",
+        "Add a sponsorship flag per company in backend/jobfinder/ingest/companies.yaml",
+        "Show a sponsorship badge in frontend/src/components/MatchBits.tsx"
+      ]
+    },
+    {
+      "id": "H13",
+      "priority": "P2",
+      "title": "Student and new-grad awareness (REQ-25)",
+      "findings": [],
+      "gaps": [],
+      "actions": [
+        "Use graduation_date in backend/jobfinder/matching/prefilter.py for eligibility and boosts, and relax the experience filter",
+        "Update backend/jobfinder/ai/prompts/match.md so missing full-time experience is not a gap for these users",
+        "Add a New grad filter to frontend/src/routes/Matches.tsx",
+        "Re-score when the graduation date passes"
+      ]
+    },
+    {
+      "id": "H14",
+      "priority": "P2",
+      "title": "Broader job discovery including startups (REQ-26)",
+      "findings": [],
+      "gaps": [],
+      "actions": [
+        "Add discovery sources and new ATS adapters under backend/jobfinder/ingest/sources/",
+        "Validate and store discovered boards (extend companies.yaml or move to a database table)",
+        "Add per-source health tracking and target-driven board selection in ingest/runner.py",
+        "Check each source's terms and robots rules before enabling it"
       ]
     }
   ],
