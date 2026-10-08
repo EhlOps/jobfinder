@@ -140,6 +140,12 @@ async def ai_check(db: AsyncSession, ai: AITasks, task: Task) -> dict:
     return {"ok": True}
 
 
+async def discover_boards(db: AsyncSession, ai: AITasks, task: Task) -> dict:
+    from jobfinder.ingest import discovery
+
+    return (await discovery.discover_boards(db)).as_dict()
+
+
 HANDLERS: dict[str, Handler] = {
     "extract_profile": extract_profile,
     "followup_questions": followup_questions,
@@ -152,4 +158,5 @@ HANDLERS: dict[str, Handler] = {
     "collect_questions": collect_questions,
     "daily_emails": daily_emails,
     "resume_tailor": resume_tailor,
+    "discover_boards": discover_boards,
 }

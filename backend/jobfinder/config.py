@@ -46,6 +46,8 @@ class Settings(BaseSettings):
     planner_stagger_seconds: int = 120  # gap between the start times of users planned in one tick
     planner_min_interval_hours: int = 3  # minimum gap between runs for a recently active user
     planner_backoff_minutes: int = 30  # pause all planning after a rate-limit or auth error from Claude
+    discovery_enabled: bool = False  # weekly board discovery from public directories (honours robots.txt and terms)
+    discovery_max_candidates: int = 50  # new boards validated per discovery run
     jobspy_max_queries: int = 10
     jobspy_results_per_query: int = 25
     session_ttl_days: int = 30
