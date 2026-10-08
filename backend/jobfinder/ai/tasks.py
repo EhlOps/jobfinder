@@ -13,6 +13,7 @@ from jobfinder.ai.schemas import (
     MatchScore,
     Ping,
     ProfileAudit,
+    TailoredResume,
 )
 
 PROMPTS = Path(__file__).parent / "prompts"
@@ -181,6 +182,32 @@ class AITasks:
         return await self.claude.run(
             body, system=load_prompt("consolidate_questions").replace("{max_questions}", str(max_questions)),
             output=Consolidated, model="sonnet", task="consolidate_questions", timeout_s=120,
+        )
+
+    async def tailor_resume(
+        self, *, name: str, background: dict, facts: list[tuple[str, str]], documents: list[tuple[str, str]], job: dict,
+    ) -> TailoredResume:
+        """Reorder and reword the candidate's real content for a posting. documents: (label, text) pairs."""
+        candidate = {
+            "name": name or None,
+            "background": background,
+            "answers_given": [{"question": q, "answer": a} for q, a in facts],
+        }
+        posting = {k: v for k, v in job.items() if k != "description" and v not in (None, "")}
+        parts = ["Tailor the resume to this job.\n", data_block("candidate", json.dumps(candidate, indent=1))]
+        budget = MAX_SOURCE_CHARS
+        for label, text in documents:
+            if budget <= 0:
+                break
+            chunk = text[:budget]
+            budget -= len(chunk)
+            parts.append(data_block("document", chunk, f'name="{label}"'))
+        parts.append(
+            data_block("job", json.dumps(posting, indent=1) + "\n\nDescription:\n" + (job.get("description") or "")[:MAX_JOB_CHARS])
+        )
+        return await self.claude.run(
+            "\n\n".join(parts), system=load_prompt("resume_tailor"), output=TailoredResume, model="sonnet",
+            task="tailor_resume", timeout_s=180,
         )
 
 

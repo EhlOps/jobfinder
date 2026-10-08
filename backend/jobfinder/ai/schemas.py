@@ -128,3 +128,21 @@ class ProfileAudit(BaseModel):
     readiness: int = Field(ge=0, le=100)
     dimensions: dict[str, int] = Field(default_factory=dict)  # skills|impact|scope|logistics|motivation -> 0-100
     questions: list[AuditQuestion] = Field(default_factory=list, max_length=8)
+
+
+class ResumeContact(BaseModel):
+    name: str = ""
+    email: str = ""
+    phone: str = ""
+    location: str = ""
+    links: list[str] = Field(default_factory=list)
+
+
+class TailoredResume(BaseModel):
+    """A resume rewritten for one posting. Sections are required so a response cannot silently drop one."""
+    contact: ResumeContact
+    summary: str
+    skills: list[str]  # ordered most relevant to the posting first
+    experience: list[Experience]
+    projects: list[Project]
+    education: list[Education]
