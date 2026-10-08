@@ -247,7 +247,7 @@ Tasks in the same wave run in parallel. Merge a wave fully before starting the n
 - Add a 'Working in parallel worktrees' README section: git worktree add, set TEST_DB=jobfinder_test_<task>, run the tests
 - *Done when:* Two worktrees can run pytest at once without touching each other's database; ruff check is clean on the whole backend.
 
-#### H12.1: Sponsorship signals and per-company flag (REQ-24)
+#### H12.1: Sponsorship signals and per-company flag (REQ-24) (done)
 
 - Add sponsorship_signal(description) returning 'sponsors', 'refuses' or None; detect 'will sponsor', H-1B, OPT/CPT and STEM-OPT friendly; keep refuses_sponsorship working
 - Add Company.sponsors_visas (bool, nullable) and migration 0015
@@ -255,7 +255,7 @@ Tasks in the same wave run in parallel. Merge a wave fully before starting the n
 - Add a sponsorship component to prefilter_score for users who need sponsorship; unknown stays neutral
 - *Done when:* Positive signals as well as refusals are detected (REQ-24 a); A per-company sponsorship flag exists in companies.yaml and the database (REQ-24 b); Sponsorship feeds the prefilter score; unknown is neutral (REQ-24 c, prefilter half).
 
-#### H11.1: Resume tailoring AI core (REQ-23)
+#### H11.1: Resume tailoring AI core (REQ-23) (done)
 
 - Add a TailoredResume schema (contact, summary, skills, experience, projects, education) at the end of ai/schemas.py
 - Add the resume_tailor.md prompt: use only facts from profile, documents and answers; reorder and reword to mirror the posting; never invent
@@ -263,34 +263,34 @@ Tasks in the same wave run in parallel. Merge a wave fully before starting the n
 - Add resumes/service.py that gathers the facts and stores the result in the file store as kind 'resume' tagged match:<id>
 - *Done when:* A tailored resume uses only supplied facts (REQ-23 a); Wording and order mirror the posting's keywords (REQ-23 b); The result is stored per match in the file store (REQ-23 e, storage half).
 
-#### H11.2: ATS keyword coverage check (REQ-23)
+#### H11.2: ATS keyword coverage check (REQ-23) (done)
 
 - Pure module with no database access: extract_terms(posting_text), coverage(resume_text, terms, ats)
 - Per-ATS notes for Greenhouse, Lever, Ashby and a default (for example parsing quirks and keyword matching style)
 - Return covered terms, missing terms and a percentage
 - *Done when:* Shows which posting terms are missing from the resume (REQ-23 d); The posting's ATS is taken into account (REQ-23 d).
 
-#### H11.3: ATS-safe DOCX and PDF export (REQ-23)
+#### H11.3: ATS-safe DOCX and PDF export (REQ-23) (done)
 
 - Render a TailoredResume to DOCX with python-docx: single column, standard headings, no tables, images or text boxes, plain fonts
 - Render the same content to PDF with a text-based layout, still single column and selectable text
 - Reuse the pattern in letters/docx_export.py rather than duplicating helpers
 - *Done when:* Output is ATS-safe (REQ-23 c); DOCX and PDF export both work (REQ-23 c).
 
-#### H14.2a: ATS adapters: Workable and SmartRecruiters (REQ-26)
+#### H14.2a: ATS adapters: Workable and SmartRecruiters (REQ-26) (done)
 
 - Write one fetcher per ATS with the same signature as fetch_greenhouse, using the providers' public job-board APIs
 - Capture real response fixtures and write parser tests
 - Register both at the end of ATS_FETCHERS
 - *Done when:* Jobs from other ATS providers can be ingested (REQ-26 a, adapter half).
 
-#### H14.2b: ATS adapters: Recruitee and BambooHR (REQ-26)
+#### H14.2b: ATS adapters: Recruitee and BambooHR (REQ-26) (done)
 
 - Same as H14.2a for Recruitee and BambooHR
 - Register both at the end of ATS_FETCHERS (a one-line merge conflict with H14.2a is expected)
 - *Done when:* Jobs from other ATS providers can be ingested (REQ-26 a, adapter half).
 
-#### H10.1: Site icon and apply confetti (REQ-22)
+#### H10.1: Site icon and apply confetti (REQ-22) (done)
 
 - Design a simple SVG mark; export PNG and apple-touch versions; link all three from index.html
 - Write a small canvas confetti function with no package; skip it when prefers-reduced-motion is set
