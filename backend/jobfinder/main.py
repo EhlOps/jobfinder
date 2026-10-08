@@ -10,6 +10,7 @@ from jobfinder.api import (
     onboarding,
     profile,
     questions,
+    resumes,
     settings,
     tasks,
 )
@@ -26,6 +27,7 @@ app.include_router(tasks.router)
 app.include_router(ai_admin.router)
 app.include_router(matches.router)
 app.include_router(cover_letters.router)
+app.include_router(resumes.router)
 app.include_router(questions.router)
 app.include_router(settings.router)
 
