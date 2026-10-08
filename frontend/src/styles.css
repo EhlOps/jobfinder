@@ -116,3 +116,6 @@ a.button-link { display: inline-block; border: 1px solid var(--border); color: v
 .chip.req-unmet { border-color: var(--danger); color: var(--danger); }
 
 .confetti-canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 9999; }
+.resume-section { border-top: 1px solid var(--border); padding-top: 8px; margin-top: 10px; }
+.resume-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; margin: 6px 0; }
+.resume-grid textarea, .resume-section > textarea { width: 100%; }
