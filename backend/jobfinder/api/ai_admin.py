@@ -1,4 +1,5 @@
 """Connect Claude from the web app: the admin pastes the token from `claude setup-token`."""
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -8,9 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from jobfinder.ai import credentials
 from jobfinder.auth.security import current_user, require_admin
+from jobfinder.config import get_settings
 from jobfinder.db import get_db
-from jobfinder.models import AICall, User
-from jobfinder.scheduling import queue
+from jobfinder.matching.service import UNLIMITED, remaining_budget
+from jobfinder.models import AICall, PlannerState, Profile, Task, User
+from jobfinder.scheduling import planner, queue
 
 router = APIRouter(tags=["ai"])
 
@@ -66,3 +69,71 @@ async def check(admin: Admin, db: DB):
 @router.delete("/api/admin/ai/token", status_code=204)
 async def delete_token(_: Admin):
     credentials.delete_token()
+
+
+class ActiveTask(BaseModel):
+    kind: str
+    status: str
+    run_after: str
+
+
+class ScheduleRow(BaseModel):
+    user_id: int
+    email: str
+    last_seen_at: str | None
+    last_run_at: str | None
+    last_scored: int | None
+    pending: int | None
+    budget_left: int | None  # null = no daily limit
+    last_planned_at: str | None
+    next_due_at: str | None
+    reason: str
+    skip: str
+    active: list[ActiveTask]
+
+
+class Schedule(BaseModel):
+    backoff_until: str | None
+    in_flight: int
+    max_per_tick: int
+    next_tick: str | None
+    users: list[ScheduleRow]
+
+
+def _iso(d: datetime | None) -> str | None:
+    return d.isoformat() if d else None
+
+
+@router.get("/api/admin/schedule", response_model=Schedule)
+async def schedule(_: Admin, db: DB):
+    """What the background planner has done and will do for each user."""
+    now = datetime.now(UTC)
+    active_tasks = (
+        await db.scalars(select(Task).where(Task.status.in_(queue.ACTIVE), Task.user_id.is_not(None)).order_by(Task.run_after))
+    ).all()
+    by_user: dict[int, list[ActiveTask]] = {}
+    for t in active_tasks:
+        by_user.setdefault(t.user_id, []).append(ActiveTask(kind=t.kind, status=t.status, run_after=t.run_after.isoformat()))
+    rows = (
+        await db.execute(
+            select(User, Profile, PlannerState).outerjoin(Profile, Profile.user_id == User.id)
+            .outerjoin(PlannerState, PlannerState.user_id == User.id)
+            .where(User.password_hash.is_not(None)).order_by(User.email)
+        )
+    ).all()
+    users = []
+    for u, p, st in rows:
+        left = await remaining_budget(db, u.id)
+        ms = (p.match_summary if p else None) or {}
+        users.append(ScheduleRow(
+            user_id=u.id, email=u.email, last_seen_at=_iso(u.last_seen_at), last_run_at=ms.get("last_run_at"),
+            last_scored=ms.get("scored"), pending=ms.get("pending"), budget_left=None if left >= UNLIMITED else left,
+            last_planned_at=_iso(st.last_planned_at if st else None), next_due_at=_iso(st.next_due_at if st else None),
+            reason=st.last_reason if st else "", skip=st.last_skip if st else "", active=by_user.get(u.id, []),
+        ))
+    last_tick = await db.scalar(select(Task.created_at).where(Task.kind == "plan_work").order_by(Task.id.desc()).limit(1))
+    next_tick = last_tick + timedelta(minutes=get_settings().planner_interval_minutes) if last_tick else None
+    return Schedule(
+        backoff_until=_iso(await planner.backoff_until(db, now)), in_flight=len(await planner.in_flight_users(db)),
+        max_per_tick=get_settings().planner_max_per_tick, next_tick=_iso(next_tick), users=users,
+    )

@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 
@@ -169,3 +169,95 @@ def test_too_experienced_only_filters_entry_level_candidates():
     assert not pf.too_experienced("5+ years of experience", None)
     assert not pf.too_experienced("5+ years of experience", {"intern", "new_grad", "mid"})   # chose a higher level too
     assert not pf.too_experienced("no mention", entry)
+
+
+# ── career stage ─────────────────────────────────────────────────────────
+TODAY = date(2026, 10, 15)
+
+
+@pytest.mark.parametrize(("status", "stage"), [
+    ({"graduation_date": "2028-05"}, "student"),
+    ({"graduation_date": "2027-10"}, "final_year"),           # exactly 12 months away
+    ({"graduation_date": "2027-11"}, "student"),              # 13 months away
+    ({"graduation_date": "2026-10"}, "final_year"),           # this month
+    ({"graduation_date": "2026-09"}, "recent_grad"),          # just passed
+    ({"graduation_date": "2024-10"}, "recent_grad"),          # 24 months ago
+    ({"graduation_date": "2024-09"}, "graduated"),
+    ({"graduation_date": "2027-5", "is_new_grad": False}, "final_year"),
+    ({"is_new_grad": True}, "new_grad"),                      # no date: as before
+    ({"graduation_date": "soon", "is_new_grad": True}, "new_grad"),
+    ({"graduation_date": "2027-13"}, None),
+    ({}, None),
+])
+def test_career_stage(status, stage):
+    assert pf.career_stage(status, TODAY) == stage
+
+
+@pytest.mark.parametrize(("status", "expected"), [
+    ({"graduation_date": "2028-05"}, {"intern"}),
+    ({"graduation_date": "2027-03"}, {"intern", "new_grad", "junior"}),
+    ({"graduation_date": "2026-05"}, {"new_grad", "junior"}),
+    ({"graduation_date": "2020-05"}, None),                   # long out: no filtering
+    ({"graduation_date": "2028-05", "seniority": ["junior"]}, {"junior", "new_grad"}),   # explicit choice wins
+])
+def test_stage_drives_acceptable_seniorities(status, expected):
+    assert pf.acceptable_seniorities(status, TODAY) == expected
+
+
+def test_months_to_graduation():
+    assert pf.months_to_graduation({"graduation_date": "2027-01"}, TODAY) == 3
+    assert pf.months_to_graduation({"graduation_date": "2026-08"}, TODAY) == -2
+    assert pf.months_to_graduation({}, TODAY) is None
+
+
+# ── graduation windows in postings ───────────────────────────────────────
+def _ix(y, m):
+    return y * 12 + m - 1
+
+
+@pytest.mark.parametrize(("text", "window"), [
+    ("Open to students graduating between December 2026 and June 2027.", (_ix(2026, 12), _ix(2027, 6))),
+    ("expected graduation date between Dec. 2026 - Jun 2027", (_ix(2026, 12), _ix(2027, 6))),
+    ("Class of 2027 only", (_ix(2027, 1), _ix(2027, 12))),
+    ("candidates graduating in 2027", (_ix(2027, 1), _ix(2027, 12))),
+    ("Must be graduating in May 2027", (_ix(2027, 1), _ix(2027, 12))),               # one date = its year
+    ("graduating by May 2027", (None, _ix(2027, 5))),
+    ("graduating before 2027", (None, _ix(2027, 12))),
+    ("A graduate degree is preferred. We were founded in 2019.", None),            # 'graduate' is not a trigger
+    ("graduated in 2015 from a top school", None),
+    ("Join us in 2027 for an exciting year", None),
+    ("", None),
+])
+def test_graduation_window(text, window):
+    assert pf.graduation_window(text) == window
+
+
+def test_outside_grad_window_only_when_both_sides_are_known():
+    jan_2027 = {"graduation_date": "2027-01"}
+    window = "graduating between December 2026 and June 2027"
+    assert not pf.outside_grad_window(window, jan_2027)
+    assert pf.outside_grad_window(window, {"graduation_date": "2028-05"})
+    assert pf.outside_grad_window(window, {"graduation_date": "2026-05"})
+    assert not pf.outside_grad_window(window, {"graduation_date": "2026-11"})        # one month of slack
+    assert not pf.outside_grad_window(window, {})                                      # no date: never excluded
+    assert not pf.outside_grad_window("Python and Postgres", jan_2027)                 # no window: never excluded
+    assert pf.outside_grad_window("graduating by May 2027", {"graduation_date": "2028-05"})
+
+
+# ── early-career boost ───────────────────────────────────────────────────
+def test_early_career_boost_by_stage():
+    boost = pf.early_career_boost
+    assert boost("Software Engineer, New Grad", "new_grad", "final_year") == 10
+    assert boost("University Graduate Engineer", None, "recent_grad") == 10
+    assert boost("Software Engineer Intern", "intern", "student") == 10
+    assert boost("Software Engineer Intern", "intern", "final_year") == 10
+    assert boost("Software Engineer, New Grad", "new_grad", "student") == 0       # can't start yet
+    assert boost("Backend Engineer", "mid", "final_year") == 0
+    assert boost("Software Engineer Intern", "intern", None) == 0
+    assert boost("Software Engineer Intern", "intern", "graduated") == 0
+
+
+def test_prefilter_score_includes_the_boost():
+    plain = _score(title="Backend Engineer, New Grad", seniority="new_grad")
+    boosted = _score(title="Backend Engineer, New Grad", seniority="new_grad", stage="final_year")
+    assert boosted - plain == pytest.approx(10)

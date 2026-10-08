@@ -94,6 +94,10 @@ def make_scheduler() -> AsyncIOScheduler:
         enqueue_scheduled, "interval", hours=s.ingest_interval_hours, args=["ingest_jobs"], id="ingest_jobs",
         next_run_time=datetime.now(UTC) + timedelta(minutes=2), coalesce=True, max_instances=1,
     )
+    scheduler.add_job(
+        enqueue_scheduled, "interval", minutes=s.planner_interval_minutes, args=["plan_work"], id="plan_work",
+        next_run_time=datetime.now(UTC) + timedelta(minutes=5), coalesce=True, max_instances=1,
+    )
     scheduler.add_job(enqueue_scheduled, "cron", minute=5, args=["daily_emails"], id="daily_emails", coalesce=True, max_instances=1)
     return scheduler
 
@@ -105,7 +109,10 @@ async def main() -> None:
     running: set[asyncio.Task] = set()
     if get_settings().scheduler_enabled:
         make_scheduler().start()
-        log.info("scheduler started: ingest every %dh, daily emails hourly at :05", get_settings().ingest_interval_hours)
+        log.info(
+            "scheduler started: ingest every %dh, planner every %dm, daily emails hourly at :05",
+            get_settings().ingest_interval_hours, get_settings().planner_interval_minutes,
+        )
     log.info("worker started (concurrency=%d)", limit)
     last_reap = 0.0
     while True:

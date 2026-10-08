@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 # ── seniority ────────────────────────────────────────────────────────────
 # Levels (as inferred from titles) acceptable for each level the candidate selects. Jobs whose
@@ -24,13 +24,56 @@ ACCEPTABLE = {
 }
 
 
-def acceptable_seniorities(status: dict) -> set[str] | None:
+# ── career stage (from the graduation date) ──────────────────────────────
+STUDENT, FINAL_YEAR, RECENT_GRAD, NEW_GRAD, GRADUATED = "student", "final_year", "recent_grad", "new_grad", "graduated"
+RECENT_GRAD_MONTHS = 24
+# What each stage may apply to when the candidate didn't pick levels themselves.
+STAGE_LEVELS = {
+    STUDENT: {"intern"},
+    FINAL_YEAR: {"intern", "new_grad", "junior"},
+    RECENT_GRAD: {"new_grad", "junior"},
+    NEW_GRAD: {"new_grad", "junior"},
+}
+_YEAR_MONTH = re.compile(r"^\s*(\d{4})-(\d{1,2})")
+
+
+def _month_index(year: int, month: int) -> int:
+    return year * 12 + month - 1
+
+
+def graduation_month(status: dict) -> int | None:
+    """The graduation date ('YYYY-MM') as a month index, or None when missing or unreadable."""
+    m = _YEAR_MONTH.match(str(status.get("graduation_date") or ""))
+    if not m or not 1 <= int(m.group(2)) <= 12:
+        return None
+    return _month_index(int(m.group(1)), int(m.group(2)))
+
+
+def months_to_graduation(status: dict, today: date | None = None) -> int | None:
+    """Months until graduation (negative once it has passed)."""
+    g = graduation_month(status)
+    t = today or datetime.now(UTC).date()
+    return None if g is None else g - _month_index(t.year, t.month)
+
+
+def career_stage(status: dict, today: date | None = None) -> str | None:
+    """student (>12 months to go), final_year, recent_grad (within 24 months after), graduated, or None
+    when there is nothing to go on. Without a date, 'new grad' still counts as is_new_grad says."""
+    months = months_to_graduation(status, today)
+    if months is None:
+        return NEW_GRAD if status.get("is_new_grad") else None
+    if months > 12:
+        return STUDENT
+    if months >= 0:
+        return FINAL_YEAR
+    return RECENT_GRAD if months >= -RECENT_GRAD_MONTHS else GRADUATED
+
+
+def acceptable_seniorities(status: dict, today: date | None = None) -> set[str] | None:
     """None means 'don't filter on level'."""
     chosen = status.get("seniority") or []
-    if not chosen and status.get("is_new_grad"):
-        chosen = ["new_grad"]
     if not chosen:
-        return None
+        return STAGE_LEVELS.get(career_stage(status, today) or "")
     out: set[str] = set()
     for level in chosen:
         out |= ACCEPTABLE.get(level, {level})
@@ -158,6 +201,72 @@ def too_experienced(description: str, acceptable: set[str] | None) -> bool:
     return years is not None and years >= ENTRY_MAX_YEARS
 
 
+# ── graduation windows in postings ───────────────────────────────────────
+_MONTHS = {m: i + 1 for i, m in enumerate(["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"])}
+_GRAD_TRIGGER = re.compile(r"\b(?:graduating|graduation|class of)\b", re.IGNORECASE)
+_DATE_TOKEN = re.compile(r"(?:\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?,?\s+)?\b(20\d\d)\b", re.IGNORECASE)
+_BEFORE_WORDS = re.compile(r"\b(?:by|before|prior to|no later than|until)\s*$", re.IGNORECASE)
+GRAD_WINDOW_SLACK = 1  # months
+
+
+def graduation_window(description: str) -> tuple[int | None, int | None] | None:
+    """The graduation dates a posting accepts, as (first, last) month indexes (None = open ended), from
+    phrases like 'graduating between December 2026 and June 2027', 'class of 2027' or 'graduating by May 2027'.
+    A lone date covers its whole year, since a single month rarely means an exact cut-off."""
+    text = description or ""
+    for trig in _GRAD_TRIGGER.finditer(text):
+        span = text[trig.end() : trig.end() + 90]
+        tokens = list(_DATE_TOKEN.finditer(span))
+        if not tokens:
+            continue
+        first, last = tokens[0], tokens[-1]
+        year = int(first.group(2))
+        if len(tokens) >= 2:
+            lo_month = _MONTHS[first.group(1).lower()[:3]] if first.group(1) else 1
+            hi_month = _MONTHS[last.group(1).lower()[:3]] if last.group(1) else 12
+            lo, hi = _month_index(year, lo_month), _month_index(int(last.group(2)), hi_month)
+            return (lo, hi) if lo <= hi else None
+        if _BEFORE_WORDS.search(span[: first.start()]):
+            month = _MONTHS[first.group(1).lower()[:3]] if first.group(1) else 12
+            return None, _month_index(year, month)
+        return _month_index(year, 1), _month_index(year, 12)
+    return None
+
+
+def outside_grad_window(description: str, status: dict) -> bool:
+    """True only when the posting names graduation dates, the candidate's date is known, and it falls outside."""
+    grad = graduation_month(status)
+    if grad is None:
+        return False
+    window = graduation_window(description)
+    if window is None:
+        return False
+    lo, hi = window
+    return (lo is not None and grad < lo - GRAD_WINDOW_SLACK) or (hi is not None and grad > hi + GRAD_WINDOW_SLACK)
+
+
+EARLY_CAREER_TITLE = re.compile(r"\b(new grad(?:uate)?|graduate|university|campus|early career|entry[- ]level)\b", re.IGNORECASE)
+# Same words for Postgres (\y is its word boundary); keep in step with EARLY_CAREER_TITLE.
+EARLY_CAREER_SQL = r"\y(new grad(uate)?|graduate|university|campus|early career|entry[- ]level)\y"
+_INTERN_TITLE = re.compile(r"\b(intern|internship|co-?op)\b", re.IGNORECASE)
+STAGE_BOOST = 10
+
+
+def is_early_career(title: str, seniority: str | None) -> bool:
+    return seniority in ("intern", "new_grad") or bool(EARLY_CAREER_TITLE.search(title) or _INTERN_TITLE.search(title))
+
+
+def early_career_boost(title: str, seniority: str | None, stage: str | None) -> float:
+    """Roles aimed at the candidate's stage: new-grad and early-career roles for people about to graduate or
+    just out; internships for students and those in their last year."""
+    intern = seniority == "intern" or bool(_INTERN_TITLE.search(title))
+    if stage in (FINAL_YEAR, RECENT_GRAD, NEW_GRAD) and is_early_career(title, seniority):
+        return STAGE_BOOST
+    if stage in (STUDENT, FINAL_YEAR) and intern:
+        return STAGE_BOOST
+    return 0.0
+
+
 # ── scoring ──────────────────────────────────────────────────────────────
 def profile_skills(background: dict) -> list[str]:
     seen: dict[str, None] = {}
@@ -218,13 +327,14 @@ def prestige_fit(company_tier: int | None, preference: int | None) -> float:
 def prefilter_score(
     *, title: str, description: str, posted_at: datetime | None, company_tier: int | None,
     company_size: str | None, company_industry: str | None, status: dict, skills: list[str],
-    now: datetime | None = None,
+    now: datetime | None = None, seniority: str | None = None, stage: str | None = None,
 ) -> float:
     base = (
         45 * title_similarity(title, status.get("target_roles") or [])
         + 35 * skill_fraction(skills, title, description)
         + 10 * recency(posted_at, now)
         + 10 * prestige_fit(company_tier, status.get("prestige_preference"))
+        + early_career_boost(title, seniority, stage)
     )
     sizes = status.get("company_sizes") or []
     if sizes and company_size and company_size not in sizes:

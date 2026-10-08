@@ -57,6 +57,7 @@ ol { padding-left: 1.25rem; }
 .filters { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
 .filters input { flex: 2; min-width: 180px; }
 .filters select { flex: 1; min-width: 130px; width: auto; }
+.filters .check input { flex: none; min-width: 0; width: auto; }
 .match { display: flex; gap: 16px; align-items: flex-start; }
 article.match { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 12px; }
 article.match.inactive { opacity: .7; }

@@ -4,7 +4,6 @@ import re
 from pathlib import Path
 
 from jobfinder.ai.claude_code import AIError, ClaudeCode
-from jobfinder.config import get_settings
 from jobfinder.ai.schemas import (
     Background,
     Consolidated,
@@ -15,6 +14,7 @@ from jobfinder.ai.schemas import (
     ProfileAudit,
     TailoredResume,
 )
+from jobfinder.config import get_settings
 
 PROMPTS = Path(__file__).parent / "prompts"
 MAX_SOURCE_CHARS = 30_000
@@ -108,7 +108,8 @@ class AITasks:
         return out.ok
 
     async def score_match(
-        self, status: dict, background: dict, facts: list[tuple[str, str]], job: dict, dossier: dict | None = None
+        self, status: dict, background: dict, facts: list[tuple[str, str]], job: dict, dossier: dict | None = None,
+        stage_info: dict | None = None,
     ) -> MatchScore:
         """job: title, company, location, workplace_type, salary, seniority, description."""
         candidate = {
@@ -116,6 +117,7 @@ class AITasks:
             "preferences": {k: v for k, v in status.items() if v not in (None, "", [])},
             "background": background,
             **({"recruiter_dossier": dossier} if dossier else {}),
+            **({"career_stage": stage_info} if stage_info else {}),
             "answers_given": [{"question": q, "answer": a} for q, a in facts],
         }
         posting = {k: v for k, v in job.items() if k != "description" and v not in (None, "")}

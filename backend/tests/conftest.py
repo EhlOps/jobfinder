@@ -11,7 +11,7 @@ from sqlalchemy.pool import NullPool
 ADMIN_URL = os.environ.get(
     "TEST_ADMIN_URL", "postgresql+asyncpg://jobfinder:change-me@localhost:5433/postgres"
 )
-TEST_DB = "jobfinder_test"
+TEST_DB = os.environ.get("TEST_DB", "jobfinder_test")
 TEST_URL = ADMIN_URL.rsplit("/", 1)[0] + f"/{TEST_DB}"
 
 os.environ["DATABASE_URL"] = TEST_URL

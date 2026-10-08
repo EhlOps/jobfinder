@@ -1,0 +1,873 @@
+{
+  "plan": "Remaining PRD work, split into worktree-sized tasks",
+  "based_on": {
+    "file": "docs/PRD.json",
+    "last_updated": "2026-10-08"
+  },
+  "last_updated": "2026-10-08",
+  "rules": {
+    "setup": "One task per worktree: git worktree add ../jobfinder-<id> -b plan/<id> main. Tasks in the same wave start from the same main commit.",
+    "test_database": "Set TEST_DB=jobfinder_test_<id> so parallel pytest runs do not drop each other's database (needs T00). Use the TEST_ADMIN_URL recipe from the README.",
+    "migrations": "Each migration task has a reserved number. At merge time the integrator sets down_revision to the current head on main and runs 'alembic heads', which must show exactly one head.",
+    "shared_files": "Files listed in 'hotspots' are append-only: add new items at the end and make the smallest possible change to existing code. Do not reformat or reorder.",
+    "dependencies": "At most one task per wave adds packages. That task names them in its PR. Everyone else rebases on lock file changes instead of editing them.",
+    "prd": "Worktrees never edit docs/PRD.json. Each task lists prd_on_merge; the integrator applies them and a REQ is marked done only when its last task has merged.",
+    "merge_order": "Merge a wave completely, in task order, before starting the next wave. Rebase each branch on main and rerun its verify commands first.",
+    "definition_of_done": "Task acceptance lines met, tests added, verify commands pass, ruff is clean, no unrelated reformatting, and the task status is set to done in this file.",
+    "not_exercised": "Nothing here is tried against the real Claude model or live job boards until the owner does it; say so in the PRD notes."
+  },
+  "hotspots": {
+    "backend/tests/conftest.py": "hardcoded test database name; fixed by T00",
+    "backend/alembic/versions": "linear chain, head is 0014_career_stage; reserved numbers 0015 (H12.1), 0016 (H14.1), 0017 (H14.3)",
+    "backend/jobfinder/models.py": "append new columns and classes; do not reorder",
+    "backend/jobfinder/scheduling/handlers.py": "append to the HANDLERS registry",
+    "backend/jobfinder/main.py": "append router includes",
+    "backend/jobfinder/ingest/sources/__init__.py": "append to ATS_FETCHERS; H14.2a and H14.2b will conflict on one line",
+    "backend/jobfinder/ai/tasks.py": "append new functions; H12.2 edits score_match",
+    "backend/jobfinder/ai/schemas.py": "append new models",
+    "backend/jobfinder/config.py": "append settings, and mirror them in backend/.env.example",
+    "frontend/src/lib/types.ts": "append types",
+    "frontend/src/styles.css": "append rules; H10.2 may rewrite it, so it runs last",
+    "frontend/src/App.tsx": "append routes and nav links",
+    "backend/pyproject.toml": "dependency changes; only H11.3 in wave 1",
+    "docs/PRD.json": "integrator only"
+  },
+  "tasks": [
+    {
+      "id": "T00",
+      "title": "Worktree prep: configurable test DB and clean lint",
+      "requirement": null,
+      "backlog": null,
+      "wave": 0,
+      "depends_on": [],
+      "branch": "plan/t00",
+      "owns": [
+        "backend/tests/conftest.py",
+        "README.md"
+      ],
+      "touches_shared": [
+        "backend/jobfinder/ai/tasks.py",
+        "backend/jobfinder/api/matches.py"
+      ],
+      "migration": null,
+      "adds_dependencies": [],
+      "steps": [
+        "Make TEST_DB come from the TEST_DB env var, defaulting to jobfinder_test",
+        "Fix the two existing lint errors: I001 in ai/tasks.py:2 and RUF059 in api/matches.py",
+        "Add a 'Working in parallel worktrees' README section: git worktree add, set TEST_DB=jobfinder_test_<task>, run the tests"
+      ],
+      "acceptance": [
+        "Two worktrees can run pytest at once without touching each other's database",
+        "ruff check is clean on the whole backend"
+      ],
+      "tests": [
+        "Run pytest in two shells with different TEST_DB values at the same time"
+      ],
+      "verify": [
+        "cd backend && uv run ruff check jobfinder tests && uv run pytest -q"
+      ],
+      "prd_on_merge": [
+        "Add a work_log entry only; no requirement changes"
+      ],
+      "status": "todo"
+    },
+    {
+      "id": "H12.1",
+      "title": "Sponsorship signals and per-company flag",
+      "requirement": "REQ-24",
+      "backlog": "H12",
+      "wave": 1,
+      "depends_on": [
+        "T00"
+      ],
+      "branch": "plan/h12.1",
+      "owns": [
+        "backend/jobfinder/matching/prefilter.py",
+        "backend/jobfinder/ingest/companies.yaml",
+        "backend/alembic/versions/0015_company_sponsorship.py",
+        "backend/tests/test_matching_prefilter.py"
+      ],
+      "touches_shared": [
+        "backend/jobfinder/models.py",
+        "backend/jobfinder/ingest/service.py",
+        "backend/tests/test_ingest_service.py"
+      ],
+      "migration": "0015",
+      "adds_dependencies": [],
+      "steps": [
+        "Add sponsorship_signal(description) returning 'sponsors', 'refuses' or None; detect 'will sponsor', H-1B, OPT/CPT and STEM-OPT friendly; keep refuses_sponsorship working",
+        "Add Company.sponsors_visas (bool, nullable) and migration 0015",
+        "Add sponsors_visas to known companies in companies.yaml and carry it through sync_companies",
+        "Add a sponsorship component to prefilter_score for users who need sponsorship; unknown stays neutral"
+      ],
+      "acceptance": [
+        "Positive signals as well as refusals are detected (REQ-24 a)",
+        "A per-company sponsorship flag exists in companies.yaml and the database (REQ-24 b)",
+        "Sponsorship feeds the prefilter score; unknown is neutral (REQ-24 c, prefilter half)"
+      ],
+      "tests": [
+        "Signal detection cases, including negations like 'unable to sponsor'",
+        "Score is unchanged for unknown sponsorship and for users who do not need it",
+        "sync_companies stores the flag"
+      ],
+      "verify": [
+        "cd backend && uv run ruff check jobfinder tests && uv run pytest -q && uv run alembic upgrade head"
+      ],
+      "prd_on_merge": [
+        "Do not mark REQ-24 done; add a note listing what H12.1 delivered"
+      ],
+      "status": "todo"
+    },
+    {
+      "id": "H11.1",
+      "title": "Resume tailoring AI core",
+      "requirement": "REQ-23",
+      "backlog": "H11",
+      "wave": 1,
+      "depends_on": [
+        "T00"
+      ],
+      "branch": "plan/h11.1",
+      "owns": [
+        "backend/jobfinder/ai/prompts/resume_tailor.md",
+        "backend/jobfinder/resumes/__init__.py",
+        "backend/jobfinder/resumes/service.py",
+        "backend/tests/test_resume_ai.py"
+      ],
+      "touches_shared": [
+        "backend/jobfinder/ai/schemas.py",
+        "backend/jobfinder/ai/tasks.py"
+      ],
+      "migration": null,
+      "adds_dependencies": [],
+      "steps": [
+        "Add a TailoredResume schema (contact, summary, skills, experience, projects, education) at the end of ai/schemas.py",
+        "Add the resume_tailor.md prompt: use only facts from profile, documents and answers; reorder and reword to mirror the posting; never invent",
+        "Add tailor_resume() at the end of ai/tasks.py, following score_match and the cover letter task",
+        "Add resumes/service.py that gathers the facts and stores the result in the file store as kind 'resume' tagged match:<id>"
+      ],
+      "acceptance": [
+        "A tailored resume uses only supplied facts (REQ-23 a)",
+        "Wording and order mirror the posting's keywords (REQ-23 b)",
+        "The result is stored per match in the file store (REQ-23 e, storage half)"
+      ],
+      "tests": [
+        "Stubbed Claude (see tests/stub_claude.py): the prompt contains profile facts and posting text",
+        "Schema validation rejects missing sections",
+        "Stored document carries the match tag"
+      ],
+      "verify": [
+        "cd backend && uv run ruff check jobfinder tests && uv run pytest -q"
+      ],
+      "prd_on_merge": [
+        "Do not mark REQ-23 done; note the AI core is built"
+      ],
+      "status": "todo"
+    },
+    {
+      "id": "H11.2",
+      "title": "ATS keyword coverage check",
+      "requirement": "REQ-23",
+      "backlog": "H11",
+      "wave": 1,
+      "depends_on": [
+        "T00"
+      ],
+      "branch": "plan/h11.2",
+      "owns": [
+        "backend/jobfinder/resumes/keywords.py",
+        "backend/tests/test_resume_keywords.py"
+      ],
+      "touches_shared": [],
+      "migration": null,
+      "adds_dependencies": [],
+      "steps": [
+        "Pure module with no database access: extract_terms(posting_text), coverage(resume_text, terms, ats)",
+        "Per-ATS notes for Greenhouse, Lever, Ashby and a default (for example parsing quirks and keyword matching style)",
+        "Return covered terms, missing terms and a percentage"
+      ],
+      "acceptance": [
+        "Shows which posting terms are missing from the resume (REQ-23 d)",
+        "The posting's ATS is taken into account (REQ-23 d)"
+      ],
+      "tests": [
+        "Term extraction on a real posting fixture",
+        "Case, plural and punctuation handling",
+        "Unknown ATS falls back to the default"
+      ],
+      "verify": [
+        "cd backend && uv run ruff check jobfinder tests && uv run pytest -q"
+      ],
+      "prd_on_merge": [
+        "Note in REQ-23: keyword coverage check built"
+      ],
+      "status": "todo"
+    },
+    {
+      "id": "H11.3",
+      "title": "ATS-safe DOCX and PDF export",
+      "requirement": "REQ-23",
+      "backlog": "H11",
+      "wave": 1,
+      "depends_on": [
+        "T00"
+      ],
+      "branch": "plan/h11.3",
+      "owns": [
+        "backend/jobfinder/resumes/export.py",
+        "backend/tests/test_resume_export.py",
+        "backend/pyproject.toml",
+        "backend/uv.lock"
+      ],
+      "touches_shared": [
+        "backend/jobfinder/letters/docx_export.py"
+      ],
+      "migration": null,
+      "adds_dependencies": [
+        "a PDF library, for example reportlab (name it in the PR)"
+      ],
+      "steps": [
+        "Render a TailoredResume to DOCX with python-docx: single column, standard headings, no tables, images or text boxes, plain fonts",
+        "Render the same content to PDF with a text-based layout, still single column and selectable text",
+        "Reuse the pattern in letters/docx_export.py rather than duplicating helpers"
+      ],
+      "acceptance": [
+        "Output is ATS-safe (REQ-23 c)",
+        "DOCX and PDF export both work (REQ-23 c)"
+      ],
+      "tests": [
+        "Re-open the DOCX and assert there are no tables or images and that headings are standard",
+        "Extract text from the PDF and assert it matches the content in order"
+      ],
+      "verify": [
+        "cd backend && uv run ruff check jobfinder tests && uv run pytest -q"
+      ],
+      "prd_on_merge": [
+        "Note in REQ-23: export built"
+      ],
+      "status": "todo"
+    },
+    {
+      "id": "H14.2a",
+      "title": "ATS adapters: Workable and SmartRecruiters",
+      "requirement": "REQ-26",
+      "backlog": "H14",
+      "wave": 1,
+      "depends_on": [
+        "T00"
+      ],
+      "branch": "plan/h14.2a",
+      "owns": [
+        "backend/jobfinder/ingest/sources/workable.py",
+        "backend/jobfinder/ingest/sources/smartrecruiters.py",
+        "backend/tests/fixtures/workable_sample.json",
+        "backend/tests/fixtures/smartrecruiters_sample.json",
+        "backend/tests/test_ingest_workable_smartrecruiters.py"
+      ],
+      "touches_shared": [
+        "backend/jobfinder/ingest/sources/__init__.py"
+      ],
+      "migration": null,
+      "adds_dependencies": [],
+      "steps": [
+        "Write one fetcher per ATS with the same signature as fetch_greenhouse, using the providers' public job-board APIs",
+        "Capture real response fixtures and write parser tests",
+        "Register both at the end of ATS_FETCHERS"
+      ],
+      "acceptance": [
+        "Jobs from other ATS providers can be ingested (REQ-26 a, adapter half)"
+      ],
+      "tests": [
+        "Parser tests on fixtures: title, location, remote flag, description, apply URL"
+      ],
+      "verify": [
+        "cd backend && uv run ruff check jobfinder tests && uv run pytest -q"
+      ],
+      "prd_on_merge": [
+        "Note in REQ-26: Workable and SmartRecruiters adapters built"
+      ],
+      "status": "todo"
+    },
+    {
+      "id": "H14.2b",
+      "title": "ATS adapters: Recruitee and BambooHR",
+      "requirement": "REQ-26",
+      "backlog": "H14",
+      "wave": 1,
+      "depends_on": [
+        "T00"
+      ],
+      "branch": "plan/h14.2b",
+      "owns": [
+        "backend/jobfinder/ingest/sources/recruitee.py",
+        "backend/jobfinder/ingest/sources/bamboohr.py",
+        "backend/tests/fixtures/recruitee_sample.json",
+        "backend/tests/fixtures/bamboohr_sample.json",
+        "backend/tests/test_ingest_recruitee_bamboohr.py"
+      ],
+      "touches_shared": [
+        "backend/jobfinder/ingest/sources/__init__.py"
+      ],
+      "migration": null,
+      "adds_dependencies": [],
+      "steps": [
+        "Same as H14.2a for Recruitee and BambooHR",
+        "Register both at the end of ATS_FETCHERS (a one-line merge conflict with H14.2a is expected)"
+      ],
+      "acceptance": [
+        "Jobs from other ATS providers can be ingested (REQ-26 a, adapter half)"
+      ],
+      "tests": [
+        "Parser tests on fixtures"
+      ],
+      "verify": [
+        "cd backend && uv run ruff check jobfinder tests && uv run pytest -q"
+      ],
+      "prd_on_merge": [
+        "Note in REQ-26: Recruitee and BambooHR adapters built"
+      ],
+      "status": "todo"
+    },
+    {
+      "id": "H10.1",
+      "title": "Site icon and apply confetti",
+      "requirement": "REQ-22",
+      "backlog": "H10",
+      "wave": 1,
+      "depends_on": [
+        "T00"
+      ],
+      "branch": "plan/h10.1",
+      "owns": [
+        "frontend/public/favicon.svg",
+        "frontend/public/icon-192.png",
+        "frontend/public/apple-touch-icon.png",
+        "frontend/src/lib/confetti.ts",
+        "frontend/src/lib/confetti.test.ts"
+      ],
+      "touches_shared": [
+        "frontend/index.html",
+        "frontend/src/components/MatchBits.tsx",
+        "frontend/src/styles.css"
+      ],
+      "migration": null,
+      "adds_dependencies": [],
+      "steps": [
+        "Design a simple SVG mark; export PNG and apple-touch versions; link all three from index.html",
+        "Write a small canvas confetti function with no package; skip it when prefers-reduced-motion is set",
+        "Call it from StatusActions when a match is marked Applied"
+      ],
+      "acceptance": [
+        "A favicon and app icon are linked from index.html (REQ-22 b)",
+        "Confetti on Applied, skipped under reduced motion (REQ-22 c)"
+      ],
+      "tests": [
+        "Confetti runs on Applied and not on other statuses",
+        "Confetti is skipped when reduced motion is set"
+      ],
+      "verify": [
+        "cd frontend && npm test && npm run build"
+      ],
+      "prd_on_merge": [
+        "Note in REQ-22: icon and confetti built; REQ stays planned until H10.2"
+      ],
+      "status": "todo"
+    },
+    {
+      "id": "H12.2",
+      "title": "Work authorization, LLM sponsorship fit and badge",
+      "requirement": "REQ-24",
+      "backlog": "H12",
+      "wave": 2,
+      "depends_on": [
+        "H12.1"
+      ],
+      "branch": "plan/h12.2",
+      "owns": [
+        "frontend/src/routes/onboarding/StatusStep.tsx",
+        "backend/tests/test_sponsorship_matching.py"
+      ],
+      "touches_shared": [
+        "backend/jobfinder/api/profile.py",
+        "backend/jobfinder/matching/service.py",
+        "backend/jobfinder/ai/tasks.py",
+        "backend/jobfinder/ai/prompts/match.md",
+        "backend/jobfinder/api/matches.py",
+        "frontend/src/lib/types.ts",
+        "frontend/src/components/MatchBits.tsx",
+        "backend/tests/test_matches_api.py"
+      ],
+      "migration": null,
+      "adds_dependencies": [],
+      "steps": [
+        "Add work_authorization (citizen, permanent resident, F-1 OPT, STEM OPT, H-1B transfer, other) to the status model and the onboarding step; derive needs_visa_sponsorship from it when unset",
+        "Pass the user's authorization, the company flag and the posting signal to score_match; update match.md so preference_fit reflects them and unknown stays neutral",
+        "Expose a sponsorship value on JobOut and show a badge in MatchBits",
+        "Bump the profile version when work_authorization changes so matches are re-scored"
+      ],
+      "acceptance": [
+        "Work authorization is captured in the profile (REQ-24 e)",
+        "Sponsorship feeds the LLM preference_fit (REQ-24 c)",
+        "A sponsorship badge shows on matches (REQ-24 d)"
+      ],
+      "tests": [
+        "Derivation of needs_sponsorship",
+        "Candidate data includes the sponsorship block only when relevant",
+        "API exposes the badge value",
+        "Frontend badge test",
+        "Version bump on change"
+      ],
+      "verify": [
+        "cd backend && uv run ruff check jobfinder tests && uv run pytest -q",
+        "cd frontend && npm test && npm run build"
+      ],
+      "prd_on_merge": [
+        "Mark REQ-24 done (milestone H12) and remove H12 from remaining"
+      ],
+      "status": "todo"
+    },
+    {
+      "id": "H11.4",
+      "title": "Resume task and API",
+      "requirement": "REQ-23",
+      "backlog": "H11",
+      "wave": 2,
+      "depends_on": [
+        "H11.1",
+        "H11.2",
+        "H11.3"
+      ],
+      "branch": "plan/h11.4",
+      "owns": [
+        "backend/jobfinder/api/resumes.py",
+        "backend/tests/test_resumes_api.py"
+      ],
+      "touches_shared": [
+        "backend/jobfinder/scheduling/handlers.py",
+        "backend/jobfinder/main.py",
+        "backend/jobfinder/ai/tasks.py"
+      ],
+      "migration": null,
+      "adds_dependencies": [],
+      "steps": [
+        "Add a resume_tailor task handler at the end of the HANDLERS registry",
+        "Add router api/resumes.py: GET state, POST generate (202 with a task ref), PUT edits, DELETE, GET download?format=docx|pdf, all scoped to the user's match",
+        "Include keyword coverage computed from the saved text, so it updates after edits",
+        "Respect the per-user AI budget the way cover letters do"
+      ],
+      "acceptance": [
+        "The resume is editable, regenerable and downloadable (REQ-23 e)",
+        "The ATS is read from the job and used for the coverage check (REQ-23 d)"
+      ],
+      "tests": [
+        "Another user's match returns 404",
+        "Generate then edit then download in both formats",
+        "Coverage changes after an edit",
+        "Budget and error paths"
+      ],
+      "verify": [
+        "cd backend && uv run ruff check jobfinder tests && uv run pytest -q"
+      ],
+      "prd_on_merge": [
+        "Note in REQ-23: backend complete"
+      ],
+      "status": "todo"
+    },
+    {
+      "id": "H14.1",
+      "title": "Per-source health tracking and auto-disable",
+      "requirement": "REQ-26",
+      "backlog": "H14",
+      "wave": 2,
+      "depends_on": [
+        "T00"
+      ],
+      "branch": "plan/h14.1",
+      "owns": [
+        "backend/alembic/versions/0016_source_health.py",
+        "backend/tests/test_ingest_health.py"
+      ],
+      "touches_shared": [
+        "backend/jobfinder/models.py",
+        "backend/jobfinder/ingest/service.py",
+        "backend/jobfinder/ingest/runner.py"
+      ],
+      "migration": "0016",
+      "adds_dependencies": [],
+      "steps": [
+        "Add Company.consecutive_failures, last_success_at and disabled_reason with migration 0016",
+        "Update ingest_company to record success and failure; disable a board after N consecutive failures (setting) and say why",
+        "Check one failing board never stops the others, and add a test for it"
+      ],
+      "acceptance": [
+        "Per-source health tracking and error isolation (REQ-26 c)"
+      ],
+      "tests": [
+        "Counters reset on success",
+        "Board disabled after N failures",
+        "A raising fetcher does not stop the run"
+      ],
+      "verify": [
+        "cd backend && uv run ruff check jobfinder tests && uv run pytest -q && uv run alembic upgrade head"
+      ],
+      "prd_on_merge": [
+        "Note in REQ-26: health tracking built"
+      ],
+      "status": "todo"
+    },
+    {
+      "id": "H11.5",
+      "title": "Resume panel in the match detail page",
+      "requirement": "REQ-23",
+      "backlog": "H11",
+      "wave": 3,
+      "depends_on": [
+        "H11.4"
+      ],
+      "branch": "plan/h11.5",
+      "owns": [
+        "frontend/src/components/ResumePanel.tsx",
+        "frontend/src/components/ResumePanel.test.tsx"
+      ],
+      "touches_shared": [
+        "frontend/src/routes/MatchDetail.tsx",
+        "frontend/src/lib/types.ts",
+        "frontend/src/styles.css"
+      ],
+      "migration": null,
+      "adds_dependencies": [],
+      "steps": [
+        "Build a panel modelled on CoverLetterPanel: generate, edit, regenerate, delete, download DOCX and PDF",
+        "Show the keyword coverage with the missing terms",
+        "Show a warning to review the resume before sending, as the cover letter panel does"
+      ],
+      "acceptance": [
+        "The resume is editable, regenerable and downloadable from the UI (REQ-23 e)",
+        "Missing keywords are visible (REQ-23 d)"
+      ],
+      "tests": [
+        "Generate flow with a polled task",
+        "Edit and save",
+        "Missing terms render",
+        "Download links"
+      ],
+      "verify": [
+        "cd frontend && npm test && npm run build"
+      ],
+      "prd_on_merge": [
+        "Mark REQ-23 done (milestone H11) and remove H11 from remaining"
+      ],
+      "status": "todo"
+    },
+    {
+      "id": "H14.3",
+      "title": "Board registry and validation",
+      "requirement": "REQ-26",
+      "backlog": "H14",
+      "wave": 3,
+      "depends_on": [
+        "H14.1",
+        "H14.2a",
+        "H14.2b"
+      ],
+      "branch": "plan/h14.3",
+      "owns": [
+        "backend/jobfinder/ingest/validate.py",
+        "backend/alembic/versions/0017_company_origin.py",
+        "backend/tests/test_ingest_validate.py"
+      ],
+      "touches_shared": [
+        "backend/jobfinder/models.py",
+        "backend/jobfinder/cli.py",
+        "backend/jobfinder/ingest/service.py"
+      ],
+      "migration": "0017",
+      "adds_dependencies": [],
+      "steps": [
+        "Add Company.origin (seed or discovered) and validated_at with migration 0017",
+        "Add validate_board(ats, slug): a live fetch that requires a valid response and at least one posting",
+        "Add a CLI add-board command that validates before inserting; companies.yaml stays as the seed list"
+      ],
+      "acceptance": [
+        "Each board is validated before it is added (REQ-26 b)"
+      ],
+      "tests": [
+        "Valid, empty, 404 and malformed boards",
+        "add-board refuses invalid boards",
+        "Duplicates are ignored"
+      ],
+      "verify": [
+        "cd backend && uv run ruff check jobfinder tests && uv run pytest -q && uv run alembic upgrade head"
+      ],
+      "prd_on_merge": [
+        "Note in REQ-26: validation and registry built"
+      ],
+      "status": "todo"
+    },
+    {
+      "id": "H14.4",
+      "title": "Discovery sources",
+      "requirement": "REQ-26",
+      "backlog": "H14",
+      "wave": 4,
+      "depends_on": [
+        "H14.3"
+      ],
+      "branch": "plan/h14.4",
+      "owns": [
+        "backend/jobfinder/ingest/discovery/__init__.py",
+        "backend/jobfinder/ingest/discovery/github_lists.py",
+        "backend/jobfinder/ingest/discovery/hn_hiring.py",
+        "backend/jobfinder/ingest/discovery/yc.py",
+        "backend/jobfinder/ingest/discovery/robots.py",
+        "backend/tests/test_discovery.py"
+      ],
+      "touches_shared": [
+        "backend/jobfinder/worker.py",
+        "backend/jobfinder/scheduling/handlers.py",
+        "backend/jobfinder/config.py",
+        "backend/.env.example"
+      ],
+      "migration": null,
+      "adds_dependencies": [],
+      "steps": [
+        "Add a robots.txt check and a per-source terms note; a source is only enabled when its terms allow it",
+        "Add discovery for new-grad GitHub lists, HN 'Who is hiring' (Algolia API) and YC Work at a Startup",
+        "Extract the ATS and slug from apply URLs, validate with H14.3, and add boards with origin 'discovered'",
+        "Add a weekly worker job and a discover_boards task, behind a setting",
+        "Wellfound only if its terms allow it; otherwise record that it was skipped and why"
+      ],
+      "acceptance": [
+        "Companies and boards are auto-discovered from directories (REQ-26 a)",
+        "Respects each site's terms and robots rules (REQ-26 e)"
+      ],
+      "tests": [
+        "URL to (ats, slug) extraction",
+        "robots disallow blocks a source",
+        "Discovered boards are validated and deduplicated"
+      ],
+      "verify": [
+        "cd backend && uv run ruff check jobfinder tests && uv run pytest -q"
+      ],
+      "prd_on_merge": [
+        "Note in REQ-26: discovery built"
+      ],
+      "status": "todo"
+    },
+    {
+      "id": "H14.5",
+      "title": "Target-driven board selection",
+      "requirement": "REQ-26",
+      "backlog": "H14",
+      "wave": 4,
+      "depends_on": [
+        "H14.1",
+        "H14.3"
+      ],
+      "branch": "plan/h14.5",
+      "owns": [
+        "backend/jobfinder/ingest/selection.py",
+        "backend/tests/test_ingest_selection.py"
+      ],
+      "touches_shared": [
+        "backend/jobfinder/ingest/service.py",
+        "backend/jobfinder/ingest/runner.py",
+        "backend/jobfinder/config.py"
+      ],
+      "migration": null,
+      "adds_dependencies": [],
+      "steps": [
+        "Rank boards by overlap with active users' target roles, industries and company sizes",
+        "Cap how many discovered boards one run fetches; seed boards always run",
+        "Rotate through the remainder so every board is eventually fetched"
+      ],
+      "acceptance": [
+        "Boards are chosen from users' targets so cost scales sensibly (REQ-26 d)"
+      ],
+      "tests": [
+        "Ranking with several users",
+        "The cap is honoured and rotation covers all boards over several runs"
+      ],
+      "verify": [
+        "cd backend && uv run ruff check jobfinder tests && uv run pytest -q"
+      ],
+      "prd_on_merge": [
+        "Note in REQ-26: target-driven selection built"
+      ],
+      "status": "todo"
+    },
+    {
+      "id": "H14.6",
+      "title": "Admin source health page",
+      "requirement": "REQ-26",
+      "backlog": "H14",
+      "wave": 4,
+      "depends_on": [
+        "H14.1"
+      ],
+      "branch": "plan/h14.6",
+      "owns": [
+        "frontend/src/routes/AdminSources.tsx",
+        "frontend/src/routes/AdminSources.test.tsx",
+        "backend/tests/test_admin_sources.py"
+      ],
+      "touches_shared": [
+        "backend/jobfinder/api/ai_admin.py",
+        "frontend/src/App.tsx",
+        "frontend/src/lib/types.ts"
+      ],
+      "migration": null,
+      "adds_dependencies": [],
+      "steps": [
+        "Add an admin-only GET /api/admin/sources with per-board health and the last error",
+        "Add a POST to re-enable a disabled board",
+        "Add the Sources page and an admin nav link, following AdminSchedule"
+      ],
+      "acceptance": [
+        "Per-source health is visible to the owner (REQ-26 c)"
+      ],
+      "tests": [
+        "Admin only",
+        "Rows reflect failures",
+        "Re-enable works",
+        "Frontend render test"
+      ],
+      "verify": [
+        "cd backend && uv run ruff check jobfinder tests && uv run pytest -q",
+        "cd frontend && npm test && npm run build"
+      ],
+      "prd_on_merge": [
+        "Mark REQ-26 done (milestone H14) and remove H14 from remaining, if H14.4 and H14.5 are merged"
+      ],
+      "status": "todo"
+    },
+    {
+      "id": "H10.2",
+      "title": "UI refresh of the main pages",
+      "requirement": "REQ-22",
+      "backlog": "H10",
+      "wave": 5,
+      "depends_on": [
+        "H10.1",
+        "H11.5",
+        "H12.2",
+        "H14.6"
+      ],
+      "branch": "plan/h10.2",
+      "owns": [
+        "frontend/src/styles.css",
+        "frontend/src/routes/Matches.tsx",
+        "frontend/src/routes/MatchDetail.tsx",
+        "frontend/src/App.tsx",
+        "frontend/src/components/MatchBits.tsx"
+      ],
+      "touches_shared": [],
+      "migration": null,
+      "adds_dependencies": [],
+      "steps": [
+        "Restyle the nav, the matches feed and the job detail page; keep every existing test passing",
+        "Check at desktop and phone width in a real browser, in light and dark",
+        "Take care not to change behaviour; this is styling and layout only"
+      ],
+      "acceptance": [
+        "Visual refresh of the main pages (REQ-22 a)"
+      ],
+      "tests": [
+        "Existing frontend tests stay green",
+        "Manual browser check recorded in the PR"
+      ],
+      "verify": [
+        "cd frontend && npm test && npm run build"
+      ],
+      "prd_on_merge": [
+        "Mark REQ-22 done (milestone H10) and remove H10 from remaining"
+      ],
+      "status": "todo"
+    }
+  ],
+  "owner_items": [
+    {
+      "id": "H6",
+      "title": "Owner verification",
+      "gaps": [
+        "GAP-13",
+        "GAP-21"
+      ],
+      "note": "Needs the owner's Claude token and Gmail inbox; not a worktree task."
+    },
+    {
+      "id": "H8",
+      "title": "Production rollout verification",
+      "gaps": [
+        "GAP-27",
+        "GAP-28"
+      ],
+      "note": "Needs a domain, a server, cron and a reboot; not a worktree task."
+    }
+  ],
+  "optional_gaps": [
+    {
+      "gap": "GAP-06",
+      "idea": "Stop follow-up questions re-asking status fields left as 'Not sure'. Could run in wave 1; owns questions/ and ai/prompts/followups.md."
+    },
+    {
+      "gap": "GAP-19",
+      "idea": "Add a fact-check pass for cover letters, reusing H11.1's grounding approach. Could run in wave 3."
+    }
+  ],
+  "waves": [
+    {
+      "wave": 0,
+      "parallel": false,
+      "tasks": [
+        "T00"
+      ]
+    },
+    {
+      "wave": 1,
+      "parallel": true,
+      "tasks": [
+        "H12.1",
+        "H11.1",
+        "H11.2",
+        "H11.3",
+        "H14.2a",
+        "H14.2b",
+        "H10.1"
+      ]
+    },
+    {
+      "wave": 2,
+      "parallel": true,
+      "tasks": [
+        "H12.2",
+        "H11.4",
+        "H14.1"
+      ]
+    },
+    {
+      "wave": 3,
+      "parallel": true,
+      "tasks": [
+        "H11.5",
+        "H14.3"
+      ]
+    },
+    {
+      "wave": 4,
+      "parallel": true,
+      "tasks": [
+        "H14.4",
+        "H14.5",
+        "H14.6"
+      ]
+    },
+    {
+      "wave": 5,
+      "parallel": false,
+      "tasks": [
+        "H10.2"
+      ]
+    }
+  ]
+}

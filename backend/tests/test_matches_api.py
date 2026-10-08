@@ -120,3 +120,19 @@ async def test_non_http_job_urls_never_reach_the_client(authed, engine):
     urls = {i["job"]["title"]: i["job"]["url"] for i in (await authed.get("/api/matches")).json()["items"]}
     assert urls == {"Job 0": "", "Job 1": "", "Job 2": "https://ok.example/apply"}
     assert (await authed.get(f"/api/matches/{mids[0]}")).json()["job"]["url"] == ""
+
+
+async def test_early_career_filter_and_stage_in_summary(authed, engine):
+    maker = async_sessionmaker(engine, expire_on_commit=False)
+    uid = await me(authed)
+    await authed.put("/api/profile/status", json={"graduation_date": "2030-05"})
+    await add_match(maker, uid, "Backend Engineer", 90)
+    await add_match(maker, uid, "Backend Engineer Intern", 80)
+    await add_match(maker, uid, "University Graduate Engineer", 70)
+    await add_match(maker, uid, "Software Engineer, Early Career", 60)
+    await add_match(maker, uid, "Graduated Student Support Lead", 50)    # 'graduated' is not a keyword
+    await add_match(maker, uid, "Internal Tools Engineer", 40)           # 'intern' only as a whole word
+    r = (await authed.get("/api/matches", params={"early_career": True})).json()
+    assert [i["job"]["title"] for i in r["items"]] == ["Backend Engineer Intern", "University Graduate Engineer", "Software Engineer, Early Career"]
+    everything = (await authed.get("/api/matches")).json()
+    assert everything["total"] == 6 and everything["summary"]["career_stage"] == "student"
