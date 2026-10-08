@@ -124,6 +124,12 @@ async def cover_letter(db: AsyncSession, ai: AITasks, task: Task) -> dict:
     return await service.generate(db, ai, task.user_id, p["match_id"], p.get("tone", "professional"), p.get("notes", ""))
 
 
+async def resume_tailor(db: AsyncSession, ai: AITasks, task: Task) -> dict:
+    from jobfinder.resumes import service
+
+    return await service.tailor(db, ai, get_store(), task.user_id, task.payload["match_id"])
+
+
 async def ai_check(db: AsyncSession, ai: AITasks, task: Task) -> dict:
     """Report whether Claude is connected. Failures are returned, not raised, so the admin page
     shows the real reason and nothing is retried."""
@@ -145,4 +151,5 @@ HANDLERS: dict[str, Handler] = {
     "cover_letter": cover_letter,
     "collect_questions": collect_questions,
     "daily_emails": daily_emails,
+    "resume_tailor": resume_tailor,
 }
