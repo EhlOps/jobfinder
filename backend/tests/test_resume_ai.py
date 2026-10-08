@@ -33,7 +33,7 @@ async def seed(engine, tmp_path):
     store = DocumentStore(tmp_path / "store")
     async with maker() as db:
         user = await make_user(db)
-        match, job = await make_match(db, user.id)
+        match, _ = await make_match(db, user.id)
         db.add(ProfileFact(user_id=user.id, question="Used Go?", answer="Yes at Stripe"))
         await db.commit()
     store.put(user.id, "resume", "cv.pdf", text="Built a Go retry service at Stripe", tags={"owner": "me"})
