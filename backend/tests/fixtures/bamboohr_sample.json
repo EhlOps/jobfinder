@@ -1,0 +1,125 @@
+{
+ "list": {
+  "meta": {
+   "totalCount": 3
+  },
+  "result": [
+   {
+    "id": "41",
+    "jobOpeningName": "Senior Software Engineer",
+    "departmentId": "1",
+    "departmentLabel": "Engineering",
+    "employmentStatusLabel": "Full-Time",
+    "location": {
+     "city": "Austin",
+     "state": "Texas"
+    },
+    "atsLocation": {
+     "country": "United States",
+     "state": "Texas",
+     "province": null,
+     "city": "Austin"
+    },
+    "isRemote": null,
+    "locationType": "2"
+   },
+   {
+    "id": "42",
+    "jobOpeningName": "Customer Success Associate",
+    "departmentId": "1",
+    "departmentLabel": "Support",
+    "employmentStatusLabel": "Full-Time",
+    "location": {
+     "city": null,
+     "state": null
+    },
+    "atsLocation": {
+     "country": "United States",
+     "state": null,
+     "province": null,
+     "city": null
+    },
+    "isRemote": true,
+    "locationType": "1"
+   },
+   {
+    "id": "43",
+    "jobOpeningName": "Warehouse Technician",
+    "departmentId": "1",
+    "departmentLabel": "Operations",
+    "employmentStatusLabel": "Part-Time",
+    "location": {
+     "city": "Salt Lake City",
+     "state": "Utah"
+    },
+    "atsLocation": {
+     "country": "United States",
+     "state": "Utah",
+     "province": null,
+     "city": "Salt Lake City"
+    },
+    "isRemote": false,
+    "locationType": "0"
+   }
+  ]
+ },
+ "details": {
+  "41": {
+   "result": {
+    "jobOpening": {
+     "id": 41,
+     "jobOpeningName": "Senior Software Engineer",
+     "description": "<p>Join our platform team to build <strong>scalable</strong> services.</p><ul><li>Design APIs</li><li>Mentor engineers</li></ul><p>Pay range: $140,000 - $170,000 per year.</p>",
+     "employmentStatusLabel": "Full-Time",
+     "departmentLabel": "Engineering",
+     "location": {
+      "city": "Austin",
+      "state": "Texas"
+     },
+     "isRemote": null,
+     "locationType": "2",
+     "datePosted": "2026-09-30",
+     "jobOpeningShareUrl": "https://acme.bamboohr.com/careers/41"
+    }
+   }
+  },
+  "42": {
+   "result": {
+    "jobOpening": {
+     "id": 42,
+     "jobOpeningName": "Customer Success Associate",
+     "description": "<p>Help customers succeed.</p>",
+     "employmentStatusLabel": "Full-Time",
+     "departmentLabel": "Support",
+     "location": {
+      "city": null,
+      "state": null
+     },
+     "isRemote": true,
+     "locationType": "1",
+     "datePosted": "2026-10-02",
+     "jobOpeningShareUrl": "https://acme.bamboohr.com/careers/42"
+    }
+   }
+  },
+  "43": {
+   "result": {
+    "jobOpening": {
+     "id": 43,
+     "jobOpeningName": "Warehouse Technician",
+     "description": "<p>Pick, pack and ship.</p>",
+     "employmentStatusLabel": "Part-Time",
+     "departmentLabel": "Operations",
+     "location": {
+      "city": "Salt Lake City",
+      "state": "Utah"
+     },
+     "isRemote": false,
+     "locationType": "0",
+     "datePosted": null,
+     "jobOpeningShareUrl": "https://acme.bamboohr.com/careers/43"
+    }
+   }
+  }
+ }
+}

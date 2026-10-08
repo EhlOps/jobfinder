@@ -4,8 +4,10 @@ import httpx
 
 from jobfinder.ingest.base import JobPosting
 from jobfinder.ingest.sources.ashby import fetch_ashby
+from jobfinder.ingest.sources.bamboohr import fetch_bamboohr
 from jobfinder.ingest.sources.greenhouse import fetch_greenhouse
 from jobfinder.ingest.sources.lever import fetch_lever
+from jobfinder.ingest.sources.recruitee import fetch_recruitee
 from jobfinder.ingest.sources.smartrecruiters import fetch_smartrecruiters
 from jobfinder.ingest.sources.workable import fetch_workable
 
@@ -18,4 +20,6 @@ ATS_FETCHERS: dict[str, Fetcher] = {
     "ashby": fetch_ashby,
     "smartrecruiters": fetch_smartrecruiters,
     "workable": fetch_workable,
+    "recruitee": fetch_recruitee,
+    "bamboohr": fetch_bamboohr,
 }
