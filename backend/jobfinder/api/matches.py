@@ -194,7 +194,7 @@ class JobAnswersIn(BaseModel):
 async def answer_for_match(match_id: int, body: JobAnswersIn, user: CurrentUser, db: DB):
     """Answer a requirement question right on the job: saved as profile facts, then this and the other
     matches are re-scored (this one first)."""
-    m, j = await _get_owned(db, user, match_id)
+    _, j = await _get_owned(db, user, match_id)
     for a in body.answers:
         db.add(ProfileFact(user_id=user.id, question=a.question, answer=a.answer, source="job_question", job_id=j.id))
     profile = await db.get(Profile, user.id)

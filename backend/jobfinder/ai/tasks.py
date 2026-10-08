@@ -4,7 +4,6 @@ import re
 from pathlib import Path
 
 from jobfinder.ai.claude_code import AIError, ClaudeCode
-from jobfinder.config import get_settings
 from jobfinder.ai.schemas import (
     Background,
     Consolidated,
@@ -14,6 +13,7 @@ from jobfinder.ai.schemas import (
     Ping,
     ProfileAudit,
 )
+from jobfinder.config import get_settings
 
 PROMPTS = Path(__file__).parent / "prompts"
 MAX_SOURCE_CHARS = 30_000
