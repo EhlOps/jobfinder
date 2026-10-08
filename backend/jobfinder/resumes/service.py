@@ -60,10 +60,11 @@ async def tailor(db: AsyncSession, ai: AITasks, store: DocumentStore, user_id: i
 def save(store: DocumentStore, user_id: int, match_id: int, resume: TailoredResume, label: str = "") -> dict:
     """Store the tailored resume (JSON text) as kind 'resume' tagged match:<id>; one per match, newest wins."""
     tags = match_tags(match_id)
-    for old in store.list(user_id, kind="resume", tags=tags):
-        store.delete(user_id, old.id)
     meta, _ = store.put(
         user_id, "resume", f"Tailored resume - {label or match_id}.json",
         text=json.dumps(resume.model_dump(), indent=1), content_type="application/json", tags=tags,
     )
+    for old in store.list(user_id, kind="resume", tags=tags):  # only after the new one is safely written
+        if old.id != meta.id:
+            store.delete(user_id, old.id)
     return {"match_id": match_id, "document_id": meta.id}
