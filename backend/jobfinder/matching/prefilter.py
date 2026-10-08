@@ -161,6 +161,8 @@ def salary_ok(status: dict, salary_max: int | None, currency: str | None) -> boo
 _NO_SPONSOR = re.compile(
     r"(?:unable|not able|cannot|can't|can not|do not|don't|does not|will not|won't|not)\s+(?:to\s+|be able to\s+)?"
     r"(?:provide|offer|sponsor|support)[^.\n]{0,50}(?:visa|sponsorship|work authori[sz]ation)"
+    r"|(?:unable|not able|cannot|can't|can not|do not|don't|does not|will not|won't)\s+(?:to\s+)?sponsor\b(?!\s+(?:events?|conferences?|relocation|meetups?))"
+    r"|sponsorship\s+(?:is\s+)?(?:not\s+available|unavailable)"
     r"|no\s+(?:visa\s+)?sponsorship"
     r"|without\s+(?:requiring\s+|the need for\s+)?(?:visa\s+)?sponsorship"
     r"|(?:u\.?s\.?|united states)\s+citizen(?:ship)?\s+(?:is\s+)?required"
@@ -172,6 +174,26 @@ _NO_SPONSOR = re.compile(
 
 def refuses_sponsorship(description: str) -> bool:
     return bool(_NO_SPONSOR.search(description or ""))
+
+
+_SPONSORS = re.compile(
+    r"(?:will|can|do|does|happy to|able to|willing to)\s+(?:also\s+)?(?:provide\s+|offer\s+)?(?:visa\s+)?sponsor"
+    r"|(?:we|company)\s+sponsors?\b"
+    r"|(?:offer|provide|provides|offers|available)[^.\n]{0,30}(?:visa\s+)?sponsorship"
+    r"|(?:visa\s+)?sponsorship\s+(?:is\s+|may be\s+)?(?:available|offered|provided)"
+    r"|h-?1b[^.\n]{0,40}(?:sponsor|transfers?\s+(?:are\s+)?(?:welcome|accepted|ok))"
+    r"|sponsor[^.\n]{0,40}h-?1b"
+    r"|\b(?:stem[\s-]+)?(?:opt|cpt)\b[^.\n]{0,40}(?:eligible|welcome|friendly|accepted|\bok\b|considered)"
+    r"|(?:eligible|welcome|friendly|accepted)[^.\n]{0,30}\b(?:stem[\s-]+)?(?:opt|cpt)\b",
+    re.IGNORECASE,
+)
+
+
+def sponsorship_signal(description: str) -> str | None:
+    """'refuses', 'sponsors' or None (silent). A refusal wins over a friendly-sounding phrase."""
+    if refuses_sponsorship(description):
+        return "refuses"
+    return "sponsors" if _SPONSORS.search(description or "") else None
 
 
 # ── required experience ─────────────────────────────────────────────────
@@ -324,10 +346,22 @@ def prestige_fit(company_tier: int | None, preference: int | None) -> float:
     return min(1.0, company_tier / preference)
 
 
+def sponsorship_adjustment(status: dict, signal: str | None, company_sponsors: bool | None) -> float:
+    """Only for candidates who need sponsorship; unknown (no signal, no company flag) is neutral."""
+    if status.get("needs_visa_sponsorship") is not True:
+        return 0.0
+    if signal == "refuses":
+        return -10.0
+    if signal == "sponsors":
+        return 8.0
+    return {True: 4.0, False: -4.0}.get(company_sponsors, 0.0)  # company flag only when the posting is silent
+
+
 def prefilter_score(
     *, title: str, description: str, posted_at: datetime | None, company_tier: int | None,
     company_size: str | None, company_industry: str | None, status: dict, skills: list[str],
     now: datetime | None = None, seniority: str | None = None, stage: str | None = None,
+    sponsorship: str | None = None, company_sponsors: bool | None = None,
 ) -> float:
     base = (
         45 * title_similarity(title, status.get("target_roles") or [])
@@ -335,6 +369,7 @@ def prefilter_score(
         + 10 * recency(posted_at, now)
         + 10 * prestige_fit(company_tier, status.get("prestige_preference"))
         + early_career_boost(title, seniority, stage)
+        + sponsorship_adjustment(status, sponsorship, company_sponsors)
     )
     sizes = status.get("company_sizes") or []
     if sizes and company_size and company_size not in sizes:

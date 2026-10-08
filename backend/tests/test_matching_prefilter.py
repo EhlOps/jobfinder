@@ -88,6 +88,26 @@ def test_refuses_sponsorship(text, refuses):
     assert pf.refuses_sponsorship(text) is refuses
 
 
+@pytest.mark.parametrize(("text", "signal"), [
+    ("We will sponsor H-1B visas for the right candidate.", "sponsors"),
+    ("Visa sponsorship is available.", "sponsors"),
+    ("We offer visa sponsorship for qualified candidates!", "sponsors"),
+    ("F-1 students on OPT or CPT are welcome to apply", "sponsors"),
+    ("STEM OPT friendly employer", "sponsors"),
+    ("H-1B transfers accepted", "sponsors"),
+    ("We are unable to sponsor visas.", "refuses"),
+    ("Unfortunately we are unable to sponsor", "refuses"),
+    ("Sponsorship is not available for this role", "refuses"),
+    ("We will not sponsor H-1B visas", "refuses"),
+    ("H-1B candidates are not eligible", None),
+    ("We do not sponsor events or conferences", None),
+    ("Great team, build things", None),
+    ("", None),
+])
+def test_sponsorship_signal(text, signal):
+    assert pf.sponsorship_signal(text) == signal
+
+
 # ── scoring ──────────────────────────────────────────────────────────────
 BG = {"skills": [{"name": "Python"}, {"name": "Go"}, {"name": "C++"}],
       "experience": [{"technologies": ["Postgres", "Kafka"]}], "projects": [{"technologies": ["React"]}]}
@@ -261,3 +281,17 @@ def test_prefilter_score_includes_the_boost():
     plain = _score(title="Backend Engineer, New Grad", seniority="new_grad")
     boosted = _score(title="Backend Engineer, New Grad", seniority="new_grad", stage="final_year")
     assert boosted - plain == pytest.approx(10)
+
+
+def test_sponsorship_feeds_the_score_only_for_users_who_need_it():
+    need = {"target_roles": ["Backend Engineer"], "prestige_preference": 4, "needs_visa_sponsorship": True}
+    no_need = {**need, "needs_visa_sponsorship": False}
+    base = _score(status=need)
+    assert _score(status=need, sponsorship=None, company_sponsors=None) == base      # unknown is neutral
+    assert _score(status=need, sponsorship="sponsors") > base
+    assert _score(status=need, sponsorship="refuses") < base
+    assert _score(status=need, company_sponsors=True) > base > _score(status=need, company_sponsors=False)
+    assert _score(status=need, sponsorship="sponsors", company_sponsors=False) > base   # posting beats company flag
+    plain = _score(status=no_need)
+    assert _score(status=no_need, sponsorship="sponsors", company_sponsors=True) == plain
+    assert _score(status=no_need, sponsorship="refuses") == plain

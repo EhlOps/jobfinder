@@ -78,6 +78,7 @@ def _score_batch(rows: list, descriptions: dict[int, str], status: dict, skills:
             title=r.title, description=desc, posted_at=r.posted_at, company_tier=r.prestige_tier,
             company_size=r.size, company_industry=r.industry, status=status, skills=skills,
             seniority=r.seniority, stage=stage,
+            sponsorship=pf.sponsorship_signal(desc) if needs_sponsorship else None, company_sponsors=r.sponsors_visas,
         )
         if s >= threshold:
             out.append(Candidate(r.id, s, r.posted_at.timestamp() if r.posted_at else 0, r.dedupe_hash))
@@ -109,6 +110,7 @@ async def find_candidates(db: AsyncSession, user_id: int, profile: Profile) -> l
             Job.id, Job.title, Job.location, Job.workplace_type, Job.salary_max, Job.salary_currency,
             Job.posted_at, Job.dedupe_hash, Job.seniority,
             Company.prestige_tier.label("prestige_tier"), Company.size.label("size"), Company.industry.label("industry"),
+            Company.sponsors_visas.label("sponsors_visas"),
         )
         .outerjoin(Company, Company.id == Job.company_id)
         .where(Job.is_active.is_(True), Job.id.not_in(matched_jobs), Job.dedupe_hash.not_in(matched_hashes))

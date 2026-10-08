@@ -57,6 +57,17 @@ async def test_sync_companies_is_idempotent_and_updates(maker):
         assert (await db.scalar(sa.select(Company.name).where(Company.slug == "stripe"))) == "Stripe Inc"
 
 
+async def test_sync_companies_stores_sponsorship_flag(maker):
+    async with maker() as db:
+        await service.sync_companies(db, [
+            {"name": "A", "ats": "greenhouse", "slug": "a", "sponsors_visas": True},
+            {"name": "B", "ats": "greenhouse", "slug": "b", "sponsors_visas": False},
+            {"name": "C", "ats": "greenhouse", "slug": "c"},
+        ])
+        flags = dict((await db.execute(sa.select(Company.slug, Company.sponsors_visas))).all())
+        assert flags == {"a": True, "b": False, "c": None}
+
+
 # ── upsert / deactivate ──────────────────────────────────────────────────
 async def test_upsert_new_then_update_then_dedupe_within_batch(maker):
     async with maker() as db:

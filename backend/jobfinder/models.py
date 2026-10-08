@@ -155,6 +155,7 @@ class Company(Base):
     size: Mapped[str] = mapped_column(String(16), default="mid")  # startup|mid|large
     industry: Mapped[str] = mapped_column(String(100), default="")
     enabled: Mapped[bool] = mapped_column(default=True)
+    sponsors_visas: Mapped[bool | None] = mapped_column(nullable=True)  # None = unknown
     last_fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
