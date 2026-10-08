@@ -73,6 +73,8 @@ def acceptable_seniorities(status: dict, today: date | None = None) -> set[str] 
     """None means 'don't filter on level'."""
     chosen = status.get("seniority") or []
     if not chosen:
+        if status.get("is_new_grad") is False:  # an experienced candidate (e.g. a part-time degree): no stage filter
+            return None
         return STAGE_LEVELS.get(career_stage(status, today) or "")
     out: set[str] = set()
     for level in chosen:
@@ -228,13 +230,17 @@ _MONTHS = {m: i + 1 for i, m in enumerate(["jan", "feb", "mar", "apr", "may", "j
 _GRAD_TRIGGER = re.compile(r"\b(?:graduating|graduation|class of)\b", re.IGNORECASE)
 _DATE_TOKEN = re.compile(r"(?:\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?,?\s+)?\b(20\d\d)\b", re.IGNORECASE)
 _BEFORE_WORDS = re.compile(r"\b(?:by|before|prior to|no later than|until)\s*$", re.IGNORECASE)
+_AFTER_WORDS = re.compile(r"\b(?:after|since|no earlier than|not earlier than|not before)\s*$", re.IGNORECASE)
+_OR_LATER = re.compile(r"^\s*(?:,?\s*(?:or|and)\s+(?:later|after|afterwards|newer|onwards?)|\+|onwards?)(?=\s*(?:$|[.,;:)]))", re.IGNORECASE)
+_OR_EARLIER = re.compile(r"^\s*,?\s*(?:or|and)\s+(?:earlier|before|prior)(?=\s*(?:$|[.,;:)]))", re.IGNORECASE)
 GRAD_WINDOW_SLACK = 1  # months
 
 
 def graduation_window(description: str) -> tuple[int | None, int | None] | None:
     """The graduation dates a posting accepts, as (first, last) month indexes (None = open ended), from
     phrases like 'graduating between December 2026 and June 2027', 'class of 2027' or 'graduating by May 2027'.
-    A lone date covers its whole year, since a single month rarely means an exact cut-off."""
+    A lone date covers its whole year, since a single month rarely means an exact cut-off; 'after', 'or later'
+    and 'no earlier than' make it an open-ended lower bound, 'by', 'before' and 'or earlier' an upper one."""
     text = description or ""
     for trig in _GRAD_TRIGGER.finditer(text):
         span = text[trig.end() : trig.end() + 90]
@@ -243,14 +249,18 @@ def graduation_window(description: str) -> tuple[int | None, int | None] | None:
             continue
         first, last = tokens[0], tokens[-1]
         year = int(first.group(2))
+        named = _MONTHS[first.group(1).lower()[:3]] if first.group(1) else None
+        before = span[: first.start()]
+        after = span[first.end() : tokens[1].start() if len(tokens) >= 2 else None]  # up to the next date
+        if _AFTER_WORDS.search(before) or _OR_LATER.search(after):
+            return _month_index(year, named or 1), None
+        if _BEFORE_WORDS.search(before) or _OR_EARLIER.search(after):
+            return None, _month_index(year, named or 12)
         if len(tokens) >= 2:
             lo_month = _MONTHS[first.group(1).lower()[:3]] if first.group(1) else 1
             hi_month = _MONTHS[last.group(1).lower()[:3]] if last.group(1) else 12
             lo, hi = _month_index(year, lo_month), _month_index(int(last.group(2)), hi_month)
             return (lo, hi) if lo <= hi else None
-        if _BEFORE_WORDS.search(span[: first.start()]):
-            month = _MONTHS[first.group(1).lower()[:3]] if first.group(1) else 12
-            return None, _month_index(year, month)
         return _month_index(year, 1), _month_index(year, 12)
     return None
 
