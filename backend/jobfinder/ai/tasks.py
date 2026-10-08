@@ -4,6 +4,7 @@ import re
 from pathlib import Path
 
 from jobfinder.ai.claude_code import AIError, ClaudeCode
+from jobfinder.config import get_settings
 from jobfinder.ai.schemas import (
     Background,
     Consolidated,
@@ -11,11 +12,12 @@ from jobfinder.ai.schemas import (
     FollowupQuestions,
     MatchScore,
     Ping,
+    ProfileAudit,
 )
 
 PROMPTS = Path(__file__).parent / "prompts"
 MAX_SOURCE_CHARS = 30_000
-MAX_JOB_CHARS = 6_000
+MAX_JOB_CHARS = 12_000
 
 TONES = {
     "professional": "Polished, confident and formal-but-human. About 300 words in 3 or 4 paragraphs.",
@@ -75,6 +77,27 @@ class AITasks:
         )
         return result.questions[:10]
 
+    async def audit_profile(
+        self, status: dict, background: dict, facts: list[tuple[str, str]], demand: list[dict], skipped: list[str]
+    ) -> ProfileAudit:
+        """Screen the candidate like a recruiter: build the dossier, rate readiness, pick the next questions.
+        demand: [{requirement, jobs, importance}] that scored jobs asked for and the profile left open."""
+        known = {
+            "job_search_status": {k: v for k, v in status.items() if v not in (None, "", [])},
+            "background": background,
+            "answers_given": [{"question": q, "answer": a} for q, a in facts],
+            "requirements_target_jobs_ask_for_that_are_unconfirmed": demand,
+            "questions_the_candidate_skipped": skipped,
+        }
+        return await self.claude.run(
+            "Audit this candidate.\n\n" + data_block("data", json.dumps(known, indent=1)),
+            system=load_prompt("profile_audit"),
+            output=ProfileAudit,
+            model="sonnet",
+            task="audit_profile",
+            timeout_s=240,
+        )
+
     async def ping(self) -> bool:
         """Cheapest possible call, used to check that Claude is connected."""
         out = await self.claude.run(
@@ -84,12 +107,14 @@ class AITasks:
         return out.ok
 
     async def score_match(
-        self, status: dict, background: dict, facts: list[tuple[str, str]], job: dict
+        self, status: dict, background: dict, facts: list[tuple[str, str]], job: dict, dossier: dict | None = None
     ) -> MatchScore:
         """job: title, company, location, workplace_type, salary, seniority, description."""
         candidate = {
-            "preferences": status,
+            # "not sure" answers are null/empty: leave them out so they don't read as negatives
+            "preferences": {k: v for k, v in status.items() if v not in (None, "", [])},
             "background": background,
+            **({"recruiter_dossier": dossier} if dossier else {}),
             "answers_given": [{"question": q, "answer": a} for q, a in facts],
         }
         posting = {k: v for k, v in job.items() if k != "description" and v not in (None, "")}
@@ -100,7 +125,8 @@ class AITasks:
             + data_block("job", json.dumps(posting, indent=1) + "\n\nDescription:\n" + (job.get("description") or "")[:MAX_JOB_CHARS])
         )
         return await self.claude.run(
-            body, system=load_prompt("match"), output=MatchScore, model="haiku", task="score_match", timeout_s=120,
+            body, system=load_prompt("match"), output=MatchScore, model=get_settings().match_model, task="score_match",
+            timeout_s=180,
         )
 
     async def cover_letter(
@@ -154,7 +180,7 @@ class AITasks:
         ])
         return await self.claude.run(
             body, system=load_prompt("consolidate_questions").replace("{max_questions}", str(max_questions)),
-            output=Consolidated, model="haiku", task="consolidate_questions", timeout_s=120,
+            output=Consolidated, model="sonnet", task="consolidate_questions", timeout_s=120,
         )
 
 

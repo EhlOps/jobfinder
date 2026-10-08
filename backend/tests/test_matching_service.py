@@ -21,7 +21,7 @@ class FakeAI:
     def __init__(self, scores=None, errors=None):
         self.scores, self.errors, self.calls = scores or {}, errors or {}, []
 
-    async def score_match(self, status, background, facts, job):
+    async def score_match(self, status, background, facts, job, dossier=None):
         self.calls.append(job["title"])
         if (err := self.errors.get(job["title"])) is not None:
             raise err
@@ -140,6 +140,24 @@ async def test_budget_limits_scoring_and_reports_pending(maker):
         assert await service.remaining_budget(db, u.id) == 3
 
 
+async def test_per_user_budget_overrides_default_and_can_be_turned_off(maker):
+    async with maker() as db:
+        u = await make_user(db)
+        for i in range(4):
+            await make_job(db, f"Backend Engineer {i}")
+        u.match_budget = 2
+        await db.commit()
+        assert await service.remaining_budget(db, u.id) == 2
+        ai = FakeAI()
+        out = await service.match_user(db, ai, u.id)
+        assert out["scored"] == 2 and out["pending"] == 2
+        u.match_budget_enabled = False
+        await db.commit()
+        assert await service.remaining_budget(db, u.id) == service.UNLIMITED
+        out = await service.match_user(db, ai, u.id)
+        assert out["scored"] == 2 and out["pending"] == 0 and len(await matches(db)) == 4
+
+
 async def test_best_prefilter_candidates_are_scored_first(maker):
     async with maker() as db:
         skills = [{"name": s} for s in ("Python", "Go", "Postgres", "Kafka")]
@@ -182,11 +200,11 @@ async def test_profile_change_rescoring_keeps_status_and_skips_dismissed(maker):
         await db.commit()
         ai2 = FakeAI({"Backend Engineer S": 95})
         out = await service.match_user(db, ai2, u.id)
-        # saved + promising new are refreshed (saved first); dismissed and the poor match are left alone
-        assert ai2.calls == ["Backend Engineer S", "Backend Engineer N"] and out["scored"] == 2
+        # saved first, then by score; low scores are refreshed too (answers often fill the gap); dismissed is left alone
+        assert ai2.calls == ["Backend Engineer S", "Backend Engineer N", "Backend Engineer P"] and out["scored"] == 3
         rows = {m.job_id: m for m in (await db.scalars(sa.select(JobMatch)))}
         assert rows[saved.id].llm_score == 95 and rows[saved.id].status == "saved" and rows[saved.id].profile_version == 2
-        assert rows[dismissed.id].profile_version == 1 and rows[new_poor.id].profile_version == 1
+        assert rows[dismissed.id].profile_version == 1 and rows[new_poor.id].profile_version == 2
         assert rows[new_good.id].profile_version == 2
 
 
@@ -238,7 +256,7 @@ async def test_company_data_feeds_prefilter_and_prompt(maker):
         seen = {}
 
         class SpyAI(FakeAI):
-            async def score_match(self, status, background, facts, job):
+            async def score_match(self, status, background, facts, job, dossier=None):
                 seen.update(job)
                 return await super().score_match(status, background, facts, job)
 
@@ -287,3 +305,26 @@ async def test_candidates_are_light_batched_and_hydrated_in_order(engine, monkey
         work = await svc.hydrate(db, cands[:3])
         assert [w[0].id for w in work] == [c.job_id for c in cands[:3]] and all(w[3] is False for w in work)
         assert await svc.hydrate(db, []) == []
+
+
+async def test_requirement_checks_drive_the_stored_score_and_persist(maker):
+    from jobfinder.ai.schemas import RequirementCheck
+
+    class ReqAI(FakeAI):
+        async def score_match(self, status, background, facts, job, dossier=None):
+            return MatchScore(
+                score=99, confidence=0.99, hire_verdict="maybe", recruiter_take="Promising; Kafka unconfirmed.",
+                requirements=[
+                    RequirementCheck(requirement="Python", status="met", evidence="3 yrs"),
+                    RequirementCheck(requirement="Kafka", status="unknown", question="Have you run Kafka?"),
+                ],
+            )
+
+    async with maker() as db:
+        u = await make_user(db)
+        await make_job(db)
+        await service.match_user(db, ReqAI(), u.id)
+        m = (await db.scalars(sa.select(JobMatch))).one()
+        assert m.llm_score == 74 and m.confidence == 0.5  # 0.8*75 + 0.2*70 (both must-haves; Kafka unknown); the model's 99 is ignored
+        assert [r["requirement"] for r in m.requirements] == ["Python", "Kafka"]
+        assert m.unknowns[0]["question"] == "Have you run Kafka?" and m.hire_verdict == "maybe"

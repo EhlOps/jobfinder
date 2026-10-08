@@ -35,9 +35,10 @@ class Settings(BaseSettings):
     digest_min_score: int = 65  # only matches at least this good are included in the daily email
     digest_max_matches: int = 10
     questions_per_email: int = 6
-    max_open_questions: int = 8  # stop collecting new questions while this many are unanswered
+    max_open_questions: int = 15  # stop collecting new questions while this many are unanswered
     ingest_concurrency: int = 5
     match_daily_llm_budget: int = 25  # LLM-scored jobs per user per rolling 24h
+    match_model: str = "sonnet"  # model that scores jobs: haiku | sonnet | opus
     match_min_prefilter: float = 20.0  # candidates scoring below this (0-100) never reach the LLM
     jobspy_max_queries: int = 10
     jobspy_results_per_query: int = 25

@@ -3,13 +3,13 @@ from typing import Annotated, Any, Literal
 
 import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jobfinder.auth.security import current_user
 from jobfinder.db import get_db
 from jobfinder.ingest.base import safe_http_url
-from jobfinder.models import CoverLetter, Job, JobMatch, Profile, User
+from jobfinder.models import CoverLetter, Job, JobMatch, Profile, ProfileFact, User
 from jobfinder.scheduling import queue
 
 router = APIRouter(prefix="/api/matches", tags=["matches"])
@@ -47,6 +47,8 @@ class MatchOut(BaseModel):
     verdict: str
     reasons: list[str]
     gaps: list[str]
+    hire_verdict: str = ""
+    recruiter_take: str = ""
     stale: bool  # scored against an older version of the profile
     has_cover_letter: bool = False
     scored_at: datetime
@@ -55,6 +57,7 @@ class MatchOut(BaseModel):
 
 class MatchDetail(MatchOut):
     unknowns: list[dict[str, Any]]
+    requirements: list[dict[str, Any]] = []
     description: str
 
 
@@ -85,6 +88,7 @@ def _out(m: JobMatch, j: Job, version: int, has_letter: bool = False) -> dict:
     return {
         "id": m.id, "status": m.status, "score": m.llm_score, "confidence": m.confidence,
         "verdict": m.verdict, "reasons": m.reasons, "gaps": m.gaps,
+        "hire_verdict": m.hire_verdict, "recruiter_take": m.recruiter_take,
         "stale": m.profile_version < version, "has_cover_letter": has_letter, "scored_at": m.scored_at,
         "job": _job_out(j),
     }
@@ -166,7 +170,31 @@ async def get_match(match_id: int, user: CurrentUser, db: DB):
     m, j = await _get_owned(db, user, match_id)
     profile = await db.get(Profile, user.id)
     has_letter = j.id in await _with_letters(db, user.id, [j.id])
-    return MatchDetail(**_out(m, j, profile.version if profile else 1, has_letter), unknowns=m.unknowns, description=j.description_text)
+    return MatchDetail(**_out(m, j, profile.version if profile else 1, has_letter), unknowns=m.unknowns, requirements=m.requirements or [], description=j.description_text)
+
+
+class JobAnswer(BaseModel):
+    question: str = Field(min_length=1, max_length=2000)
+    answer: str = Field(min_length=1, max_length=3000)
+
+
+class JobAnswersIn(BaseModel):
+    answers: list[JobAnswer] = Field(min_length=1, max_length=14)
+
+
+@router.post("/{match_id}/answers", status_code=202)
+async def answer_for_match(match_id: int, body: JobAnswersIn, user: CurrentUser, db: DB):
+    """Answer a requirement question right on the job: saved as profile facts, then this and the other
+    matches are re-scored (this one first)."""
+    m, j = await _get_owned(db, user, match_id)
+    for a in body.answers:
+        db.add(ProfileFact(user_id=user.id, question=a.question, answer=a.answer, source="job_question", job_id=j.id))
+    profile = await db.get(Profile, user.id)
+    if profile:
+        profile.version += 1
+    await db.commit()
+    await queue.enqueue(db, "match_user", user_id=user.id, dedupe=True)
+    return {"saved": len(body.answers)}
 
 
 @router.patch("/{match_id}", response_model=MatchOut)

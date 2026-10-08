@@ -65,9 +65,12 @@ opt-in and against those sites' terms: set `ENABLE_JOBSPY=true` in `backend/.env
 
 Finishing onboarding (or clicking **Find new matches**) queues a matching run in the worker. For each
 user it drops jobs that clearly don't fit (level, place, pay floor, sponsorship, years of experience
-asked), ranks the rest cheaply, then has Claude score the best ones and explain why. Only
+asked), ranks the rest cheaply, then has Claude check each requirement in the posting against your profile
+(met / partial / not in your profile / not met) and computes the score from that checklist. Requirements your
+profile is silent on count as neutral, not as misses, and each one becomes a question you can answer on the job
+page. The **Strengthen** page keeps interviewing you the way a recruiter would until your profile is complete. Only
 `MATCH_DAILY_LLM_BUDGET` jobs (default 25) are scored per user per rolling 24h to protect your Claude
-usage; the page says how many promising jobs are still waiting. Scoring takes about 25 seconds per job.
+usage; each user can change that number, or turn the limit off, under **Settings**; the page says how many promising jobs are still waiting. Scoring uses Sonnet (`MATCH_MODEL`) and is slower per job than Haiku was.
 
 ## Cover letters
 

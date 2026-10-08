@@ -19,7 +19,7 @@ async def collected(db):
     return {m.id: m.questions_collected for m in await db.scalars(sa.select(JobMatch))}
 
 
-async def test_only_unsure_promising_matches_are_considered(maker):
+async def test_every_active_undismissed_match_is_considered_whatever_its_score(maker):
     async with maker() as db:
         u = await make_user(db)
         unsure, _ = await make_match(db, u.id, score=70, confidence=0.4, unknowns=[unknown("Have you used Kafka?")])
@@ -29,19 +29,17 @@ async def test_only_unsure_promising_matches_are_considered(maker):
         closed, _ = await make_match(db, u.id, score=70, confidence=0.4, active=False, unknowns=[unknown("Closed?")])
         ai = FakeAI()
         out = await service.collect_questions(db, ai, u.id)
-        assert [r[0] for r in ai.calls[0]["raw"]] == ["Have you used Kafka?"]
-        assert out["new_questions"] == 1 and out["reviewed"] == 1
-        qs = (await db.scalars(sa.select(ClarifyingQuestion))).all()
-        assert [(q.question, q.status, q.match_ids) for q in qs] == [("Have you used Kafka?", "pending", [unsure.id])]
+        assert sorted(r[0] for r in ai.calls[0]["raw"]) == ["Also ignored?", "Have you used Kafka?", "Ignored?"]
+        assert out["reviewed"] == 3
         c = await collected(db)
-        assert c[unsure.id] and c[confident.id] and c[poor.id]      # confident / poor ones are marked reviewed without an LLM call
+        assert c[unsure.id] and c[confident.id] and c[poor.id]      # a poor score is no reason not to ask
         assert not c[dismissed.id] and not c[closed.id]             # these may become relevant again
 
 
 async def test_no_llm_call_when_nothing_to_review(maker):
     async with maker() as db:
         u = await make_user(db)
-        await make_match(db, u.id, score=90, confidence=0.9, unknowns=[unknown("x?")])
+        await make_match(db, u.id, score=90, confidence=0.9, unknowns=[])
         ai = FakeAI()
         out = await service.collect_questions(db, ai, u.id)
         assert ai.calls == [] and out["new_questions"] == 0
@@ -55,10 +53,10 @@ async def test_consolidation_merges_sources_and_drops_answered(maker):
         b, _ = await make_match(db, u.id, score=72, confidence=0.5, unknowns=[unknown("Have you used AI coding tools?")])
         db.add(ProfileFact(user_id=u.id, question="Rust?", answer="Yes, two years", source="followup"))
         await db.commit()
-        # raw order: 0 Copilot (a), 1 Rust (a), 2 AI tools (b)
+        # raw order (all asked once, then by position in the job's list): 0 Copilot (a), 1 AI tools (b), 2 Rust (a)
         result = Consolidated(
-            questions=[ConsolidatedQuestion(question="Have you used AI coding tools like Copilot?", why="many jobs ask", sources=[0, 2])],
-            already_answered=[1],
+            questions=[ConsolidatedQuestion(question="Have you used AI coding tools like Copilot?", why="many jobs ask", sources=[0, 1])],
+            already_answered=[2],
         )
         ai = FakeAI(result)
         await service.collect_questions(db, ai, u.id)

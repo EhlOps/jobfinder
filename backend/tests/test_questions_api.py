@@ -3,7 +3,7 @@ import sqlalchemy as sa
 from factories import make_match, make_question
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from jobfinder.models import ProfileFact, Task, User
+from jobfinder.models import Profile, ProfileFact, Task, User
 from jobfinder.notify import email as mail
 from jobfinder.notify.email import EmailError
 from jobfinder.notify.tokens import MAX_AGE, make_token
@@ -115,13 +115,41 @@ async def test_unsubscribe_rejects_other_tokens(client):
 # ── settings ─────────────────────────────────────────────────────────────
 async def test_settings_read_update_and_validation(authed):
     s = (await authed.get("/api/settings")).json()
-    assert s == {"digest_enabled": True, "digest_hour": 8, "timezone": "UTC", "question_emails_enabled": True}
-    new = {"digest_enabled": False, "digest_hour": 17, "timezone": "America/New_York", "question_emails_enabled": True}
+    assert s == {"digest_enabled": True, "digest_hour": 8, "timezone": "UTC", "question_emails_enabled": True,
+                 "match_budget_enabled": True, "match_budget": 25}
+    new = {"digest_enabled": False, "digest_hour": 17, "timezone": "America/New_York", "question_emails_enabled": True,
+           "match_budget_enabled": False, "match_budget": 40}
     assert (await authed.put("/api/settings", json=new)).json() == new
     assert (await authed.get("/api/settings")).json() == new
-    for bad in ({**new, "digest_hour": 24}, {**new, "digest_hour": -1}, {**new, "timezone": "Mars/Base"}, {**new, "timezone": ""}):
+    for bad in ({**new, "digest_hour": 24}, {**new, "digest_hour": -1}, {**new, "timezone": "Mars/Base"}, {**new, "timezone": ""},
+                {**new, "match_budget": 0}, {**new, "match_budget": 1001}):
         assert (await authed.put("/api/settings", json=bad)).status_code == 422
     assert (await authed.get("/api/settings")).json() == new
+
+
+async def test_raising_the_match_budget_queues_a_run(authed, maker):
+    me = await uid(authed)
+    async with maker() as db:
+        profile = await db.get(Profile, me)
+        if profile is None:
+            db.add(Profile(user_id=me, status={"target_roles": ["x"]}, background={}, version=1))
+        else:
+            profile.status = {"target_roles": ["x"]}
+        await db.commit()
+    base = (await authed.get("/api/settings")).json()
+
+    async def queued():
+        async with maker() as db:
+            return await db.scalar(sa.select(sa.func.count()).select_from(Task).where(Task.kind == "match_user"))
+
+    await authed.put("/api/settings", json={**base, "match_budget": 10})  # lowering: nothing to start
+    assert await queued() == 0
+    await authed.put("/api/settings", json={**base, "match_budget": 50})
+    assert await queued() == 1
+    await authed.put("/api/settings", json={**base, "match_budget": 50, "match_budget_enabled": False})  # off: more room
+    assert await queued() == 1  # deduped with the run already waiting
+    s = (await authed.get("/api/settings")).json()
+    assert s["match_budget_enabled"] is False and s["match_budget"] == 50
 
 
 async def test_settings_require_login(client):

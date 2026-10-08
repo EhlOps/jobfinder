@@ -31,3 +31,5 @@ export const SENIORITY_LABEL: Record<string, string> = {
   intern: "Intern", new_grad: "New grad", junior: "Junior", mid: "Mid-level", senior: "Senior", staff: "Staff+", manager: "Manager",
 };
 export const VERDICT_LABEL: Record<string, string> = { strong: "Strong fit", good: "Good fit", stretch: "Stretch", no: "Poor fit" };
+
+export const HIRE_LABEL: Record<string, string> = { yes: "Recruiter: submit", maybe: "Recruiter: maybe", no: "Recruiter: pass" };

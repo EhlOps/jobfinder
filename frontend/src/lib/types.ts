@@ -109,13 +109,24 @@ export interface Match {
   verdict: "strong" | "good" | "stretch" | "no";
   reasons: string[];
   gaps: string[];
+  hire_verdict?: "yes" | "maybe" | "no" | "";
+  recruiter_take?: string;
   stale: boolean;
   has_cover_letter: boolean;
   scored_at: string;
   job: MatchJob;
 }
+export type RequirementStatus = "met" | "partial" | "unknown" | "unmet";
+export interface Requirement {
+  requirement: string;
+  importance: "must" | "nice";
+  status: RequirementStatus;
+  evidence: string;
+  question: string;
+}
 export interface MatchDetail extends Match {
   unknowns: { question: string; why: string }[];
+  requirements: Requirement[];
   description: string;
 }
 export interface MatchList {
@@ -149,5 +160,28 @@ export interface Settings {
   digest_hour: number;
   timezone: string;
   question_emails_enabled: boolean;
+  match_budget_enabled: boolean;
+  match_budget: number;
 }
 export interface Fact { id: number; question: string; answer: string; source: string }
+
+export interface DossierItem { label: string; detail: string; confidence: number }
+export interface Dossier {
+  headline?: string;
+  years_experience?: string;
+  skills?: DossierItem[];
+  experience?: DossierItem[];
+  logistics?: DossierItem[];
+  strengths?: string[];
+  concerns?: string[];
+  hire_view?: string;
+}
+export interface InterviewQuestion { question: string; why: string; dimension: string }
+export interface Interview {
+  readiness: number;
+  dimensions: Record<string, number>;
+  dossier: Dossier;
+  questions: InterviewQuestion[];
+  audited: boolean;
+  stale: boolean;
+}

@@ -9,6 +9,7 @@ import Home from "./routes/Home";
 import Onboarding from "./routes/Onboarding";
 import AiSettings from "./routes/AiSettings";
 import MatchDetail from "./routes/MatchDetail";
+import Interview from "./routes/Interview";
 import Questions from "./routes/Questions";
 import QuestionsByLink from "./routes/QuestionsByLink";
 import Settings from "./routes/Settings";
@@ -31,6 +32,7 @@ function Shell() {
         <nav className="nav">
           <NavLink to="/" end>Matches</NavLink>
           <NavLink to="/questions">Questions{open > 0 && <span className="badge">{open}</span>}</NavLink>
+          <NavLink to="/strengthen">Strengthen</NavLink>
           <NavLink to="/profile">Profile</NavLink>
           <NavLink to="/settings">Settings</NavLink>
           {user.is_admin && <NavLink to="/settings/ai">AI setup</NavLink>}
@@ -54,6 +56,7 @@ export default function App() {
         <Route path="/matches/:id" element={<MatchDetail />} />
         <Route path="/onboarding" element={<Onboarding />} />
         <Route path="/questions" element={<Questions />} />
+        <Route path="/strengthen" element={<Interview />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/settings/ai" element={<AiSettings />} />

@@ -48,6 +48,12 @@ async def followup_questions(db: AsyncSession, ai: AITasks, task: Task) -> dict:
 
 
 
+async def audit_profile(db: AsyncSession, ai: AITasks, task: Task) -> dict:
+    from jobfinder.profile import interview
+
+    return await interview.run_audit(db, ai, task.user_id)
+
+
 async def ingest_jobs(db: AsyncSession, ai: AITasks, task: Task) -> dict:
     """Poll all ATS boards (and jobspy when enabled). Scheduling this is milestone 7."""
     from jobfinder.db import SessionLocal
@@ -126,6 +132,7 @@ async def ai_check(db: AsyncSession, ai: AITasks, task: Task) -> dict:
 HANDLERS: dict[str, Handler] = {
     "extract_profile": extract_profile,
     "followup_questions": followup_questions,
+    "audit_profile": audit_profile,
     "ingest_jobs": ingest_jobs,
     "ai_check": ai_check,
     "match_user": match_user,

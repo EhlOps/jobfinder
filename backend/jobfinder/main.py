@@ -4,6 +4,7 @@ from jobfinder.api import (
     ai_admin,
     cover_letters,
     documents,
+    interview,
     links,
     matches,
     onboarding,
@@ -17,6 +18,7 @@ from jobfinder.auth import routes as auth_routes
 app = FastAPI(title="JobFinder")
 app.include_router(auth_routes.router)
 app.include_router(profile.router)
+app.include_router(interview.router)
 app.include_router(documents.router)
 app.include_router(links.router)
 app.include_router(onboarding.router)

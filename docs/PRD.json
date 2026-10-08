@@ -14,7 +14,7 @@
     },
     "design_doc": "docs/PLAN.md"
   },
-  "last_updated": "2026-10-03",
+  "last_updated": "2026-10-07",
   "requirements": [
     {
       "id": "REQ-01",
@@ -108,9 +108,9 @@
         "backend/Dockerfile.worker",
         "backend/pyproject.toml",
         "frontend/Dockerfile",
-        "frontend/nginx.conf"
+        "frontend/Caddyfile"
       ],
-      "notes": "Host ports: web 8180, api 8100, db 5433 (all localhost-only)."
+      "notes": "Host ports: web 8180, api 8100, db 5433 (all localhost-only). The web container runs Caddy (was nginx); see REQ-19."
     },
     {
       "id": "REQ-07",
@@ -360,6 +360,58 @@
         "Link requests and failed logins are rate limited per email and per real client IP"
       ],
       "notes": "Built 2026-10-04 (H1)."
+    },
+    {
+      "id": "REQ-19",
+      "area": "deployment",
+      "requirement": "The stack can be run in production on one VPS: served over HTTPS with certificates that renew themselves, services that come back after a reboot, and a way to back up and restore all state (database, uploaded files, saved Claude token).",
+      "source": "user",
+      "status": "done",
+      "milestone": "H7",
+      "implemented_in": [
+        "frontend/Caddyfile",
+        "frontend/Dockerfile",
+        "docker-compose.yml",
+        "docker-compose.prod.yml",
+        "deploy/backup.sh",
+        ".env.example",
+        "README.md"
+      ],
+      "acceptance": [
+        "Dev is unchanged: with SITE_ADDRESS unset, Caddy serves plain HTTP on :80 (published on 127.0.0.1:8180 only)",
+        "With SITE_ADDRESS set to a domain and docker-compose.prod.yml enabled (COMPOSE_FILE), ports 80, 443 and UDP 443 are published, HTTP redirects to HTTPS, and Caddy gets and renews its own certificate",
+        "Same security headers as before (CSP, X-Frame-Options, nosniff, Permissions-Policy, no-referrer on /reset-password) plus HSTS without includeSubDomains",
+        "Request bodies are capped at 20 MiB (a 21.5 MB upload gets 413); a forged X-Forwarded-For is ignored, so per-IP rate limits see the real client",
+        "db, api, worker, web and smtp have restart: unless-stopped",
+        "deploy/backup.sh dumps Postgres and archives /data/store and /data/claude, keeps the newest BACKUP_KEEP of each, and leaves no partial files when a run fails",
+        "The documented restore replaces database and files exactly (files added after the backup are gone afterwards)"
+      ],
+      "notes": "Built 2026-10-07 (H7). Verified locally (compose merge, headers, body limit, client IP, `SITE_ADDRESS=localhost` HTTPS, backup, failure cleanup, restore). Not yet seen on a real domain: see H8 and GAP-27."
+    },
+    {
+      "id": "REQ-20",
+      "area": "matching",
+      "status": "done",
+      "source": "user",
+      "requirement": "Matches must reflect what the user is actually qualified for (a currently employed user was seeing a best score of ~50). Every requirement in a posting is checked against the profile; anything partial, unknown or unmet becomes a question to the user, whatever the job's score. The profile is built up through an ongoing interview until a recruiter could say 'I could hire this person' or 'I could not'.",
+      "implemented_in": [
+        "backend/jobfinder/matching/scoring.py",
+        "backend/jobfinder/ai/prompts/match.md",
+        "backend/jobfinder/ai/prompts/profile_audit.md",
+        "backend/jobfinder/profile/interview.py",
+        "backend/jobfinder/api/interview.py",
+        "backend/jobfinder/questions/service.py",
+        "backend/alembic/versions/0011_requirement_checks.py",
+        "frontend/src/routes/Interview.tsx",
+        "frontend/src/routes/MatchDetail.tsx"
+      ],
+      "acceptance": [
+        "Each scored match stores per-requirement checks (met/partial/unknown/unmet, must/nice, evidence, question), a recruiter verdict and one-line take",
+        "The stored score is computed in code from those checks; unknown is neutral, an unmet must-have caps the score at 64",
+        "Clarifying questions are collected from matches of every score; re-scoring after a profile change covers low scores too",
+        "'Strengthen' page shows a readiness score, a recruiter-view dossier and one question at a time; answers re-run the audit and re-score",
+        "Requirements on a job can be answered inline on the match page"
+      ]
     }
   ],
   "decisions": [
@@ -446,6 +498,18 @@
       "topic": "Access model",
       "decision": "Invite-only accounts with an emailed set/reset-password link. There is no self-signup: the owner adds each account manually as a row containing only an email (all other columns NULL). Signing in with a known email that has no password yet, or a forgotten one, offers 'email me a link'; the link lets the person choose a password, which activates the account and populates the row. Unknown emails get nothing. Supersedes the open signup and the first-user-admin rule (admin only via ADMIN_EMAILS); partly supersedes DEC-01 and the admin part of DEC-09.",
       "reason": "The app is for a small hand-picked group, so public signup (code review finding CR-01) was the top risk: anyone could spend the shared Claude subscription and make the owner's Gmail relay email third parties. Proving mailbox ownership with an emailed link doubles as email verification and as the missing password reset (GAP-04). Rejected: invite codes or an allowlist with open signup (people could still create accounts before being vetted) and an admin approval queue (more UI for no gain)."
+    },
+    {
+      "id": "DEC-15",
+      "topic": "Production edge",
+      "decision": "Replace nginx in the web image with Caddy: one proxy serves the built app, forwards /api, sets the security headers and gets/renews Let's Encrypt certificates itself. Production adds docker-compose.prod.yml (public ports 80/443/UDP 443, SITE_ADDRESS required) via COMPOSE_FILE; dev keeps plain HTTP on localhost:8180. Backups are a script run from cron, not a container.",
+      "reason": "Running nginx behind a separate TLS proxy would mean two proxies, a trusted-proxy chain for the real client IP (the rate limiter depends on it) and a certbot job. Caddy does all of it in one small config, and it does not trust incoming X-Forwarded-For unless told to, so clients cannot spoof their IP. Rejected: nginx + certbot (more moving parts), a Cloudflare Tunnel (ties the deployment to one vendor)."
+    },
+    {
+      "id": "DEC-16",
+      "topic": "Match scoring",
+      "decision": "The LLM judges each posting requirement (met/partial/unknown/unmet, must/nice); the 0-100 score and confidence are computed in code (matching/scoring.py). Scoring and question consolidation use Sonnet (MATCH_MODEL, default sonnet).",
+      "reason": "The holistic Haiku score treated anything not on the resume as a gap, so qualified users clustered near 50 and the question loop (score>=50 and confidence<0.6) never fired for them. Per-requirement checks separate 'unknown' from 'unmet' and give every gap a question."
     }
   ],
   "milestones": [
@@ -630,6 +694,21 @@
         "Owner: paste a real Claude token on the AI setup page and confirm a successful call from the Docker worker (GAP-13)",
         "Owner: confirm the Gmail test message reached the inbox, not spam (GAP-21)",
         "Optional: run /code-review now that the project is under git, so it reviews a real diff"
+      ]
+    },
+    {
+      "id": "H8",
+      "priority": "P1",
+      "title": "Production rollout verification",
+      "findings": [],
+      "gaps": [
+        "GAP-27",
+        "GAP-28"
+      ],
+      "actions": [
+        "Owner: on the server, set DNS, SITE_ADDRESS, COMPOSE_FILE and PUBLIC_BASE_URL, run docker compose up -d --build, and confirm a real certificate is issued and http redirects to https",
+        "Owner: install the nightly cron entry for deploy/backup.sh, copy backups off the host, and rehearse one restore",
+        "Owner: reboot the server once and confirm every service comes back"
       ]
     }
   ],
@@ -995,6 +1074,39 @@
       ],
       "from_legacy": [],
       "note": "Mitigated by the planned owner break-glass CLI (reset-link prints a one-time link instead of emailing it) and by the existing SQL route for adding users. Tracked in backlog item H1."
+    },
+    {
+      "id": "GAP-27",
+      "area": "deployment",
+      "type": "test-debt",
+      "status": "open",
+      "summary": "Production HTTPS has only been tried with Caddy's local CA (SITE_ADDRESS=localhost). A real Let's Encrypt issuance on a public domain, HTTP-to-HTTPS redirect on ports 80/443 and HTTP/3 have not been seen.",
+      "source": "testing",
+      "related_findings": [],
+      "from_legacy": [],
+      "note": "Tracked in H8. Needs a domain and a server."
+    },
+    {
+      "id": "GAP-28",
+      "area": "deployment",
+      "type": "risk",
+      "status": "accepted",
+      "summary": "Backups stay on the same host unless the owner copies them elsewhere, the nightly cron entry is manual setup, and a restore is a manual, documented procedure. A lost server loses everything not copied off.",
+      "source": "planning",
+      "related_findings": [],
+      "from_legacy": [],
+      "note": "README documents the cron line and restore steps. The dkim volume (postfix direct mode only) is not included."
+    },
+    {
+      "id": "GAP-29",
+      "area": "deployment",
+      "type": "risk",
+      "status": "accepted",
+      "summary": "No CI/CD or image registry: updates are `git pull && docker compose up -d --build` on the server, with no automatic tests, health-gated rollout or rollback, and no monitoring or alerting.",
+      "source": "planning",
+      "related_findings": [],
+      "from_legacy": [],
+      "note": "Fine for a small invite-only group; take a backup before an update that adds a migration."
     }
   ],
   "code_review": {
@@ -1469,7 +1581,7 @@
   "how_to_verify": {
     "backend_tests": "docker compose up -d db && cd backend && uv run pytest (tests reset and use a jobfinder_test database on localhost:5433; 345 tests)",
     "frontend_build": "cd frontend && npm run build",
-    "stack": "docker compose up -d --build, then GET http://localhost:8180/healthz",
+    "stack": "docker compose up -d --build, then GET http://localhost:8180/healthz. Production: see README 'Deploy (production)'; backups with deploy/backup.sh",
     "ai": "Sign in as the admin, open 'AI setup', paste the token from `claude setup-token`, click Save & test (or run docker compose exec worker python -m jobfinder.cli ai-check)",
     "store": "docker compose exec api ls -R /data/store ; GET /api/documents?tag=key:value ; GET /api/documents/{id}/download",
     "ingest": "docker compose exec worker python -m jobfinder.cli ingest (or --company discord for one board); then select count(*) from jobs",
@@ -1642,6 +1754,23 @@
         "uv run pytest: 345 passed",
         "frontend npm test: 28 passed, npm run build ok"
       ]
+    },
+    {
+      "date": "2026-10-07",
+      "task": "H7: production deployment (Caddy TLS, restarts, backups)",
+      "summary": "Replaced nginx with Caddy (frontend/Caddyfile) and added docker-compose.prod.yml for public 80/443 and the domain, restart: unless-stopped on the long-running services, and deploy/backup.sh with documented restore. README now covers dev vs prod, updating, backups and restore. A /code-review of the change found 8 issues (cron line failing on a fresh install, quoted .env values, .part files counting toward retention, upload limit 5% lower than nginx's, HSTS over subdomains, 8443 always published, restore leaving stray files, duplicate :80 default); all were fixed.",
+      "verified_by": [
+        "docker compose config valid for dev and for the prod override (SITE_ADDRESS required there)",
+        "dev stack: headers, SPA deep link, /healthz via proxy, 20.5 MB upload passes and 21.5 MB gets 413, forged X-Forwarded-For ignored",
+        "SITE_ADDRESS=localhost: HTTPS over HTTP/2 with HSTS, HTTP redirects",
+        "backup, retention pruning, failure cleanup, cron line from a fresh checkout, and a restore that removed files created after the backup",
+        "Not run: backend/frontend test suites (no application code changed); real Let's Encrypt issuance (GAP-27)"
+      ]
+    },
+    {
+      "date": "2026-10-07",
+      "task": "Requirement-level matching and the recruiter-grade profile interview",
+      "summary": "Added RequirementCheck/ProfileAudit schemas, scoring.py, rewrote match.md, added profile_audit.md, the audit_profile task, /api/profile/interview, inline answers on matches (/api/matches/{id}/answers), migration 0011, removed the score>=50 / confidence<0.6 gates in question collection and the >=50 filter in re-scoring, and added the Strengthen page, requirements table and recruiter badge. Backend and frontend suites pass; not yet tried against the real Claude CLI."
     }
   ]
 }

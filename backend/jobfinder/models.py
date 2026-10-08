@@ -38,6 +38,8 @@ class User(Base):
     digest_enabled: Mapped[bool | None] = mapped_column(nullable=True)
     is_admin: Mapped[bool | None] = mapped_column(nullable=True)
     question_emails_enabled: Mapped[bool | None] = mapped_column(nullable=True)
+    match_budget_enabled: Mapped[bool | None] = mapped_column(nullable=True)  # False = no daily scoring limit
+    match_budget: Mapped[int | None] = mapped_column(Integer, nullable=True)  # LLM-scored jobs per rolling 24h; null = server default
     last_digest_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -72,6 +74,10 @@ class Profile(Base):
     version: Mapped[int] = mapped_column(Integer, default=1)
     # Last matching run: {last_run_at, pending, scored}. Shown on the matches page.
     match_summary: Mapped[dict] = mapped_column(JSONType, default=dict, server_default="{}")
+    # Recruiter-style audit of the profile (see ai/prompts/profile_audit.md).
+    dossier: Mapped[dict] = mapped_column(JSONType, default=dict, server_default="{}")
+    readiness: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    audit: Mapped[dict] = mapped_column(JSONType, default=dict, server_default="{}")  # {dimensions, questions, version}
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
@@ -86,7 +92,7 @@ class ProfileFact(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     question: Mapped[str] = mapped_column(Text)
     answer: Mapped[str] = mapped_column(Text)
-    source: Mapped[str] = mapped_column(String(32), default="onboarding")  # onboarding|followup|job_question
+    source: Mapped[str] = mapped_column(String(32), default="onboarding")  # onboarding|followup|job_question|interview
     job_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # FK added with the jobs table
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -205,6 +211,9 @@ class JobMatch(Base):
     reasons: Mapped[list] = mapped_column(JSONType, default=list)
     gaps: Mapped[list] = mapped_column(JSONType, default=list)
     unknowns: Mapped[list] = mapped_column(JSONType, default=list)  # [{question, why}] for milestone 7 emails
+    requirements: Mapped[list] = mapped_column(JSONType, default=list, server_default="[]")  # [RequirementCheck]
+    hire_verdict: Mapped[str] = mapped_column(String(8), default="", server_default="")  # yes|maybe|no
+    recruiter_take: Mapped[str] = mapped_column(Text, default="", server_default="")
     status: Mapped[str] = mapped_column(String(16), default="new")  # new|saved|applied|dismissed
     scored_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     digested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

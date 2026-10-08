@@ -100,3 +100,16 @@ a.button-link { display: inline-block; border: 1px solid var(--border); color: v
 .badge { background: var(--accent); color: var(--accent-text); border-radius: 999px; font-size: .72rem; padding: 0 6px; margin-left: 5px; }
 .notice.info { border-color: var(--accent); }
 @media (max-width: 720px) { .top { flex-wrap: wrap; } .top .muted { display: none; } .nav { order: 3; width: 100%; margin: 4px 0 0; overflow-x: auto; } }
+
+/* recruiter-grade profile */
+.callout { border-left: 3px solid var(--accent); padding: 4px 12px; margin: 10px 0; }
+.dims { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px 16px; margin-top: 10px; }
+.dim span { font-size: .8rem; color: var(--muted); }
+.bar { height: 6px; border-radius: 3px; background: var(--border); overflow: hidden; }
+.bar > div { height: 100%; background: var(--accent); }
+.reqs { width: 100%; border-collapse: collapse; }
+.reqs td { padding: 8px 6px; border-top: 1px solid var(--border); vertical-align: top; }
+.reqs td:last-child { white-space: nowrap; text-align: right; }
+.chip.req-met { border-color: var(--ok); color: var(--ok); }
+.chip.req-partial, .chip.req-unknown { border-color: #d99a00; color: #b07c00; }
+.chip.req-unmet { border-color: var(--danger); color: var(--danger); }

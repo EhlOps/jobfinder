@@ -15,12 +15,14 @@ from jobfinder.ai.schemas import MatchScore, verdict_for
 from jobfinder.ai.tasks import AITasks
 from jobfinder.config import get_settings
 from jobfinder.matching import prefilter as pf
-from jobfinder.models import Company, Job, JobMatch, Profile, ProfileFact
+from jobfinder.matching.scoring import finalize
+from jobfinder.models import ClarifyingQuestion, Company, Job, JobMatch, Profile, ProfileFact, User
 from jobfinder.scheduling import queue
 
 log = logging.getLogger("jobfinder.matching")
 BUDGET_WINDOW = timedelta(hours=24)
 STALE_STATUSES = ("new", "saved")  # dismissed/applied matches are never re-scored
+UNLIMITED = 10**9  # remaining budget for users who turned the daily limit off
 
 
 BATCH = 500  # jobs whose descriptions are loaded and scored at a time
@@ -50,12 +52,16 @@ def job_payload(job: Job, company: Company | None) -> dict:
 
 
 async def remaining_budget(db: AsyncSession, user_id: int) -> int:
+    user = await db.get(User, user_id)
+    if user is not None and user.match_budget_enabled is False:
+        return UNLIMITED
+    limit = user.match_budget if user is not None and user.match_budget is not None else get_settings().match_daily_llm_budget
     used = await db.scalar(
         sa.select(sa.func.count()).select_from(JobMatch).where(
             JobMatch.user_id == user_id, JobMatch.scored_at >= datetime.now(UTC) - BUDGET_WINDOW
         )
     )
-    return max(0, get_settings().match_daily_llm_budget - (used or 0))
+    return max(0, limit - (used or 0))
 
 
 def _score_batch(rows: list, descriptions: dict[int, str], status: dict, skills: list[str],
@@ -144,8 +150,9 @@ async def hydrate(db: AsyncSession, candidates: list[Candidate]) -> list[tuple[J
 
 
 async def find_stale(db: AsyncSession, user_id: int, version: int) -> list[tuple[JobMatch, Job, Company | None]]:
-    """Matches scored against an older profile version that are still worth refreshing: saved ones
-    first, then new ones that looked promising. Closed jobs are skipped."""
+    """Matches scored against an older profile version: ones the user answered questions about first,
+    then saved ones, then the rest by score (a low score is often just a gap the answers fill). Closed jobs are skipped."""
+    answered = await _answered_match_ids(db, user_id)
     rows = (
         await db.execute(
             sa.select(JobMatch, Job, Company)
@@ -154,23 +161,46 @@ async def find_stale(db: AsyncSession, user_id: int, version: int) -> list[tuple
             .where(
                 JobMatch.user_id == user_id, JobMatch.profile_version < version,
                 JobMatch.status.in_(STALE_STATUSES), Job.is_active.is_(True),
-                sa.or_(JobMatch.status == "saved", JobMatch.llm_score >= 50),
             )
-            .order_by((JobMatch.status == "saved").desc(), JobMatch.llm_score.desc())
+            .order_by(JobMatch.id.in_(answered).desc(), (JobMatch.status == "saved").desc(), JobMatch.llm_score.desc())
         )
     ).all()
     return [(m, j, c) for m, j, c in rows]
 
 
+async def _answered_match_ids(db: AsyncSession, user_id: int) -> list[int]:
+    """Matches linked to clarifying questions the user has answered: re-score these first."""
+    rows = await db.scalars(
+        sa.select(ClarifyingQuestion.match_ids).where(
+            ClarifyingQuestion.user_id == user_id, ClarifyingQuestion.status == "answered"
+        )
+    )
+    ids = {mid for found in rows for mid in found or []}
+    # ...and matches for jobs the user answered a question about directly on the job page
+    ids |= set(
+        await db.scalars(
+            sa.select(JobMatch.id)
+            .join(ProfileFact, ProfileFact.job_id == JobMatch.job_id)
+            .where(JobMatch.user_id == user_id, ProfileFact.user_id == user_id, ProfileFact.source == "job_question")
+        )
+    )
+    return sorted(ids) or [-1]
+
+
 async def _score(ai: AITasks, profile: Profile, facts: list[tuple[str, str]], job: Job, company: Company | None):
-    return await ai.score_match(profile.status or {}, profile.background or {}, facts, job_payload(job, company))
+    result = await ai.score_match(
+        profile.status or {}, profile.background or {}, facts, job_payload(job, company), dossier=profile.dossier or None
+    )
+    return finalize(result)
 
 
 async def _save(db: AsyncSession, user_id: int, job_id: int, version: int, prefilter: float, result: MatchScore) -> None:
     values = {
         "user_id": user_id, "job_id": job_id, "profile_version": version, "prefilter_score": prefilter,
         "llm_score": result.score, "confidence": result.confidence, "verdict": verdict_for(result.score),
-        "reasons": result.reasons[:4], "gaps": result.gaps[:4], "unknowns": [u.model_dump() for u in result.unknowns[:3]],
+        "reasons": result.reasons[:4], "gaps": result.gaps[:4], "unknowns": [u.model_dump() for u in result.unknowns[:6]],
+        "requirements": [r.model_dump() for r in result.requirements], "hire_verdict": result.hire_verdict,
+        "recruiter_take": result.recruiter_take[:300],
         "scored_at": datetime.now(UTC), "questions_collected": False,  # new assessment: look at its unknowns again
     }
     stmt = insert(JobMatch).values(**values)

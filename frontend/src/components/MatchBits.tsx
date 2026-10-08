@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
-import { SENIORITY_LABEL, VERDICT_LABEL, WORKPLACE_LABEL, formatSalary, timeAgo } from "../lib/format";
+import { HIRE_LABEL, SENIORITY_LABEL, VERDICT_LABEL, WORKPLACE_LABEL, formatSalary, timeAgo } from "../lib/format";
 import type { Match, MatchJob, MatchStatus } from "../lib/types";
 
 export function ScoreBadge({ score, verdict }: { score: number; verdict: Match["verdict"] }) {
@@ -59,4 +59,9 @@ export function StatusActions({ match }: { match: Pick<Match, "id" | "status"> }
       {btn("dismissed", "Dismiss", "Dismissed — undo")}
     </div>
   );
+}
+
+export function HireBadge({ verdict }: { verdict?: string }) {
+  if (!verdict) return null;
+  return <span className={`chip${verdict === "yes" ? " good" : verdict === "no" ? " closed" : " warn"}`}>{HIRE_LABEL[verdict]}</span>;
 }

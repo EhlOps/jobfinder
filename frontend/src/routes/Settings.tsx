@@ -36,7 +36,7 @@ export default function Settings() {
 
   return (
     <>
-      <h2>Email settings</h2>
+      <h2>Settings</h2>
       <p className="muted">One email a day, at the time you choose, and only when there's something to say.</p>
       <form className="card" onSubmit={(e) => { e.preventDefault(); save.mutate(form); }}>
         <label className="check" style={{ margin: "6px 0" }}>
@@ -61,6 +61,20 @@ export default function Settings() {
             </select>
           </label>
         </div>
+        <h3 style={{ marginBottom: 4 }}>Match scoring</h3>
+        <label className="check" style={{ margin: "6px 0" }}>
+          <input type="checkbox" checked={form.match_budget_enabled} onChange={(e) => set("match_budget_enabled", e.target.checked)} />
+          Limit how many jobs Claude scores per day
+        </label>
+        {form.match_budget_enabled ? (
+          <label className="field">
+            <span className="field-label">Jobs per day</span>
+            <input type="number" min={1} max={1000} value={form.match_budget}
+              onChange={(e) => set("match_budget", Math.max(1, Math.min(1000, Number(e.target.value) || 1)))} />
+          </label>
+        ) : (
+          <p className="hint">Every promising job is scored on each run. This can use a lot of your Claude usage and take a while.</p>
+        )}
         <ErrorText error={save.error} />
         <div className="actions" style={{ justifyContent: "flex-start" }}>
           <button disabled={save.isPending}>{save.isPending ? "Saving…" : saved ? "Saved ✓" : "Save settings"}</button>

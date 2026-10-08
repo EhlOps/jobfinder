@@ -65,12 +65,24 @@ class Unknown(BaseModel):
     why: str = ""
 
 
+class RequirementCheck(BaseModel):
+    requirement: str  # one concrete requirement from the posting, e.g. "3+ years of Python"
+    importance: Literal["must", "nice"] = "must"
+    status: Literal["met", "partial", "unknown", "unmet"]
+    evidence: str = ""  # what in the profile supports the status (empty when there is none)
+    question: str = ""  # direct question to the candidate; set for partial/unknown (and unmet if worth asking)
+
+
 class MatchScore(BaseModel):
-    score: int = Field(ge=0, le=100)
-    confidence: float = Field(ge=0, le=1)
+    score: int = Field(default=0, ge=0, le=100)  # the model's own gut number; the stored score is computed in code
+    confidence: float = Field(default=0.5, ge=0, le=1)
     reasons: list[str] = Field(default_factory=list)  # why it fits (or doesn't), grounded in the profile
     gaps: list[str] = Field(default_factory=list)  # requirements the profile doesn't cover
     unknowns: list[Unknown] = Field(default_factory=list)  # things only the candidate can answer
+    requirements: list[RequirementCheck] = Field(default_factory=list, max_length=14)
+    preference_fit: int = Field(default=70, ge=0, le=100)  # level/location/pay/company fit with stated preferences
+    hire_verdict: Literal["yes", "maybe", "no"] = "maybe"  # would a recruiter put this candidate forward?
+    recruiter_take: str = ""  # one line, as a recruiter would say it
 
 
 def verdict_for(score: int) -> str:
@@ -86,3 +98,33 @@ class ConsolidatedQuestion(BaseModel):
 class Consolidated(BaseModel):
     questions: list[ConsolidatedQuestion] = Field(default_factory=list)
     already_answered: list[int] = Field(default_factory=list)  # input indexes the candidate has effectively answered
+
+
+class DossierItem(BaseModel):
+    label: str  # e.g. "Python", "Ownership", "Work authorization"
+    detail: str  # what a recruiter would write down
+    confidence: float = Field(default=0.5, ge=0, le=1)
+
+
+class AuditQuestion(BaseModel):
+    question: str
+    why: str = ""
+    dimension: Literal["skills", "impact", "scope", "logistics", "motivation"] = "skills"
+
+
+class Dossier(BaseModel):
+    headline: str = ""  # one line: who this person is as a candidate
+    years_experience: str = ""
+    skills: list[DossierItem] = Field(default_factory=list)  # depth per core skill
+    experience: list[DossierItem] = Field(default_factory=list)  # scope, ownership, quantified impact
+    logistics: list[DossierItem] = Field(default_factory=list)  # authorization, location, availability, comp
+    strengths: list[str] = Field(default_factory=list)  # strongest evidence, reusable in cover letters
+    concerns: list[str] = Field(default_factory=list)  # what would make a recruiter hesitate
+    hire_view: str = ""  # "I could hire this person for X because..." / "I could not yet, because..."
+
+
+class ProfileAudit(BaseModel):
+    dossier: Dossier
+    readiness: int = Field(ge=0, le=100)
+    dimensions: dict[str, int] = Field(default_factory=dict)  # skills|impact|scope|logistics|motivation -> 0-100
+    questions: list[AuditQuestion] = Field(default_factory=list, max_length=8)

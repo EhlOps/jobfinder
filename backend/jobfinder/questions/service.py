@@ -15,10 +15,8 @@ from jobfinder.models import ClarifyingQuestion, Job, JobMatch, Profile, Profile
 from jobfinder.scheduling import queue
 
 log = logging.getLogger("jobfinder.questions")
-UNSURE_BELOW = 0.6  # confidence under this ...
-WORTH_ASKING_FROM = 50  # ... on a match scoring at least this: could be good, but we're not sure
 OPEN = ("pending", "emailed")
-MAX_RAW = 20
+MAX_RAW = 60  # matches reviewed per run
 MAX_ANSWER_CHARS = 2000
 
 
@@ -35,14 +33,10 @@ async def open_count(db: AsyncSession, user_id: int) -> int:
 
 
 async def collect_questions(db: AsyncSession, ai: AITasks, user_id: int) -> dict:
-    """Look at matches whose unknowns haven't been reviewed yet and turn the worthwhile ones into
-    a short list of deduplicated questions. No LLM call when there is nothing to review."""
-    unsure = sa.and_(JobMatch.confidence < UNSURE_BELOW, JobMatch.llm_score >= WORTH_ASKING_FROM)
+    """Look at matches whose unknowns haven't been reviewed yet and turn them into a short list of
+    deduplicated questions, most-asked first. Every score band counts: a low score is often just a gap
+    the candidate can fill. No LLM call when there is nothing to review."""
     base = sa.and_(JobMatch.user_id == user_id, JobMatch.questions_collected.is_(False))
-
-    # Matches that are confident or clearly poor need no questions: mark them reviewed.
-    await db.execute(sa.update(JobMatch).where(base, sa.not_(unsure)).values(questions_collected=True))
-    await db.commit()
 
     if await open_count(db, user_id) >= get_settings().max_open_questions:
         return {"new_questions": 0, "reviewed": 0, "skipped": "too many unanswered questions already"}
@@ -51,7 +45,7 @@ async def collect_questions(db: AsyncSession, ai: AITasks, user_id: int) -> dict
         await db.execute(
             sa.select(JobMatch)
             .join(Job, Job.id == JobMatch.job_id)
-            .where(base, unsure, JobMatch.status.in_(("new", "saved")), Job.is_active.is_(True))
+            .where(base, JobMatch.status.in_(("new", "saved")), Job.is_active.is_(True))
             .order_by(JobMatch.llm_score.desc())
             .limit(MAX_RAW)
         )
@@ -59,16 +53,19 @@ async def collect_questions(db: AsyncSession, ai: AITasks, user_id: int) -> dict
     if not rows:
         return {"new_questions": 0, "reviewed": 0}
 
-    raw: list[tuple[str, str]] = []
-    raw_matches: list[int] = []
-    seen: set[str] = set()
+    # Rank by how many jobs raise the same question (a must-have's question comes first within a job).
+    tally: dict[str, list] = {}
     for m in rows:
-        for u in m.unknowns or []:
+        for rank, u in enumerate(m.unknowns or []):
             q = (u.get("question") or "").strip()
-            if q and _norm(q) not in seen:
-                seen.add(_norm(q))
-                raw.append((q, (u.get("why") or "").strip()))
-                raw_matches.append(m.id)
+            if q:
+                t = tally.setdefault(_norm(q), [0, rank, q, (u.get("why") or "").strip(), []])
+                t[0] += 1
+                t[4].append(m.id)
+                t[1] = min(t[1], rank)
+    ranked = sorted(tally.values(), key=lambda t: (-t[0], t[1]))
+    raw = [(t[2], t[3]) for t in ranked]
+    raw_matches = [t[4] for t in ranked]  # per question: the matches that raised it
     reviewed_ids = [m.id for m in rows]
 
     created = 0
@@ -88,7 +85,7 @@ async def collect_questions(db: AsyncSession, ai: AITasks, user_id: int) -> dict
             text = cq.question.strip()
             if not text or _norm(text) in existing:
                 continue
-            ids = sorted({raw_matches[i] for i in cq.sources if 0 <= i < len(raw_matches)} or {raw_matches[0]})
+            ids = sorted({mid for i in cq.sources if 0 <= i < len(raw_matches) for mid in raw_matches[i]} or set(raw_matches[0]))
             db.add(ClarifyingQuestion(user_id=user_id, question=text[:500], why=cq.why.strip()[:300], match_ids=ids))
             existing.add(_norm(text))
             created += 1

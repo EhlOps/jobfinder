@@ -7,7 +7,7 @@ import { useTask } from "../lib/useTask";
 import type { MatchList, MatchStatus } from "../lib/types";
 import { AiErrorNotice } from "../components/AiErrorNotice";
 import { ErrorText } from "../components/fields";
-import { JobChips, ScoreBadge, StatusActions } from "../components/MatchBits";
+import { HireBadge, JobChips, ScoreBadge, StatusActions } from "../components/MatchBits";
 
 const TABS: [MatchStatus, string][] = [["new", "To review"], ["saved", "Saved"], ["applied", "Applied"], ["dismissed", "Dismissed"]];
 
@@ -80,7 +80,7 @@ export default function Matches() {
       <ErrorText error={refresh.error} />
       {!running && summary.pending ? (
         <p className="hint">
-          {summary.pending} more promising jobs are waiting — we score a limited number each day to stay within your Claude usage.
+          {summary.pending} more promising jobs are waiting — we score a limited number each day to stay within your Claude usage. <Link to="/settings">Change your daily limit</Link>
         </p>
       ) : null}
 
@@ -140,6 +140,7 @@ export default function Matches() {
             <h3><Link to={`/matches/${m.id}`}>{m.job.title}</Link></h3>
             <div className="company">{m.job.company}</div>
             <JobChips job={m.job} />
+            <HireBadge verdict={m.hire_verdict} />
             {m.confidence < 0.6 && <span className="chip warn">Low confidence — we'd like to ask you a few things</span>}
             {m.stale && <span className="chip">Scored before your last profile update</span>}
             {m.has_cover_letter && <span className="chip good">Cover letter drafted</span>}
