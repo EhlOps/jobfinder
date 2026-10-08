@@ -320,14 +320,14 @@ Tasks in the same wave run in parallel. Merge a wave fully before starting the n
 - Check one failing board never stops the others, and add a test for it
 - *Done when:* Per-source health tracking and error isolation (REQ-26 c).
 
-#### H11.5: Resume panel in the match detail page (REQ-23)
+#### H11.5: Resume panel in the match detail page (REQ-23) (done)
 
 - Build a panel modelled on CoverLetterPanel: generate, edit, regenerate, delete, download DOCX and PDF
 - Show the keyword coverage with the missing terms
 - Show a warning to review the resume before sending, as the cover letter panel does
 - *Done when:* The resume is editable, regenerable and downloadable from the UI (REQ-23 e); Missing keywords are visible (REQ-23 d).
 
-#### H14.3: Board registry and validation (REQ-26)
+#### H14.3: Board registry and validation (REQ-26) (done)
 
 - Add Company.origin (seed or discovered) and validated_at with migration 0017
 - Add validate_board(ats, slug): a live fetch that requires a valid response and at least one posting

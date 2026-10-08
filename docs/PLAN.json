@@ -557,7 +557,7 @@
       "prd_on_merge": [
         "Mark REQ-23 done (milestone H11) and remove H11 from remaining"
       ],
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "H14.3",
@@ -602,7 +602,7 @@
       "prd_on_merge": [
         "Note in REQ-26: validation and registry built"
       ],
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "H14.4",
