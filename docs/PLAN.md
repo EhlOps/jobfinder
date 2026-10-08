@@ -334,7 +334,7 @@ Tasks in the same wave run in parallel. Merge a wave fully before starting the n
 - Add a CLI add-board command that validates before inserting; companies.yaml stays as the seed list
 - *Done when:* Each board is validated before it is added (REQ-26 b).
 
-#### H14.4: Discovery sources (REQ-26)
+#### H14.4: Discovery sources (REQ-26) (done)
 
 - Add a robots.txt check and a per-source terms note; a source is only enabled when its terms allow it
 - Add discovery for new-grad GitHub lists, HN 'Who is hiring' (Algolia API) and YC Work at a Startup
@@ -343,14 +343,14 @@ Tasks in the same wave run in parallel. Merge a wave fully before starting the n
 - Wellfound only if its terms allow it; otherwise record that it was skipped and why
 - *Done when:* Companies and boards are auto-discovered from directories (REQ-26 a); Respects each site's terms and robots rules (REQ-26 e).
 
-#### H14.5: Target-driven board selection (REQ-26)
+#### H14.5: Target-driven board selection (REQ-26) (done)
 
 - Rank boards by overlap with active users' target roles, industries and company sizes
 - Cap how many discovered boards one run fetches; seed boards always run
 - Rotate through the remainder so every board is eventually fetched
 - *Done when:* Boards are chosen from users' targets so cost scales sensibly (REQ-26 d).
 
-#### H14.6: Admin source health page (REQ-26)
+#### H14.6: Admin source health page (REQ-26) (done)
 
 - Add an admin-only GET /api/admin/sources with per-board health and the last error
 - Add a POST to re-enable a disabled board

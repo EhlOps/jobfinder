@@ -652,7 +652,7 @@
       "prd_on_merge": [
         "Note in REQ-26: discovery built"
       ],
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "H14.5",
@@ -694,7 +694,7 @@
       "prd_on_merge": [
         "Note in REQ-26: target-driven selection built"
       ],
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "H14.6",
@@ -739,7 +739,7 @@
       "prd_on_merge": [
         "Mark REQ-26 done (milestone H14) and remove H14 from remaining, if H14.4 and H14.5 are merged"
       ],
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "H10.2",
