@@ -60,10 +60,15 @@ async def ingest_jobs(db: AsyncSession, ai: AITasks, task: Task) -> dict:
     from jobfinder.ingest.runner import run_ingest
 
     summary = await run_ingest(SessionLocal)
-    from jobfinder.matching.service import enqueue_for_active_users
-
-    summary["match_runs_queued"] = await enqueue_for_active_users(db)
+    # Matching is planned, not fanned out: the planner picks who needs it most and staggers the runs.
+    await queue.enqueue(db, "plan_work", dedupe=True)
     return summary
+
+
+async def plan_work(db: AsyncSession, ai: AITasks, task: Task) -> dict:
+    from jobfinder.scheduling import planner
+
+    return await planner.plan(db)
 
 
 async def match_user(db: AsyncSession, ai: AITasks, task: Task) -> dict:
@@ -134,6 +139,7 @@ HANDLERS: dict[str, Handler] = {
     "followup_questions": followup_questions,
     "audit_profile": audit_profile,
     "ingest_jobs": ingest_jobs,
+    "plan_work": plan_work,
     "ai_check": ai_check,
     "match_user": match_user,
     "cover_letter": cover_letter,

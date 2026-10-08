@@ -40,6 +40,11 @@ class Settings(BaseSettings):
     match_daily_llm_budget: int = 25  # LLM-scored jobs per user per rolling 24h
     match_model: str = "sonnet"  # model that scores jobs: haiku | sonnet | opus
     match_min_prefilter: float = 20.0  # candidates scoring below this (0-100) never reach the LLM
+    planner_interval_minutes: int = 15  # how often the planner looks for users who need background work
+    planner_max_per_tick: int = 3  # users planned per tick, counting work already queued or running
+    planner_stagger_seconds: int = 120  # gap between the start times of users planned in one tick
+    planner_min_interval_hours: int = 3  # minimum gap between runs for a recently active user
+    planner_backoff_minutes: int = 30  # pause all planning after a rate-limit or auth error from Claude
     jobspy_max_queries: int = 10
     jobspy_results_per_query: int = 25
     session_ttl_days: int = 30

@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from jobfinder.auth.security import current_user
 from jobfinder.db import get_db
 from jobfinder.ingest.base import safe_http_url
+from jobfinder.matching import prefilter
 from jobfinder.models import CoverLetter, Job, JobMatch, Profile, ProfileFact, User
 from jobfinder.scheduling import queue
 
@@ -110,6 +111,7 @@ async def list_matches(
     min_score: Annotated[int, Query(ge=0, le=100)] = 0,
     workplace: Literal["remote", "hybrid", "onsite"] | None = None,
     q: Annotated[str | None, Query(max_length=100)] = None,
+    early_career: Annotated[bool, Query(description="internships, new-grad and early-career roles only")] = False,
     sort: Literal["score", "recent"] = "score",
     limit: Annotated[int, Query(ge=1, le=100)] = 30,
     offset: Annotated[int, Query(ge=0)] = 0,
@@ -128,6 +130,11 @@ async def list_matches(
     filters.append(JobMatch.llm_score >= min_score)
     if workplace:
         filters.append(Job.workplace_type == workplace)
+    if early_career:
+        filters.append(sa.or_(
+            Job.seniority.in_(("intern", "new_grad")), Job.title.op("~*")(prefilter.EARLY_CAREER_SQL),
+            Job.title.op("~*")(r"\y(intern|internship|co-?op)\y"),
+        ))
     if q:
         like = f"%{q.strip()}%"
         filters.append(sa.or_(Job.title.ilike(like), Job.company_name.ilike(like)))
@@ -143,7 +150,8 @@ async def list_matches(
     with_letters = await _with_letters(db, user.id, [j.id for _, j in page])
     return MatchList(
         items=[MatchOut(**_out(m, j, version, j.id in with_letters)) for m, j in page],
-        total=total or 0, counts=counts, summary=(profile.match_summary if profile else {}) or {},
+        total=total or 0, counts=counts,
+        summary={**((profile.match_summary if profile else {}) or {}), "career_stage": prefilter.career_stage((profile.status if profile else {}) or {})},
     )
 
 
@@ -186,7 +194,7 @@ class JobAnswersIn(BaseModel):
 async def answer_for_match(match_id: int, body: JobAnswersIn, user: CurrentUser, db: DB):
     """Answer a requirement question right on the job: saved as profile facts, then this and the other
     matches are re-scored (this one first)."""
-    m, j = await _get_owned(db, user, match_id)
+    _, j = await _get_owned(db, user, match_id)
     for a in body.answers:
         db.add(ProfileFact(user_id=user.id, question=a.question, answer=a.answer, source="job_question", job_id=j.id))
     profile = await db.get(Profile, user.id)

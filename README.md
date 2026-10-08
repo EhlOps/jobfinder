@@ -183,3 +183,15 @@ cd backend && DATABASE_URL=postgresql+asyncpg://jobfinder:change-me@localhost:54
 ```
 
 Point the host worker (and api) at a shared `STORE_DIR` if you run them on the host. Stop the docker `worker` first (`docker compose stop worker`) so the two don't compete for tasks.
+
+### Working in parallel worktrees
+
+Each task gets its own worktree and its own test database, so parallel `pytest` runs don't drop each other's schema:
+
+```sh
+git worktree add ../jobfinder-<task> -b plan/<task> main
+cd ../jobfinder-<task>/backend && uv sync
+TEST_DB=jobfinder_test_<task> uv run pytest -q     # TEST_DB defaults to jobfinder_test
+```
+
+Set `TEST_ADMIN_URL` if your Postgres is not on `localhost:5433` or uses a different password (URL-encode special characters such as `@` and `!`).
