@@ -24,7 +24,7 @@ DB = Annotated[AsyncSession, Depends(get_db)]
 CurrentUser = Annotated[User, Depends(current_user)]
 DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 PDF = "application/pdf"
-EDITED_TAG = "edited"
+EDITED_TAG = service.EDITED_TAG
 
 
 class CoverageOut(BaseModel):
@@ -121,7 +121,8 @@ async def generate(match_id: int, body: GenerateIn, user: CurrentUser, db: DB):
     found = _current(get_store(), user.id, match_id)
     if found and found[0].tags.get(EDITED_TAG) == "1" and not body.force:
         raise HTTPException(409, "You've edited this resume; regenerating would replace your changes.")
-    task = await queue.enqueue(db, "resume_tailor", {"match_id": match_id}, user_id=user.id, dedupe=True)
+    payload = {"match_id": match_id, "force": True} if body.force else {"match_id": match_id}
+    task = await queue.enqueue(db, "resume_tailor", payload, user_id=user.id, dedupe=True)
     return TaskRef(task_id=task.id)
 
 

@@ -127,7 +127,7 @@ async def cover_letter(db: AsyncSession, ai: AITasks, task: Task) -> dict:
 async def resume_tailor(db: AsyncSession, ai: AITasks, task: Task) -> dict:
     from jobfinder.resumes import service
 
-    return await service.tailor(db, ai, get_store(), task.user_id, task.payload["match_id"])
+    return await service.tailor(db, ai, get_store(), task.user_id, task.payload["match_id"], force=bool(task.payload.get("force")))
 
 
 async def ai_check(db: AsyncSession, ai: AITasks, task: Task) -> dict:
