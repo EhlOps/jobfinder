@@ -1,0 +1,11 @@
+# Production override for the `web` (Caddy) service: public ports 80/443 and the domain to get a
+# certificate for. Enabled by COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml in the root .env,
+# so plain `docker compose ...` commands (including deploy/backup.sh) pick it up. Not used in dev.
+services:
+  web:
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?set SITE_ADDRESS in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3

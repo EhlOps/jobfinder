@@ -1,0 +1,40 @@
+# One proxy for the whole site: serves the built SPA, forwards /api to the api container, sets the
+# security headers, and (when SITE_ADDRESS is a domain) gets and renews its own TLS certificates.
+#   dev:  SITE_ADDRESS unset -> ":80", plain HTTP, no certificates
+#   prod: SITE_ADDRESS=jobs.example.com -> HTTPS via Let's Encrypt, HTTP redirects to HTTPS
+# No trusted_proxies on purpose: Caddy sets X-Forwarded-For to the connecting client's IP and
+# discards any value the client sent, so clients cannot spoof their IP (the rate limiter relies on it).
+{$SITE_ADDRESS::80} {
+	encode gzip
+
+	# Same origin -> session cookie works with no CORS.
+	handle /api/* {
+		request_body {
+			max_size 20MiB
+		}
+		reverse_proxy api:8000
+	}
+	handle /healthz {
+		reverse_proxy api:8000
+	}
+
+	# One policy for the whole site; only the Referrer-Policy value varies by path.
+	# The reset token is in the URL fragment; keep it out of any Referer. This comes first and the
+	# site-wide value below is "?" (set only if absent), so the more specific one wins.
+	@reset path /reset-password
+	header @reset Referrer-Policy "no-referrer"
+	header {
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+		X-Frame-Options "DENY"
+		X-Content-Type-Options "nosniff"
+		?Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		# No includeSubDomains: this only pins this host, not every subdomain of the domain.
+		Strict-Transport-Security "max-age=31536000"
+	}
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}

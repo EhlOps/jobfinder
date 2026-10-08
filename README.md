@@ -15,7 +15,19 @@ clarifying questions).
 - Design and milestones: [docs/PLAN.md](docs/PLAN.md)
 - Requirements, what's done and what's left (machine-readable): [docs/PRD.json](docs/PRD.json)
 
-## Quickstart
+## Quickstart (development)
+
+Two ways to run the same compose stack: this one on your own machine (plain HTTP, dev mail inbox), and
+[Deploy (production)](#deploy-production) on a server (HTTPS, real mail, restarts, backups).
+
+| | Development | Production |
+|---|---|---|
+| Command | `docker compose --profile dev up --build` | `docker compose up -d --build` |
+| URL | http://localhost:8180 | `https://<SITE_ADDRESS>` (ports 80/443) |
+| TLS | none | Caddy gets and renews a Let's Encrypt certificate |
+| Mail | Mailpit inbox at http://localhost:8025 | `smtp` postfix service relaying through Gmail/Outlook |
+| Config | root `.env` + `backend/.env` | the same, plus `SITE_ADDRESS` and `COMPOSE_FILE` |
+| Restarts, backups | no | `restart: unless-stopped`, `deploy/backup.sh` |
 
 ```sh
 cp .env.example .env              # set POSTGRES_PASSWORD
@@ -47,7 +59,7 @@ docker compose exec api python -m jobfinder.cli reset-link --email them@example.
 `backend/jobfinder/ingest/companies.yaml` (Greenhouse, Lever, Ashby) into the `jobs` table; use
 `--company discord` for one board. Add companies by adding rows to that file. LinkedIn/Indeed scraping is
 opt-in and against those sites' terms: set `ENABLE_JOBSPY=true` in `backend/.env`, build the worker with
-`WITH_JOBSPY=true` (root `.env`), then `ingest --jobspy`. Ingestion is not scheduled yet.
+`WITH_JOBSPY=true` (root `.env`), then `ingest --jobspy`. The worker also runs it on a schedule (see Daily email below).
 
 ## Matches
 
@@ -103,6 +115,53 @@ container only. There is no API key, and you never need to open the worker conta
 Until it's connected, analysis steps show an "AI isn't connected" notice (with a link for admins).
 Setting `CLAUDE_CODE_OAUTH_TOKEN` in `backend/.env` still works as a fallback. Usage limits are shared
 by everyone using your instance.
+
+## Deploy (production)
+
+The intended setup is this same compose stack on one VPS (Docker with the compose plugin, git). The `web`
+container runs Caddy, which serves the app, proxies `/api`, sets the security headers (including HSTS) and
+gets its own Let's Encrypt certificate. `docker-compose.prod.yml` adds the public ports 80, 443 and UDP 443.
+
+1. Point a DNS A record for your domain at the server and open ports 80 and 443.
+2. Clone the repo on the server, then `cp .env.example .env` and `cp backend/.env.example backend/.env`.
+3. Root `.env`: a strong `POSTGRES_PASSWORD`, `SITE_ADDRESS=jobs.example.com`,
+   `COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml` (so every `docker compose` command uses the
+   production override), and the mail relay settings (`ALLOWED_SENDER_DOMAINS`, `RELAYHOST*`).
+4. `backend/.env`: `SECRET_KEY`, `ADMIN_EMAILS`, `PUBLIC_BASE_URL=https://jobs.example.com`,
+   `SMTP_HOST=smtp`, `SMTP_PORT=587`, a real `EMAIL_FROM`.
+5. `docker compose up -d --build` (no `--profile dev`, so no Mailpit). Every service restarts after a reboot.
+6. Sign in as an admin, connect the AI on **AI setup**, then add users with `cli add-user` (see Access).
+7. Set up the nightly backup below.
+
+### Updating
+
+```sh
+git pull && docker compose up -d --build
+```
+
+The api applies database migrations on start. Take a backup first (`deploy/backup.sh`) when a release adds one.
+
+### Backups
+
+`deploy/backup.sh` writes a Postgres dump and an archive of the `store` and `claude` data (documents and the
+saved Claude token) to `./backups`, keeping the newest 14 of each. Run it nightly and copy the files off the server:
+
+```sh
+15 3 * * *  cd /path/to/jobfinder && mkdir -p backups && deploy/backup.sh >> backups/backup.log 2>&1
+```
+
+Restore (replaces the current data, so the app is stopped first):
+
+```sh
+docker compose stop api worker
+docker compose exec -T db pg_restore --clean --if-exists -U jobfinder -d jobfinder < backups/db-<timestamp>.dump
+docker compose run --rm --no-deps -T --entrypoint sh api \
+  -c 'find /data/store /data/claude -mindepth 1 -delete && tar -C /data -xzf -' < backups/files-<timestamp>.tar.gz
+docker compose start api worker
+```
+
+(Use your `POSTGRES_USER` / `POSTGRES_DB` values.) Certificates live in the `caddy-data` volume and are re-issued if lost.
+If you use postfix direct mode, also back up the `dkim` volume.
 
 ## Develop
 

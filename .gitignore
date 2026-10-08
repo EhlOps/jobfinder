@@ -48,3 +48,6 @@ docker-compose.override.yml
 .idea/
 .vscode/
 *.swp
+
+# ── Backups (deploy/backup.sh) ────────────────────────────────────────────
+backups/

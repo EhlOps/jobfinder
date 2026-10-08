@@ -9,7 +9,7 @@
       "frontend": "Vite + React + TypeScript, TanStack Query, react-router",
       "ai": "Claude Code CLI (headless claude -p) on the owner's Claude subscription; no SDK, no API key",
       "email": "Self-hosted SMTP in docker (boky/postfix); Mailpit in dev",
-      "deploy": "docker compose: db, api, worker, web (nginx), smtp, mailpit (dev profile)",
+      "deploy": "docker compose: db, api, worker, web (Caddy, TLS), smtp, mailpit (dev profile)",
       "storage": "Docker volume file store (backend/jobfinder/storage) for uploads and fetched link text"
     },
     "design_doc": "docs/PLAN.md"

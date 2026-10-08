@@ -34,7 +34,7 @@ The repo will go in the empty `jobfinder/` folder, which is greenfield. Two sibl
 ## Architecture
 ```
 docker-compose: db (postgres:16) · api (FastAPI) · worker (APScheduler + queue consumer, has claude CLI)
-                · web (Vite build → nginx, proxies /api) · smtp (boky/postfix, internal only)
+                · web (Vite build → Caddy, proxies /api, TLS) · smtp (boky/postfix, internal only)
                 · mailpit (dev profile; catches mail locally)
 ```
 Host ports: API on `127.0.0.1:${API_PORT:-8100}`, web on `127.0.0.1:${WEB_PORT:-8180}`. Port 8000 is used by another local project.
@@ -65,7 +65,7 @@ backend/
     scheduling/      queue.py (own Postgres task queue), handlers.py (task name → function)
   tests/
 frontend/
-  package.json vite.config.ts Dockerfile nginx.conf
+  package.json vite.config.ts Dockerfile Caddyfile
   src/ lib/api.ts  auth/  routes/  components/
 ```
 

@@ -83,7 +83,7 @@ def _set_cookie(resp: Response, token: str) -> None:
 
 
 def client_ip(request: Request) -> str:
-    # uvicorn --proxy-headers (trusted via FORWARDED_ALLOW_IPS) already replaced this with nginx's real client IP.
+    # uvicorn --proxy-headers (trusted via FORWARDED_ALLOW_IPS) already replaced this with Caddy's real client IP.
     return request.client.host if request.client else "unknown"
 
 

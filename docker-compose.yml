@@ -1,6 +1,7 @@
 services:
   db:
     image: postgres:16
+    restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
@@ -20,6 +21,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    restart: unless-stopped
     env_file:
       - path: ./backend/.env
         required: false
@@ -27,7 +29,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       STORE_DIR: /data/store
       CLAUDE_AUTH_DIR: /data/claude
-      FORWARDED_ALLOW_IPS: "*"  # trust nginx's X-Forwarded-For (only nginx and localhost can reach the api)
+      FORWARDED_ALLOW_IPS: "*"  # trust Caddy's X-Forwarded-For (only the web container and localhost can reach the api)
     volumes:
       - store:/data/store
       - claude-auth:/data/claude
@@ -45,6 +47,7 @@ services:
       dockerfile: Dockerfile.worker
       args:
         WITH_JOBSPY: ${WITH_JOBSPY:-false}
+    restart: unless-stopped
     env_file:
       - path: ./backend/.env
         required: false
@@ -61,8 +64,15 @@ services:
       db:
         condition: service_healthy
 
+  # Caddy: serves the built app, proxies /api to the api, sets security headers, and gets TLS
+  # certificates when SITE_ADDRESS is a domain (see frontend/Caddyfile, docker-compose.prod.yml and the
+  # README's Deploy section).
   web:
     build: ./frontend
+    restart: unless-stopped
+    volumes:
+      - caddy-data:/data      # certificates: keep, or Let's Encrypt rate limits bite on rebuilds
+      - caddy-config:/config
     depends_on:
       - api
     ports:
@@ -73,6 +83,7 @@ services:
   # Direct mode: leave RELAYHOST empty, set up SPF/DKIM/DMARC and a host with outbound :25.
   smtp:
     image: boky/postfix
+    restart: unless-stopped
     environment:
       ALLOWED_SENDER_DOMAINS: ${ALLOWED_SENDER_DOMAINS:-localhost}
       RELAYHOST: ${RELAYHOST:-}
@@ -94,3 +105,5 @@ volumes:
   store:
   claude-auth:
   dkim:
+  caddy-data:
+  caddy-config:
