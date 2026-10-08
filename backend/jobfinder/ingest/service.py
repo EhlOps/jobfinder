@@ -16,8 +16,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from jobfinder.config import get_settings
 from jobfinder.ingest.base import JobPosting, safe_http_url
+from jobfinder.ingest.selection import Target, select_boards
 from jobfinder.ingest.sources import ATS_FETCHERS
-from jobfinder.models import Company, Job
+from jobfinder.models import Company, Job, Profile, User
 
 log = logging.getLogger("jobfinder.ingest")
 
@@ -179,6 +180,7 @@ async def ingest_company(db: AsyncSession, client: httpx.AsyncClient, company: C
     except Exception as e:
         stats.error = _describe(e)
         _record_failure(company, stats.error)
+        company.last_fetched_at = datetime.now(UTC)  # an attempt counts, so selection rotates past dead boards
         await db.commit()
         return stats
 
@@ -213,12 +215,20 @@ async def ingest_boards(
     """Poll every enabled company board. One company failing never affects the others."""
     async with session_factory() as db:
         await sync_companies(db)
-        q = sa.select(Company.id).where(Company.enabled.is_(True)).order_by(Company.id)
+        q = sa.select(Company).where(Company.enabled.is_(True)).order_by(Company.id)
         if ats:
             q = q.where(Company.ats == ats)
         if slug:
             q = q.where(Company.slug == slug)
-        ids = list((await db.scalars(q)).all())
+        boards = list((await db.scalars(q)).all())
+        if not slug:  # an explicit board is always fetched; otherwise cap the discovered ones
+            statuses = (await db.scalars(
+                sa.select(Profile.status).join(User, User.id == Profile.user_id).where(User.activated_at.is_not(None))
+            )).all()
+            boards = select_boards(
+                boards, [Target.from_status(s) for s in statuses], get_settings().ingest_max_discovered_boards_per_run
+            )
+        ids = [b.id for b in boards]
 
     sem = asyncio.Semaphore(concurrency or get_settings().ingest_concurrency)
     headers = {"User-Agent": "JobFinder/0.1 (+personal job search)"}
@@ -235,6 +245,7 @@ async def ingest_boards(
                     try:  # still count it toward the board's health
                         await db.rollback()
                         _record_failure(company, error)
+                        company.last_fetched_at = datetime.now(UTC)
                         await db.commit()
                     except Exception:
                         log.exception("could not record failure for %s", company.name)

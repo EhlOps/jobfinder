@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     max_open_questions: int = 15  # stop collecting new questions while this many are unanswered
     ingest_concurrency: int = 5
     ingest_max_consecutive_failures: int = 5  # a board failing this many runs in a row is disabled
+    ingest_max_discovered_boards_per_run: int = 100  # cap on discovered boards fetched per run; seed boards always run; 0 = no cap
     match_daily_llm_budget: int = 25  # LLM-scored jobs per user per rolling 24h
     match_model: str = "sonnet"  # model that scores jobs: haiku | sonnet | opus
     match_min_prefilter: float = 20.0  # candidates scoring below this (0-100) never reach the LLM
