@@ -43,6 +43,20 @@ async def test_extract_flow(authed, engine):
     assert ai.extract_sources == [("resume.txt", "Intern at Acme")]
 
 
+async def test_extract_ignores_tailored_resumes(authed, engine):
+    from jobfinder.resumes.service import match_tags
+    from jobfinder.storage.documents import get_store
+
+    await authed.post("/api/documents", files={"file": ("resume.txt", b"Intern at Acme", "text/plain")})
+    uid = (await authed.get("/api/auth/me")).json()["id"]
+    get_store().put(uid, "resume", "Tailored resume - x.json", text='{"summary": "reworded"}',
+                    content_type="application/json", tags=match_tags(7))
+    tid = (await authed.post("/api/onboarding/extract")).json()["task_id"]
+    ai = FakeAI()
+    await run_task(tid, ai, async_sessionmaker(engine, expire_on_commit=False))
+    assert ai.extract_sources == [("resume.txt", "Intern at Acme")]
+
+
 async def test_followups_flow(authed, engine):
     assert (await authed.post("/api/onboarding/followups")).status_code == 422
     await authed.put("/api/profile/background", json={"summary": "SWE"})

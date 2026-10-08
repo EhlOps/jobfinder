@@ -8,7 +8,15 @@ from pydantic import BaseModel
 from jobfinder.auth.security import current_user
 from jobfinder.models import User
 from jobfinder.profile.resume_parse import ALLOWED_EXTENSIONS, ParserBusy, extract_text_async
-from jobfinder.storage.documents import DocumentMeta, DocumentStore, NotFound, StoreError, get_store
+from jobfinder.storage.documents import (
+    MATCH_TAG,
+    DocumentMeta,
+    DocumentStore,
+    NotFound,
+    StoreError,
+    get_store,
+    is_tailored,
+)
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
@@ -61,6 +69,8 @@ async def list_documents(
             raise HTTPException(422, "tag must look like key:value")
         wanted[key] = value
     docs = store.list(user.id, kind=kind, tags=wanted)
+    if MATCH_TAG not in wanted:  # tailored resumes belong to their match; ask for them by tag
+        docs = [d for d in docs if not is_tailored(d)]
     if kind is None:
         docs = [d for d in docs if d.kind != "link"]  # links have their own endpoint
     return [DocumentOut.of(d) for d in docs]
@@ -126,6 +136,8 @@ async def document_text(doc_id: str, user: CurrentUser, store: Store):
 @router.put("/{doc_id}/tags", response_model=DocumentOut)
 async def set_tags(doc_id: str, tags: dict[str, str], user: CurrentUser, store: Store):
     """Replace this document's custom tags. Automatic tags (kind, ext, source, ...) are kept."""
+    if MATCH_TAG in tags:
+        raise HTTPException(422, f"Tag {MATCH_TAG!r} is reserved")
     try:
         return DocumentOut.of(store.set_tags(user.id, doc_id, tags))
     except NotFound as e:
