@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
+import { confetti } from "../lib/confetti";
 import { HIRE_LABEL, SENIORITY_LABEL, VERDICT_LABEL, WORKPLACE_LABEL, formatSalary, timeAgo } from "../lib/format";
 import type { Match, MatchJob, MatchStatus } from "../lib/types";
 
@@ -36,7 +37,8 @@ export function StatusActions({ match }: { match: Pick<Match, "id" | "status"> }
   const qc = useQueryClient();
   const set = useMutation({
     mutationFn: (status: MatchStatus) => api<Match>(`/api/matches/${match.id}`, { method: "PATCH", json: { status } }),
-    onSuccess: () => {
+    onSuccess: (_data, status) => {
+      if (status === "applied") confetti();
       qc.invalidateQueries({ queryKey: ["matches"] });
       qc.invalidateQueries({ queryKey: ["match", match.id] });
     },
