@@ -95,3 +95,22 @@ def test_empty_sections_dropped_and_text_export():
     d = docx.Document(io.BytesIO(render_docx(r)))
     assert "Projects" not in [p.text for p in d.paragraphs]
     assert render_pdf(r).startswith(b"%PDF")
+
+
+def test_pdf_unicode_roundtrip_and_cjk_does_not_crash():
+    r = _resume()
+    r.contact.name = "Łukasz Nguyễn Ωmega Иван"
+    pdf = render_pdf(r)
+    with pdfplumber.open(io.BytesIO(pdf)) as p:
+        assert not any(page.images for page in p.pages)
+        text = "\n".join(page.extract_text() for page in p.pages)
+    assert "Łukasz Nguyễn Ωmega Иван" in text
+    r.experience[0].title = "Инженер Ελληνικά"
+    r.experience[0].bullets = ["Zażółć gęślą jaźń", "Nguye\u0302\u0303n decomposed \U0001f600"]
+    with pdfplumber.open(io.BytesIO(render_pdf(r))) as p:
+        text = "\n".join(page.extract_text() for page in p.pages)
+    assert "Инженер Ελληνικά" in text
+    assert "Zażółć gęślą jaźń" in text
+    assert "Nguyễn decomposed" in text
+    r.summary = "日本語 summary"  # not covered by DejaVu: renders a missing-glyph box, must not raise
+    assert render_pdf(r).startswith(b"%PDF")

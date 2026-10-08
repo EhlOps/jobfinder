@@ -5,15 +5,44 @@ All field access goes through `_sections`.
 """
 
 import io
+import re
+import unicodedata
+from pathlib import Path
 from xml.sax.saxutils import escape
 
 from docx.shared import Pt
 from reportlab.lib.pagesizes import LETTER
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import inch
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import ListFlowable, ListItem, Paragraph, SimpleDocTemplate, Spacer
 
 from jobfinder.letters.docx_export import new_document, to_bytes
+
+# The built-in Helvetica is Latin-1 only, so names like "Łukasz" or Cyrillic/Greek text would render
+# as blanks. DejaVu Sans (bundled, see fonts/LICENSE-DejaVu.txt) covers Latin Extended, Vietnamese,
+# Cyrillic and Greek. It does NOT cover CJK: those characters render as the font's missing-glyph box
+# (no crash) and the DOCX export should be preferred for them.
+FONT_DIR = Path(__file__).parent / "fonts"
+FONT, FONT_BOLD = "DejaVuSans", "DejaVuSans-Bold"
+
+
+def _register_fonts() -> None:
+    registered = pdfmetrics.getRegisteredFontNames()
+    for name, file in ((FONT, "DejaVuSans.ttf"), (FONT_BOLD, "DejaVuSans-Bold.ttf")):
+        if name not in registered:
+            pdfmetrics.registerFont(TTFont(name, FONT_DIR / file))
+
+
+_NON_BMP = re.compile("[^\U00000000-\U0000ffff]")
+
+
+def _pdf_text(text: str) -> str:
+    """NFC-compose (reportlab does no mark positioning) and replace non-BMP characters, which
+    reportlab's TTF subsetting would otherwise truncate into different, wrong characters."""
+    return escape(_NON_BMP.sub("\ufffd", unicodedata.normalize("NFC", text)))
+
 
 HEADINGS = ("Summary", "Skills", "Experience", "Projects", "Education")
 
@@ -118,21 +147,22 @@ def render_docx(resume) -> bytes:
 
 def render_pdf(resume) -> bytes:
     name, contact, sections = _sections(resume)
-    base = ParagraphStyle("base", fontName="Helvetica", fontSize=10.5, leading=13, spaceAfter=2)
-    title = ParagraphStyle("title", parent=base, fontName="Helvetica-Bold", fontSize=16, leading=19)
+    _register_fonts()
+    base = ParagraphStyle("base", fontName=FONT, fontSize=10, leading=13, spaceAfter=2)
+    title = ParagraphStyle("title", parent=base, fontName=FONT_BOLD, fontSize=16, leading=19)
     head = ParagraphStyle(
-        "head", parent=base, fontName="Helvetica-Bold", fontSize=12.5, leading=15, spaceBefore=8
+        "head", parent=base, fontName=FONT_BOLD, fontSize=12.5, leading=15, spaceBefore=8
     )
-    entry = ParagraphStyle("entry", parent=base, fontName="Helvetica-Bold")
-    story = [Paragraph(escape(name), title), *(Paragraph(escape(line), base) for line in contact)]
+    entry = ParagraphStyle("entry", parent=base, fontName=FONT_BOLD)
+    story = [Paragraph(_pdf_text(name), title), *(Paragraph(_pdf_text(line), base) for line in contact)]
     for heading, entries in sections:
-        story.append(Paragraph(heading, head))
+        story.append(Paragraph(_pdf_text(heading), head))
         for line, bullets in entries:
-            story.append(Paragraph(escape(line), entry if bullets else base))
+            story.append(Paragraph(_pdf_text(line), entry if bullets else base))
             if bullets:
                 story.append(
                     ListFlowable(
-                        [ListItem(Paragraph(escape(b), base)) for b in bullets],
+                        [ListItem(Paragraph(_pdf_text(b), base)) for b in bullets],
                         bulletType="bullet",
                         start="-",
                         leftIndent=14,
