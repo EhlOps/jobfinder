@@ -176,15 +176,23 @@ def refuses_sponsorship(description: str) -> bool:
     return bool(_NO_SPONSOR.search(description or ""))
 
 
+# A positive signal needs a visa/immigration term: "sponsor" alone also means events, certifications, 401(k)s.
+_VISA = (
+    r"\b(?:visas?|h-?1-?b|immigration|work\s+(?:permits?|authori[sz]ation)|employment\s+authori[sz]ation"
+    r"|green\s*cards?|(?:opt|cpt)(?!\s+(?:in|out)\b))\b"
+)
+_OPT = r"\b(?:opt|cpt)\b(?!\s+(?:in|out)\b)"
 _SPONSORS = re.compile(
-    r"(?:will|can|do|does|happy to|able to|willing to)\s+(?:also\s+)?(?:provide\s+|offer\s+)?(?:visa\s+)?sponsor"
-    r"|(?:we|company)\s+sponsors?\b"
-    r"|(?:offer|provide|provides|offers|available)[^.\n]{0,30}(?:visa\s+)?sponsorship"
-    r"|(?:visa\s+)?sponsorship\s+(?:is\s+|may be\s+)?(?:available|offered|provided)"
-    r"|h-?1b[^.\n]{0,40}(?:sponsor|transfers?\s+(?:are\s+)?(?:welcome|accepted|ok))"
-    r"|sponsor[^.\n]{0,40}h-?1b"
-    r"|\b(?:stem[\s-]+)?(?:opt|cpt)\b[^.\n]{0,40}(?:eligible|welcome|friendly|accepted|\bok\b|considered)"
-    r"|(?:eligible|welcome|friendly|accepted)[^.\n]{0,30}\b(?:stem[\s-]+)?(?:opt|cpt)\b",
+    r"(?:will|can|do|does|happy to|able to|willing to)\s+(?:also\s+)?(?:provide\s+|offer\s+)?"
+    rf"(?:{_VISA}[^.\n]{{0,20}}sponsor|sponsor\b[^.\n]{{0,40}}{_VISA})"
+    rf"|(?:we|company)\s+sponsors?\b[^.\n]{{0,40}}{_VISA}"
+    rf"|(?:offer|provide|provides|offers|available)[^.\n]{{0,30}}{_VISA}\s+sponsorship"
+    rf"|(?:offer|provide|provides|offers)[^.\n]{{0,30}}sponsorship[^.\n]{{0,30}}{_VISA}"
+    rf"|{_VISA}\s+sponsorship\s+(?:is\s+|may be\s+)?(?:available|offered|provided)"
+    r"|h-?1-?b[^.\n]{0,40}(?:sponsor|transfers?\s+(?:are\s+)?(?:welcome|accepted|ok))"
+    r"|sponsor[^.\n]{0,40}h-?1-?b"
+    rf"|{_OPT}[^.\n]{{0,40}}(?:eligible|welcome|friendly|accepted|\bok\b|considered)"
+    rf"|(?:eligible|welcome|friendly|accepted)[^.\n]{{0,30}}{_OPT}",
     re.IGNORECASE,
 )
 
