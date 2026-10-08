@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from jobfinder.config import get_settings
 from jobfinder.ingest import service
-from jobfinder.models import Company
+from jobfinder.models import Company, Job
 from tests.test_ingest_service import fake_fetcher, make_company, posting, status_error
 
 
@@ -68,3 +68,45 @@ async def test_raising_fetcher_does_not_stop_the_run(maker, monkeypatch):
         rows = {c.name: c for c in (await db.scalars(sa.select(Company))).all()}
     assert rows["A"].consecutive_failures == 1 and rows["B"].consecutive_failures == 0
     assert rows["B"].last_success_at is not None
+
+
+async def test_unexpected_ingest_company_error_isolated(maker, monkeypatch):
+    real = service.ingest_company
+
+    async def flaky(db, client, company):
+        if company.name == "A":
+            raise RuntimeError("db exploded")
+        return await real(db, client, company)
+
+    monkeypatch.setattr(service, "ingest_company", flaky)
+    monkeypatch.setitem(service.ATS_FETCHERS, "lever", fake_fetcher([posting(1, source="lever")]))
+    monkeypatch.setattr(service, "load_seed", lambda: [
+        {"name": "A", "ats": "greenhouse", "slug": "a"},
+        {"name": "B", "ats": "lever", "slug": "b"},
+    ])
+    results = {r.company: r for r in await service.ingest_boards(maker)}
+    assert "db exploded" in results["A"].error and results["A"].source == "greenhouse"
+    assert results["B"].error is None and results["B"].fetched == 1
+    async with maker() as db:
+        rows = {c.name: c for c in (await db.scalars(sa.select(Company))).all()}
+    assert rows["A"].consecutive_failures == 1 and "db exploded" in rows["A"].last_error
+    assert rows["B"].last_success_at is not None
+
+
+async def test_auto_disabled_board_jobs_deactivated(maker, monkeypatch):
+    async with maker() as db, httpx.AsyncClient() as client:
+        c = await make_company(db)
+        monkeypatch.setitem(service.ATS_FETCHERS, "greenhouse", fake_fetcher([posting(1), posting(2)]))
+        await service.ingest_company(db, client, c)
+
+        async def active():
+            return await db.scalar(sa.select(sa.func.count()).select_from(Job).where(
+                Job.company_id == c.id, Job.is_active.is_(True)))
+
+        assert await active() == 2
+        monkeypatch.setitem(service.ATS_FETCHERS, "greenhouse", fake_fetcher(exc=status_error(404)))
+        for _ in range(2):
+            await service.ingest_company(db, client, c)
+        assert c.enabled and await active() == 2  # not disabled yet: jobs untouched
+        await service.ingest_company(db, client, c)
+        assert c.enabled is False and await active() == 0
