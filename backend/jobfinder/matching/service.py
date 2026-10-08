@@ -17,7 +17,6 @@ from jobfinder.config import get_settings
 from jobfinder.matching import prefilter as pf
 from jobfinder.matching.scoring import finalize
 from jobfinder.models import ClarifyingQuestion, Company, Job, JobMatch, Profile, ProfileFact, User
-from jobfinder.scheduling import queue
 
 log = logging.getLogger("jobfinder.matching")
 BUDGET_WINDOW = timedelta(hours=24)
@@ -263,11 +262,3 @@ async def match_user(db: AsyncSession, ai: AITasks, user_id: int, *, budget: int
     if fatal:
         raise fatal
     return summary
-
-
-async def enqueue_for_active_users(db: AsyncSession) -> int:
-    """After ingestion: queue a matching run for everyone who has finished the questionnaire."""
-    ids = (await db.scalars(sa.select(Profile.user_id).where(Profile.status != {}))).all()
-    for uid in ids:
-        await queue.enqueue(db, "match_user", user_id=uid, dedupe=True)
-    return len(ids)

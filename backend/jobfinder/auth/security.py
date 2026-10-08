@@ -15,6 +15,7 @@ from jobfinder.db import get_db
 from jobfinder.models import Session, User
 
 COOKIE_NAME = "session"
+SEEN_EVERY = timedelta(minutes=10)
 _hasher = PasswordHasher()
 
 
@@ -86,6 +87,10 @@ async def current_user(
         ).scalar_one_or_none()
         if row:
             row.is_admin = is_admin_email(row.email)  # ADMIN_EMAILS is the only source of admin
+            now = datetime.now(UTC)
+            if row.last_seen_at is None or now - row.last_seen_at > SEEN_EVERY:
+                row.last_seen_at = now  # the planner throttles idle users by this
+                await db.commit()
             return row
     raise HTTPException(401, "Not authenticated")
 

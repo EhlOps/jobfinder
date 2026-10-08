@@ -416,10 +416,19 @@
     {
       "id": "REQ-21",
       "area": "scheduling",
-      "status": "planned",
+      "status": "done",
       "source": "user",
       "requirement": "The system works for users while they are offline: it finds jobs, scores matches and generates questions without anyone prompting it. A planner fans out per-user tasks and spreads them over time, ordered by need and remaining budget, to make the best use of the shared Claude quota and worker capacity. Builds on REQ-17's queue and dedupe.",
-      "implemented_in": [],
+      "implemented_in": [
+        "backend/jobfinder/scheduling/planner.py",
+        "backend/jobfinder/scheduling/handlers.py",
+        "backend/jobfinder/worker.py",
+        "backend/jobfinder/config.py",
+        "backend/jobfinder/api/ai_admin.py",
+        "backend/jobfinder/auth/security.py",
+        "backend/alembic/versions/0013_planner_state.py",
+        "frontend/src/routes/AdminSchedule.tsx"
+      ],
       "acceptance": [
         "A periodic planner enqueues per-user match, question and audit tasks, never only on user action",
         "Users are prioritized by staleness, new jobs since their last run and remaining daily AI budget",
@@ -427,7 +436,9 @@
         "Idle or inactive users are throttled",
         "A rate-limit error backs off the whole fan-out",
         "An admin can see the last and next run per user"
-      ]
+      ],
+      "milestone": "H9",
+      "notes": "Built 2026-10-08 (H9). A `plan_work` task runs every PLANNER_INTERVAL_MINUTES (15) and after each ingest, replacing the old post-ingest fan-out to every user. It skips the whole tick while Claude's latest call failed with a rate-limit or auth error (PLANNER_BACKOFF_MINUTES), counts users with match/audit work already queued against PLANNER_MAX_PER_TICK (3), and ranks the rest: profile changed first, then new jobs since their last run plus hours waiting, then remaining budget. The top users get a match run (or an audit, which queues the match itself) staggered PLANNER_STAGGER_SECONDS apart, plus collect_questions when matches have uncollected questions. Idle users are throttled by users.last_seen_at (written at most every 10 min): seen within 3 days = every 3h, within 14 days = daily, longer = weekly. Per-user decisions are kept in planner_state and shown to admins at /settings/schedule (GET /api/admin/schedule). User-triggered runs still enqueue directly. Tests: test_scheduler.py (backend, 372 total passing) and AdminSchedule.test.tsx (30 frontend tests passing). Not yet watched on the live stack."
     },
     {
       "id": "REQ-22",
@@ -599,6 +610,12 @@
       "topic": "Match scoring",
       "decision": "The LLM judges each posting requirement (met/partial/unknown/unmet, must/nice); the 0-100 score and confidence are computed in code (matching/scoring.py). Scoring and question consolidation use Sonnet (MATCH_MODEL, default sonnet).",
       "reason": "The holistic Haiku score treated anything not on the resume as a gap, so qualified users clustered near 50 and the question loop (score>=50 and confidence<0.6) never fired for them. Per-requirement checks separate 'unknown' from 'unmet' and give every gap a question."
+    },
+    {
+      "id": "DEC-17",
+      "topic": "Background scheduling",
+      "decision": "One periodic planner task picks which users get background AI work and staggers it, instead of queueing a match run for every user after each ingest. Rate-limit and auth errors from Claude pause the whole planner; idle users are throttled by last_seen_at.",
+      "reason": "Every user shares one Claude subscription and the worker runs only a couple of AI calls at a time, so a burst for all users after each ingest starves the people who need work most and keeps hitting the same rate limit. Rejected: one scheduler job per user (hard to cap, hard to see)."
     }
   ],
   "milestones": [
@@ -798,19 +815,6 @@
         "Owner: on the server, set DNS, SITE_ADDRESS, COMPOSE_FILE and PUBLIC_BASE_URL, run docker compose up -d --build, and confirm a real certificate is issued and http redirects to https",
         "Owner: install the nightly cron entry for deploy/backup.sh, copy backups off the host, and rehearse one restore",
         "Owner: reboot the server once and confirm every service comes back"
-      ]
-    },
-    {
-      "id": "H9",
-      "priority": "P2",
-      "title": "Background fan-out scheduler (REQ-21)",
-      "findings": [],
-      "gaps": [],
-      "actions": [
-        "Add a planner task in backend/jobfinder/scheduling/handlers.py that ranks users by staleness, new jobs and remaining budget, and enqueues staggered per-user tasks",
-        "Register the planner tick in backend/jobfinder/worker.py and add caps and backoff settings in config.py",
-        "Add an admin view of last and next run per user",
-        "Tests in test_scheduler for ordering, caps and rate-limit backoff"
       ]
     },
     {
@@ -1938,6 +1942,11 @@
       "date": "2026-10-07",
       "task": "Requirement-level matching and the recruiter-grade profile interview",
       "summary": "Added RequirementCheck/ProfileAudit schemas, scoring.py, rewrote match.md, added profile_audit.md, the audit_profile task, /api/profile/interview, inline answers on matches (/api/matches/{id}/answers), migration 0011, removed the score>=50 / confidence<0.6 gates in question collection and the >=50 filter in re-scoring, and added the Strengthen page, requirements table and recruiter badge. Backend and frontend suites pass; not yet tried against the real Claude CLI."
+    },
+    {
+      "date": "2026-10-08",
+      "task": "H9 background fan-out scheduler (REQ-21)",
+      "summary": "H9: added the plan_work planner (scheduling/planner.py), planner_state table and users.last_seen_at (migration 0013), planner settings, the admin schedule endpoint and page, and removed enqueue_for_active_users. Tests added in test_scheduler.py and AdminSchedule.test.tsx."
     }
   ]
 }

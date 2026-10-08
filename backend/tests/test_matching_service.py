@@ -9,7 +9,7 @@ from jobfinder.ai.schemas import MatchScore, Unknown
 from jobfinder.config import get_settings
 from jobfinder.ingest.base import dedupe_hash
 from jobfinder.matching import service
-from jobfinder.models import Company, Job, JobMatch, Profile, Task, User
+from jobfinder.models import Company, Job, JobMatch, Profile, User
 
 STATUS = {"target_roles": ["Backend Engineer"], "target_locations": ["Boston"], "is_new_grad": True,
           "salary_min": 100000, "needs_visa_sponsorship": False}
@@ -262,16 +262,6 @@ async def test_company_data_feeds_prefilter_and_prompt(maker):
 
         await service.match_user(db, SpyAI(), u.id)
         assert seen["company_size"] == "large" and seen["company_industry"] == "fintech" and seen["title"] == "Backend Engineer"
-
-
-async def test_enqueue_for_active_users_skips_unfinished_profiles(maker):
-    async with maker() as db:
-        a = await make_user(db, email="a@x.com")
-        await make_user(db, status={}, email="b@x.com")
-        assert await service.enqueue_for_active_users(db) == 1
-        assert await service.enqueue_for_active_users(db) == 1          # deduped while pending
-        tasks = (await db.scalars(sa.select(Task).where(Task.kind == "match_user"))).all()
-        assert [t.user_id for t in tasks] == [a.id]
 
 
 async def test_rescoring_resets_questions_collected(maker):

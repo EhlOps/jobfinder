@@ -185,3 +185,26 @@ export interface Interview {
   audited: boolean;
   stale: boolean;
 }
+
+export interface ScheduleTask { kind: string; status: string; run_after: string }
+export interface ScheduleRow {
+  user_id: number;
+  email: string;
+  last_seen_at: string | null;
+  last_run_at: string | null;
+  last_scored: number | null;
+  pending: number | null;
+  budget_left: number | null;
+  last_planned_at: string | null;
+  next_due_at: string | null;
+  reason: string;
+  skip: string;
+  active: ScheduleTask[];
+}
+export interface Schedule {
+  backoff_until: string | null;
+  in_flight: number;
+  max_per_tick: number;
+  next_tick: string | null;
+  users: ScheduleRow[];
+}

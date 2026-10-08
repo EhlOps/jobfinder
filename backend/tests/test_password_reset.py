@@ -172,8 +172,8 @@ async def test_pending_user_cannot_hold_a_session(client, make_account, engine):
 
 
 async def test_pending_users_get_no_daily_email_or_matching(client, make_account, engine):
-    from jobfinder.matching.service import enqueue_for_active_users
     from jobfinder.notify import daily
+    from jobfinder.scheduling import planner
     from tests.factories import make_user
 
     await make_account("pend@x.com", pending=True)
@@ -181,7 +181,7 @@ async def test_pending_users_get_no_daily_email_or_matching(client, make_account
         await make_user(db, "live@x.com")
         due = await daily.due_users(db, datetime(2026, 1, 1, 8, 5, tzinfo=UTC))
         assert [u.email for u in due] == ["live@x.com"]
-        await enqueue_for_active_users(db)
+        assert (await planner.plan(db))["considered"] == 1  # the pending account is never planned
         pend = (await db.scalars(sa.select(User).where(User.email == "pend@x.com"))).one()
         assert daily.is_due(pend, datetime(2026, 1, 1, 8, 5, tzinfo=UTC)) is False
 
