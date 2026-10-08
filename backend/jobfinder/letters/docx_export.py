@@ -5,14 +5,26 @@ import docx
 from docx.shared import Inches, Pt
 
 
-def build_docx(content: str) -> bytes:
-    """A plain, ATS-friendly Word letter: Calibri 11, 1-inch margins, blank-line separated paragraphs."""
+def new_document() -> docx.document.Document:
+    """A blank single-column document with Calibri 11 and 1-inch margins."""
     d = docx.Document()
     for section in d.sections:
         section.top_margin = section.bottom_margin = section.left_margin = section.right_margin = Inches(1)
     style = d.styles["Normal"]
     style.font.name = "Calibri"
     style.font.size = Pt(11)
+    return d
+
+
+def to_bytes(d: docx.document.Document) -> bytes:
+    buf = io.BytesIO()
+    d.save(buf)
+    return buf.getvalue()
+
+
+def build_docx(content: str) -> bytes:
+    """A plain, ATS-friendly Word letter: Calibri 11, 1-inch margins, blank-line separated paragraphs."""
+    d = new_document()
     for block in re.split(r"\n\s*\n", content.strip()):
         lines = block.strip().split("\n")
         para = d.add_paragraph()
@@ -21,9 +33,7 @@ def build_docx(content: str) -> bytes:
             run = para.add_run(line.strip())
             if i < len(lines) - 1:
                 run.add_break()  # keep "Sincerely,\nName" on adjacent lines
-    buf = io.BytesIO()
-    d.save(buf)
-    return buf.getvalue()
+    return to_bytes(d)
 
 
 def filename(company: str, title: str) -> str:
