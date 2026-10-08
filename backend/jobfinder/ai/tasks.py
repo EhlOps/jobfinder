@@ -109,7 +109,7 @@ class AITasks:
 
     async def score_match(
         self, status: dict, background: dict, facts: list[tuple[str, str]], job: dict, dossier: dict | None = None,
-        stage_info: dict | None = None,
+        stage_info: dict | None = None, sponsorship: dict | None = None,
     ) -> MatchScore:
         """job: title, company, location, workplace_type, salary, seniority, description."""
         candidate = {
@@ -118,6 +118,7 @@ class AITasks:
             "background": background,
             **({"recruiter_dossier": dossier} if dossier else {}),
             **({"career_stage": stage_info} if stage_info else {}),
+            **({"sponsorship": sponsorship} if sponsorship else {}),
             "answers_given": [{"question": q, "answer": a} for q, a in facts],
         }
         posting = {k: v for k, v in job.items() if k != "description" and v not in (None, "")}

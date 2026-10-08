@@ -1,7 +1,7 @@
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,6 +10,18 @@ from jobfinder.db import get_db
 from jobfinder.models import Profile, ProfileFact, User
 
 router = APIRouter(prefix="/api/profile", tags=["profile"])
+
+
+WorkAuth = Literal["citizen", "permanent_resident", "f1_opt", "stem_opt", "h1b_transfer", "other"]
+# Whether each authorization means the person will need an employer to sponsor them (None = can't tell)
+SPONSORSHIP_NEEDED: dict[str, bool | None] = {
+    "citizen": False, "permanent_resident": False, "f1_opt": True, "stem_opt": True, "h1b_transfer": True, "other": None,
+}
+
+
+def derive_needs_sponsorship(work_authorization: str | None, explicit: bool | None = None) -> bool | None:
+    """An explicit answer wins; otherwise it follows from the work authorization."""
+    return explicit if explicit is not None else SPONSORSHIP_NEEDED.get(work_authorization or "")
 
 
 class Status(BaseModel):
@@ -24,12 +36,18 @@ class Status(BaseModel):
     remote_preference: str | None = None  # remote|hybrid|onsite|any
     willing_to_relocate: bool | None = None
     needs_visa_sponsorship: bool | None = None
+    work_authorization: WorkAuth | None = None
     salary_min: int | None = None
     salary_target: int | None = None
     prestige_preference: int | None = Field(default=None, ge=1, le=5)  # 1 = don't care, 5 = top-tier only
     company_sizes: list[str] = []  # startup|mid|large
     industries: list[str] = []
     notes: str | None = None
+
+    @model_validator(mode="after")
+    def _derive_sponsorship(self):
+        self.needs_visa_sponsorship = derive_needs_sponsorship(self.work_authorization, self.needs_visa_sponsorship)
+        return self
 
 
 class ProfileOut(BaseModel):
