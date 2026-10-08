@@ -154,14 +154,32 @@ def _describe(e: Exception) -> str:
     return f"{type(e).__name__}: {e}"[:300]
 
 
-def _record_failure(company: Company, error: str) -> None:
-    """Count a failed run; disable the board (with the reason) once it has failed N times in a row."""
+def _record_failure(company: Company, error: str) -> bool:
+    """Count a failed run; disable the board (with the reason) once it has failed N times in a row.
+
+    Returns True when this failure auto-disabled the board."""
     company.last_error = error
     company.consecutive_failures = (company.consecutive_failures or 0) + 1
     limit = get_settings().ingest_max_consecutive_failures
     if company.enabled and limit > 0 and company.consecutive_failures >= limit:
         company.enabled = False
         company.disabled_reason = f"auto-disabled after {company.consecutive_failures} consecutive failures: {error}"[:500]
+        return True
+    return False
+
+
+async def _fail_board(
+    db: AsyncSession, company: Company, error: str, now: datetime, *, deactivate: bool = True
+) -> None:
+    """Record a failed attempt and commit. A board that just got auto-disabled is never polled again,
+    so its jobs would stay active with dead apply links: deactivate them now."""
+    disabled = _record_failure(company, error)
+    company.last_fetched_at = now  # an attempt counts, so selection rotates past dead boards
+    if disabled and deactivate:
+        await db.execute(
+            sa.update(Job).where(Job.source == company.ats, Job.company_id == company.id, Job.is_active.is_(True)).values(is_active=False)
+        )
+    await db.commit()
 
 
 def _record_success(company: Company, now: datetime) -> None:
@@ -179,9 +197,7 @@ async def ingest_company(db: AsyncSession, client: httpx.AsyncClient, company: C
         postings = await _fetch_with_retry(fetcher, client, company.slug, company.name)
     except Exception as e:
         stats.error = _describe(e)
-        _record_failure(company, stats.error)
-        company.last_fetched_at = datetime.now(UTC)  # an attempt counts, so selection rotates past dead boards
-        await db.commit()
+        await _fail_board(db, company, stats.error, datetime.now(UTC))
         return stats
 
     stats.fetched = len(postings)
@@ -200,11 +216,12 @@ async def ingest_company(db: AsyncSession, client: httpx.AsyncClient, company: C
             stats.deactivated = await deactivate_missing(db, company.ats, company.id, [])
     now = datetime.now(UTC)
     if stats.error:
-        _record_failure(company, stats.error)
+        # the empty-response guard exists to keep jobs on a suspicious board, so it never wipes them
+        await _fail_board(db, company, stats.error, now, deactivate=not stats.error.startswith("empty response"))
     else:
         _record_success(company, now)
-    company.last_fetched_at = now
-    await db.commit()
+        company.last_fetched_at = now
+        await db.commit()
     return stats
 
 
@@ -236,19 +253,29 @@ async def ingest_boards(
     async with httpx.AsyncClient(timeout=30, follow_redirects=True, headers=headers) as client:
         async def one(company_id: int) -> IngestStats:
             async with sem, session_factory() as db:
-                company = await db.get(Company, company_id)
+                # plain values, captured up front: after a rollback the ORM object is expired and
+                # touching it in async code raises (MissingGreenlet / PendingRollbackError)
+                name, board_ats = "?", "?"
                 try:
+                    company = await db.get(Company, company_id)
+                    name, board_ats = company.name, company.ats
                     return await ingest_company(db, client, company)
                 except Exception as e:  # last line of defence: never lose the whole run
-                    log.exception("ingest failed for %s", company.name)
+                    log.exception("ingest failed for %s", name)
                     error = _describe(e)
                     try:  # still count it toward the board's health
                         await db.rollback()
-                        _record_failure(company, error)
-                        company.last_fetched_at = datetime.now(UTC)
-                        await db.commit()
+                        company = await db.get(Company, company_id)
+                        await _fail_board(db, company, error, datetime.now(UTC))
                     except Exception:
-                        log.exception("could not record failure for %s", company.name)
-                    return IngestStats(source=company.ats, company=company.name, error=error)
+                        log.exception("could not record failure for %s", name)
+                    return IngestStats(source=board_ats, company=name, error=error)
 
-        return list(await asyncio.gather(*(one(i) for i in ids)))
+        results = await asyncio.gather(*(one(i) for i in ids), return_exceptions=True)
+        out: list[IngestStats] = []
+        for company_id, r in zip(ids, results, strict=True):
+            if isinstance(r, BaseException):  # one() swallows Exception; this catches e.g. cancellation
+                log.error("board task crashed", exc_info=r)
+                r = IngestStats(source="?", company=f"board {company_id}", error=_describe(r) if isinstance(r, Exception) else type(r).__name__)
+            out.append(r)
+        return out
