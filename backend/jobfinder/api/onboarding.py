@@ -9,7 +9,7 @@ from jobfinder.auth.security import current_user
 from jobfinder.db import get_db
 from jobfinder.models import Profile, User
 from jobfinder.scheduling import queue
-from jobfinder.storage.documents import DocumentStore, get_store
+from jobfinder.storage.documents import DocumentStore, get_store, is_tailored
 
 router = APIRouter(prefix="/api/onboarding", tags=["onboarding"])
 
@@ -24,7 +24,7 @@ async def start_extract(
     db: Annotated[AsyncSession, Depends(get_db)],
     store: Annotated[DocumentStore, Depends(get_store)],
 ):
-    if not any(d.chars > 0 for d in store.list(user.id)):
+    if not any(d.chars > 0 and not is_tailored(d) for d in store.list(user.id)):
         raise HTTPException(422, "Upload a resume or add a link we can read first")
     task = await queue.enqueue(db, "extract_profile", user_id=user.id, dedupe=True)
     return TaskRef(task_id=task.id)

@@ -9,7 +9,7 @@ from jobfinder.ai.claude_code import AIError
 from jobfinder.ai.tasks import AITasks
 from jobfinder.models import Profile, ProfileFact, Task
 from jobfinder.scheduling import queue
-from jobfinder.storage.documents import get_store
+from jobfinder.storage.documents import get_store, is_tailored
 
 Handler = Callable[[AsyncSession, AITasks, Task], Awaitable[dict]]
 
@@ -21,6 +21,8 @@ async def extract_profile(db: AsyncSession, ai: AITasks, task: Task) -> dict:
     store = get_store()
     sources = []
     for doc in store.list(task.user_id):
+        if is_tailored(doc):  # AI-tailored output must not become ground truth
+            continue
         text = store.read_text(task.user_id, doc.id)
         if not text:
             continue

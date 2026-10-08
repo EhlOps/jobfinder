@@ -8,9 +8,7 @@ from jobfinder.ai.schemas import TailoredResume
 from jobfinder.ai.tasks import AITasks
 from jobfinder.matching.service import job_payload
 from jobfinder.models import Company, Job, JobMatch, Profile, ProfileFact
-from jobfinder.storage.documents import DocumentStore
-
-MATCH_TAG = "match"
+from jobfinder.storage.documents import MATCH_TAG, DocumentStore, is_tailored
 
 
 def match_tags(match_id: int) -> dict[str, str]:
@@ -22,7 +20,7 @@ def source_documents(store: DocumentStore, user_id: int) -> list[tuple[str, str]
     return [
         (meta.filename, store.read_text(user_id, meta.id))
         for meta in store.list(user_id)
-        if MATCH_TAG not in meta.tags and meta.chars > 0
+        if not is_tailored(meta) and meta.chars > 0
     ]
 
 

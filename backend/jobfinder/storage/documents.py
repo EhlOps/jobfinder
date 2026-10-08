@@ -29,6 +29,7 @@ TAG_KEY_RE = re.compile(r"^[a-z0-9_.-]{1,40}$")
 MAX_TAG_VALUE = 200
 # Tags the store sets itself; callers can't overwrite them through set_tags().
 RESERVED_TAGS = {"kind", "ext", "source", "url", "link_kind"}
+MATCH_TAG = "match"  # on tailored resumes only (match:<id>); survives set_tags
 
 
 class StoreError(Exception):
@@ -58,6 +59,11 @@ class DocumentMeta:
 
 def new_id() -> str:
     return f"doc_{int(time.time() * 1000):012x}{secrets.token_hex(5)}"
+
+
+def is_tailored(meta: DocumentMeta) -> bool:
+    """AI-tailored output, as opposed to something the candidate supplied."""
+    return MATCH_TAG in meta.tags
 
 
 def validate_tags(tags: dict[str, str]) -> dict[str, str]:
@@ -152,7 +158,7 @@ class DocumentStore:
         """Replace the custom tags (automatic ones are kept)."""
         meta = self.get(user_id, doc_id)
         custom = validate_tags(tags)
-        auto = {k: v for k, v in meta.tags.items() if k in RESERVED_TAGS}
+        auto = {k: v for k, v in meta.tags.items() if k in RESERVED_TAGS or k == MATCH_TAG}
         meta.tags = {**custom, **auto}
         self._write_json(self._doc_dir(user_id, doc_id) / "meta.json", asdict(meta))
         return meta

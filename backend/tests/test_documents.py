@@ -27,6 +27,22 @@ async def test_upload_txt_and_docx(authed):
     assert len((await authed.get("/api/documents")).json()) == 2
 
 
+async def test_list_hides_tailored_resumes(authed):
+    from jobfinder.resumes.service import match_tags
+    from jobfinder.storage.documents import get_store
+
+    up = (await authed.post("/api/documents", files={"file": ("a.txt", b"aaa", "text/plain")})).json()
+    uid = (await authed.get("/api/auth/me")).json()["id"]
+    get_store().put(uid, "resume", "Tailored.json", text="{}", content_type="application/json", tags=match_tags(3))
+    for params in ({}, {"kind": "resume"}):
+        assert [d["id"] for d in (await authed.get("/api/documents", params=params)).json()] == [up["id"]]
+    by_tag = (await authed.get("/api/documents", params={"tag": "match:3"})).json()
+    assert [d["filename"] for d in by_tag] == ["Tailored.json"]
+    assert (await authed.put(f"/api/documents/{up['id']}/tags", json={"match": "3"})).status_code == 422
+    tid = by_tag[0]["id"]
+    assert (await authed.put(f"/api/documents/{tid}/tags", json={})).json()["tags"]["match"] == "3"
+
+
 async def test_retrieval_endpoints(authed):
     doc = (await authed.post("/api/documents", files={"file": ("my resume.txt", b"Go and SQL", "text/plain")})).json()
     assert (await authed.get(f"/api/documents/{doc['id']}")).json()["filename"] == "my resume.txt"
