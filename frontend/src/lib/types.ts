@@ -17,6 +17,7 @@ export interface Status {
   remote_preference: string | null;
   willing_to_relocate: boolean | null;
   needs_visa_sponsorship: boolean | null;
+  work_authorization: string | null;
   salary_min: number | null;
   salary_target: number | null;
   prestige_preference: number | null;
@@ -35,6 +36,7 @@ export const emptyStatus: Status = {
   remote_preference: null,
   willing_to_relocate: null,
   needs_visa_sponsorship: null,
+  work_authorization: null,
   salary_min: null,
   salary_target: null,
   prestige_preference: null,
@@ -99,6 +101,7 @@ export interface MatchJob {
   url: string;
   posted_at: string | null;
   is_active: boolean;
+  sponsorship?: "sponsors" | "refuses" | "likely" | "unlikely" | null;
 }
 export type MatchStatus = "new" | "saved" | "applied" | "dismissed";
 export interface Match {

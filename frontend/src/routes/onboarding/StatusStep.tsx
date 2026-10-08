@@ -5,6 +5,9 @@ import { emptyStatus, type Profile, type Status } from "../../lib/types";
 import { CheckGroup, ErrorText, Field, ListInput, TriState } from "../../components/fields";
 
 const SENIORITY: [string, string][] = [["intern", "Internship"], ["new_grad", "New grad"], ["junior", "Junior"], ["mid", "Mid-level"], ["senior", "Senior"], ["staff", "Staff+"]];
+const WORK_AUTH: [string, string][] = [["citizen", "US citizen"], ["permanent_resident", "Permanent resident (green card)"], ["f1_opt", "F-1 OPT"], ["stem_opt", "STEM OPT"], ["h1b_transfer", "H-1B (transfer)"], ["other", "Other"]];
+// Mirrors the backend: what each status implies when the sponsorship question is left unanswered
+const NEEDS_SPONSOR: Record<string, boolean | null> = { citizen: false, permanent_resident: false, f1_opt: true, stem_opt: true, h1b_transfer: true, other: null };
 const SIZES: [string, string][] = [["startup", "Startup (<200)"], ["mid", "Mid-size"], ["large", "Large / big tech"]];
 
 export default function StatusStep({ initial, onDone, submitLabel = "Save & continue" }: { initial: Partial<Status>; onDone: () => void; submitLabel?: string }) {
@@ -31,7 +34,13 @@ export default function StatusStep({ initial, onDone, submitLabel = "Save & cont
           </select>
         </Field>
         <Field label="Willing to relocate?"><TriState value={s.willing_to_relocate} onChange={(v) => set("willing_to_relocate", v)} /></Field>
-        <Field label="Need visa sponsorship?"><TriState value={s.needs_visa_sponsorship} onChange={(v) => set("needs_visa_sponsorship", v)} /></Field>
+        <Field label="Work authorization">
+          <select value={s.work_authorization ?? ""} onChange={(e) => setS((p) => ({ ...p, work_authorization: e.target.value || null, needs_visa_sponsorship: null }))}>
+            <option value="">Prefer not to say</option>
+            {WORK_AUTH.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+        </Field>
+        <Field label="Need visa sponsorship?" hint={s.needs_visa_sponsorship === null && s.work_authorization && NEEDS_SPONSOR[s.work_authorization] !== null ? `We'll assume ${NEEDS_SPONSOR[s.work_authorization] ? "yes" : "no"} from your work authorization` : undefined}><TriState value={s.needs_visa_sponsorship} onChange={(v) => set("needs_visa_sponsorship", v)} /></Field>
       </div>
       <div className="row">
         <Field label="Minimum salary (USD)" hint="Jobs paying less are hidden when pay is listed"><input type="number" min={0} step={1000} value={s.salary_min ?? ""} onChange={(e) => set("salary_min", num(e.target.value))} /></Field>

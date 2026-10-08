@@ -21,7 +21,7 @@ class FakeAI:
     def __init__(self, scores=None, errors=None):
         self.scores, self.errors, self.calls = scores or {}, errors or {}, []
 
-    async def score_match(self, status, background, facts, job, dossier=None, stage_info=None):
+    async def score_match(self, status, background, facts, job, dossier=None, stage_info=None, sponsorship=None):
         self.calls.append(job["title"])
         if (err := self.errors.get(job["title"])) is not None:
             raise err

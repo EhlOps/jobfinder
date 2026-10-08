@@ -10,7 +10,7 @@ from jobfinder.auth.security import current_user
 from jobfinder.db import get_db
 from jobfinder.ingest.base import safe_http_url
 from jobfinder.matching import prefilter
-from jobfinder.models import CoverLetter, Job, JobMatch, Profile, ProfileFact, User
+from jobfinder.models import Company, CoverLetter, Job, JobMatch, Profile, ProfileFact, User
 from jobfinder.scheduling import queue
 
 router = APIRouter(prefix="/api/matches", tags=["matches"])
@@ -33,6 +33,7 @@ class JobOut(BaseModel):
     url: str
     posted_at: datetime | None
     is_active: bool
+    sponsorship: Literal["sponsors", "refuses", "likely", "unlikely"] | None = None  # None = unknown
 
     @field_validator("url")
     @classmethod
@@ -77,21 +78,34 @@ class TaskRef(BaseModel):
     task_id: int
 
 
-def _job_out(j: Job) -> JobOut:
+def sponsorship_value(j: Job, company_sponsors: bool | None) -> str | None:
+    """The posting's own words win; a silent posting falls back to what is known about the company."""
+    return prefilter.sponsorship_signal(j.description_text or "") or {True: "likely", False: "unlikely"}.get(company_sponsors)
+
+
+async def _sponsor_flags(db: AsyncSession, jobs: list[Job]) -> dict[int, bool | None]:
+    ids = {j.company_id for j in jobs if j.company_id}
+    if not ids:
+        return {}
+    return dict((await db.execute(sa.select(Company.id, Company.sponsors_visas).where(Company.id.in_(ids)))).all())
+
+
+def _job_out(j: Job, company_sponsors: bool | None = None) -> JobOut:
     return JobOut(
         id=j.id, title=j.title, company=j.company_name, location=j.location, workplace_type=j.workplace_type,
         seniority=j.seniority, salary_min=j.salary_min, salary_max=j.salary_max,
         salary_currency=j.salary_currency, url=j.url, posted_at=j.posted_at, is_active=j.is_active,
+        sponsorship=sponsorship_value(j, company_sponsors),
     )
 
 
-def _out(m: JobMatch, j: Job, version: int, has_letter: bool = False) -> dict:
+def _out(m: JobMatch, j: Job, version: int, has_letter: bool = False, company_sponsors: bool | None = None) -> dict:
     return {
         "id": m.id, "status": m.status, "score": m.llm_score, "confidence": m.confidence,
         "verdict": m.verdict, "reasons": m.reasons, "gaps": m.gaps,
         "hire_verdict": m.hire_verdict, "recruiter_take": m.recruiter_take,
         "stale": m.profile_version < version, "has_cover_letter": has_letter, "scored_at": m.scored_at,
-        "job": _job_out(j),
+        "job": _job_out(j, company_sponsors),
     }
 
 
@@ -148,8 +162,9 @@ async def list_matches(
     )
     page = (await db.execute(base.where(*filters).order_by(*order).limit(limit).offset(offset))).all()
     with_letters = await _with_letters(db, user.id, [j.id for _, j in page])
+    flags = await _sponsor_flags(db, [j for _, j in page])
     return MatchList(
-        items=[MatchOut(**_out(m, j, version, j.id in with_letters)) for m, j in page],
+        items=[MatchOut(**_out(m, j, version, j.id in with_letters, flags.get(j.company_id))) for m, j in page],
         total=total or 0, counts=counts,
         summary={**((profile.match_summary if profile else {}) or {}), "career_stage": prefilter.career_stage((profile.status if profile else {}) or {})},
     )
@@ -178,7 +193,8 @@ async def get_match(match_id: int, user: CurrentUser, db: DB):
     m, j = await _get_owned(db, user, match_id)
     profile = await db.get(Profile, user.id)
     has_letter = j.id in await _with_letters(db, user.id, [j.id])
-    return MatchDetail(**_out(m, j, profile.version if profile else 1, has_letter), unknowns=m.unknowns, requirements=m.requirements or [], description=j.description_text)
+    flag = (await _sponsor_flags(db, [j])).get(j.company_id)
+    return MatchDetail(**_out(m, j, profile.version if profile else 1, has_letter, flag), unknowns=m.unknowns, requirements=m.requirements or [], description=j.description_text)
 
 
 class JobAnswer(BaseModel):
@@ -212,7 +228,8 @@ async def set_status(match_id: int, body: StatusIn, user: CurrentUser, db: DB):
     await db.commit()
     profile = await db.get(Profile, user.id)
     has_letter = j.id in await _with_letters(db, user.id, [j.id])
-    return MatchOut(**_out(m, j, profile.version if profile else 1, has_letter))
+    flag = (await _sponsor_flags(db, [j])).get(j.company_id)
+    return MatchOut(**_out(m, j, profile.version if profile else 1, has_letter, flag))
 
 
 @router.post("/refresh", response_model=TaskRef, status_code=202)

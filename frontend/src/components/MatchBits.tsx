@@ -28,6 +28,7 @@ export function JobChips({ job }: { job: MatchJob }) {
       {chips.map((c) => (
         <span key={c} className={`chip${c === "Closed" ? " closed" : ""}`}>{c}</span>
       ))}
+      <SponsorBadge sponsorship={job.sponsorship} />
     </div>
   );
 }
@@ -66,4 +67,18 @@ export function StatusActions({ match }: { match: Pick<Match, "id" | "status"> }
 export function HireBadge({ verdict }: { verdict?: string }) {
   if (!verdict) return null;
   return <span className={`chip${verdict === "yes" ? " good" : verdict === "no" ? " closed" : " warn"}`}>{HIRE_LABEL[verdict]}</span>;
+}
+
+const SPONSOR_CHIP: Record<string, [string, string]> = {
+  sponsors: ["Sponsors visas", " good"],
+  likely: ["Likely sponsors", " good"],
+  refuses: ["No sponsorship", " closed"],
+  unlikely: ["Unlikely to sponsor", " warn"],
+};
+
+/** Visa sponsorship badge; nothing when it's unknown. */
+export function SponsorBadge({ sponsorship }: { sponsorship?: MatchJob["sponsorship"] }) {
+  const chip = sponsorship ? SPONSOR_CHIP[sponsorship] : undefined;
+  if (!chip) return null;
+  return <span className={`chip${chip[1]}`} data-testid="sponsor-badge">{chip[0]}</span>;
 }

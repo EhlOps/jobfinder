@@ -219,10 +219,26 @@ def sync_career_stage(profile: Profile, today=None) -> bool:
     return False
 
 
+def sponsorship_info(status: dict, job: Job, company: Company | None) -> dict | None:
+    """What the scorer is told about visa sponsorship: only for candidates who need it; unknown fields are left out."""
+    if status.get("needs_visa_sponsorship") is not True:
+        return None
+    info: dict = {"needs_sponsorship": True}
+    if status.get("work_authorization"):
+        info["work_authorization"] = status["work_authorization"]
+    if signal := pf.sponsorship_signal(job.description_text or ""):
+        info["posting_says"] = signal
+    if company is not None and company.sponsors_visas is not None:
+        info["company_sponsors"] = company.sponsors_visas
+    return info
+
+
 async def _score(ai: AITasks, profile: Profile, facts: list[tuple[str, str]], job: Job, company: Company | None):
     extra = {}
     if info := stage_info(profile.status or {}):
         extra["stage_info"] = info
+    if sponsorship := sponsorship_info(profile.status or {}, job, company):
+        extra["sponsorship"] = sponsorship
     result = await ai.score_match(
         profile.status or {}, profile.background or {}, facts, job_payload(job, company), dossier=profile.dossier or None,
         **extra,
