@@ -252,6 +252,15 @@ def _ix(y, m):
     ("Must be graduating in May 2027", (_ix(2027, 1), _ix(2027, 12))),               # one date = its year
     ("graduating by May 2027", (None, _ix(2027, 5))),
     ("graduating before 2027", (None, _ix(2027, 12))),
+    ("graduating in December 2026 or later", (_ix(2026, 12), None)),
+    ("Graduating after December 2025", (_ix(2025, 12), None)),
+    ("graduating no earlier than 2020", (_ix(2020, 1), None)),
+    ("graduation date of 2027 or earlier", (None, _ix(2027, 12))),
+    ("graduating not before May 2027", (_ix(2027, 5), None)),
+    ("graduating in December 2026 or later; internship starts June 2027", (_ix(2026, 12), None)),
+    ("Class of 2027, and after graduation you will join the team", (_ix(2027, 1), _ix(2027, 12))),
+    ("graduating in 2027 or before starting", (_ix(2027, 1), _ix(2027, 12))),
+    ("graduating May 2027 and later", (_ix(2027, 5), None)),
     ("A graduate degree is preferred. We were founded in 2019.", None),            # 'graduate' is not a trigger
     ("graduated in 2015 from a top school", None),
     ("Join us in 2027 for an exciting year", None),
@@ -304,3 +313,17 @@ def test_sponsorship_feeds_the_score_only_for_users_who_need_it():
     plain = _score(status=no_need)
     assert _score(status=no_need, sponsorship="sponsors", company_sponsors=True) == plain
     assert _score(status=no_need, sponsorship="refuses") == plain
+
+
+def test_open_ended_grad_windows_do_not_exclude_eligible_candidates():
+    assert not pf.outside_grad_window("graduating in December 2026 or later", {"graduation_date": "2027-05"})
+    assert pf.outside_grad_window("graduating in December 2026 or later", {"graduation_date": "2026-05"})
+    assert not pf.outside_grad_window("Graduating after December 2025", {"graduation_date": "2026-05"})
+    assert not pf.outside_grad_window("graduating no earlier than 2020", {"graduation_date": "2026-05"})
+    assert pf.outside_grad_window("graduation date of 2027 or earlier", {"graduation_date": "2029-05"})
+
+
+@pytest.mark.parametrize("grad", ["2028-05", "2026-05", "2027-03"])
+def test_not_new_grad_means_no_seniority_filter(grad):
+    assert pf.acceptable_seniorities({"graduation_date": grad, "is_new_grad": False}, TODAY) is None
+    assert pf.acceptable_seniorities({"graduation_date": grad, "is_new_grad": False, "seniority": ["senior"]}, TODAY) == {"mid", "senior", "staff"}
