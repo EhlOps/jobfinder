@@ -1,33 +1,34 @@
 # Companies whose public ATS boards we poll. Every slug below was checked against the live API.
 # prestige: 1 (unknown) .. 5 (top-tier / hardest to get into). size: startup (<200) | mid | large.
+# sponsors_visas: true when the company is known to sponsor work visas; omit when unknown.
 # To add a company: find its board URL (boards.greenhouse.io/<slug>, jobs.lever.co/<slug>,
 # jobs.ashbyhq.com/<slug>) and add a row; `python -m jobfinder.cli ingest` picks it up.
 companies:
   # ── Greenhouse ──────────────────────────────────────────────
-  - {name: Stripe,      ats: greenhouse, slug: stripe,      prestige: 5, size: large,   industry: fintech}
-  - {name: Airbnb,      ats: greenhouse, slug: airbnb,      prestige: 4, size: large,   industry: travel}
-  - {name: Anthropic,   ats: greenhouse, slug: anthropic,   prestige: 5, size: mid,     industry: ai}
-  - {name: Figma,       ats: greenhouse, slug: figma,       prestige: 4, size: mid,     industry: dev tools}
-  - {name: Databricks,  ats: greenhouse, slug: databricks,  prestige: 5, size: large,   industry: data}
-  - {name: Cloudflare,  ats: greenhouse, slug: cloudflare,  prestige: 4, size: large,   industry: infrastructure}
-  - {name: Datadog,     ats: greenhouse, slug: datadog,     prestige: 4, size: large,   industry: infrastructure}
-  - {name: Coinbase,    ats: greenhouse, slug: coinbase,    prestige: 4, size: large,   industry: fintech}
-  - {name: Robinhood,   ats: greenhouse, slug: robinhood,   prestige: 4, size: large,   industry: fintech}
+  - {name: Stripe,      ats: greenhouse, slug: stripe,      prestige: 5, size: large,   industry: fintech, sponsors_visas: true}
+  - {name: Airbnb,      ats: greenhouse, slug: airbnb,      prestige: 4, size: large,   industry: travel, sponsors_visas: true}
+  - {name: Anthropic,   ats: greenhouse, slug: anthropic,   prestige: 5, size: mid,     industry: ai, sponsors_visas: true}
+  - {name: Figma,       ats: greenhouse, slug: figma,       prestige: 4, size: mid,     industry: dev tools, sponsors_visas: true}
+  - {name: Databricks,  ats: greenhouse, slug: databricks,  prestige: 5, size: large,   industry: data, sponsors_visas: true}
+  - {name: Cloudflare,  ats: greenhouse, slug: cloudflare,  prestige: 4, size: large,   industry: infrastructure, sponsors_visas: true}
+  - {name: Datadog,     ats: greenhouse, slug: datadog,     prestige: 4, size: large,   industry: infrastructure, sponsors_visas: true}
+  - {name: Coinbase,    ats: greenhouse, slug: coinbase,    prestige: 4, size: large,   industry: fintech, sponsors_visas: true}
+  - {name: Robinhood,   ats: greenhouse, slug: robinhood,   prestige: 4, size: large,   industry: fintech, sponsors_visas: true}
   - {name: Discord,     ats: greenhouse, slug: discord,     prestige: 4, size: mid,     industry: consumer}
-  - {name: Reddit,      ats: greenhouse, slug: reddit,      prestige: 4, size: large,   industry: consumer}
-  - {name: Pinterest,   ats: greenhouse, slug: pinterest,   prestige: 4, size: large,   industry: consumer}
-  - {name: Lyft,        ats: greenhouse, slug: lyft,        prestige: 3, size: large,   industry: mobility}
-  - {name: Instacart,   ats: greenhouse, slug: instacart,   prestige: 3, size: large,   industry: consumer}
-  - {name: Dropbox,     ats: greenhouse, slug: dropbox,     prestige: 3, size: large,   industry: dev tools}
-  - {name: Twilio,      ats: greenhouse, slug: twilio,      prestige: 3, size: large,   industry: infrastructure}
+  - {name: Reddit,      ats: greenhouse, slug: reddit,      prestige: 4, size: large,   industry: consumer, sponsors_visas: true}
+  - {name: Pinterest,   ats: greenhouse, slug: pinterest,   prestige: 4, size: large,   industry: consumer, sponsors_visas: true}
+  - {name: Lyft,        ats: greenhouse, slug: lyft,        prestige: 3, size: large,   industry: mobility, sponsors_visas: true}
+  - {name: Instacart,   ats: greenhouse, slug: instacart,   prestige: 3, size: large,   industry: consumer, sponsors_visas: true}
+  - {name: Dropbox,     ats: greenhouse, slug: dropbox,     prestige: 3, size: large,   industry: dev tools, sponsors_visas: true}
+  - {name: Twilio,      ats: greenhouse, slug: twilio,      prestige: 3, size: large,   industry: infrastructure, sponsors_visas: true}
   - {name: Asana,       ats: greenhouse, slug: asana,       prestige: 3, size: mid,     industry: productivity}
   - {name: GitLab,      ats: greenhouse, slug: gitlab,      prestige: 3, size: mid,     industry: dev tools}
-  - {name: MongoDB,     ats: greenhouse, slug: mongodb,     prestige: 4, size: large,   industry: data}
+  - {name: MongoDB,     ats: greenhouse, slug: mongodb,     prestige: 4, size: large,   industry: data, sponsors_visas: true}
   # ── Lever ───────────────────────────────────────────────────
-  - {name: Palantir,    ats: lever,      slug: palantir,    prestige: 4, size: large,   industry: data}
-  - {name: Spotify,     ats: lever,      slug: spotify,     prestige: 4, size: large,   industry: media}
+  - {name: Palantir,    ats: lever,      slug: palantir,    prestige: 4, size: large,   industry: data, sponsors_visas: true}
+  - {name: Spotify,     ats: lever,      slug: spotify,     prestige: 4, size: large,   industry: media, sponsors_visas: true}
   # ── Ashby ───────────────────────────────────────────────────
-  - {name: OpenAI,      ats: ashby,      slug: openai,      prestige: 5, size: mid,     industry: ai}
+  - {name: OpenAI,      ats: ashby,      slug: openai,      prestige: 5, size: mid,     industry: ai, sponsors_visas: true}
   - {name: Ramp,        ats: ashby,      slug: ramp,        prestige: 4, size: mid,     industry: fintech}
   - {name: Notion,      ats: ashby,      slug: notion,      prestige: 4, size: mid,     industry: productivity}
   - {name: Linear,      ats: ashby,      slug: linear,      prestige: 3, size: startup, industry: dev tools}

@@ -55,12 +55,14 @@ async def sync_companies(db: AsyncSession, entries: list[dict] | None = None) ->
         stmt = insert(Company).values(
             name=e["name"], ats=e["ats"], slug=e["slug"], prestige_tier=e.get("prestige", 3),
             size=e.get("size", "mid"), industry=e.get("industry", ""),
+            sponsors_visas=e.get("sponsors_visas"),
         )
         await db.execute(
             stmt.on_conflict_do_update(
                 constraint="uq_company_ats_slug",
                 set_={"name": stmt.excluded.name, "prestige_tier": stmt.excluded.prestige_tier,
-                      "size": stmt.excluded.size, "industry": stmt.excluded.industry},
+                      "size": stmt.excluded.size, "industry": stmt.excluded.industry,
+                      "sponsors_visas": stmt.excluded.sponsors_visas},
             )
         )
     await db.commit()
