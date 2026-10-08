@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from jobfinder.auth.security import current_user
 from jobfinder.db import get_db
+from jobfinder.matching.prefilter import career_stage
 from jobfinder.models import Profile, ProfileFact, User
 
 router = APIRouter(prefix="/api/profile", tags=["profile"])
@@ -54,8 +55,17 @@ class ProfileOut(BaseModel):
     status: dict[str, Any]
     background: dict[str, Any]
     version: int
+    career_stage: str | None = None  # derived from the status (graduation date), same as the matches summary
 
     model_config = {"from_attributes": True}
+
+    @model_validator(mode="before")
+    @classmethod
+    def _derive_stage(cls, data: Any):
+        if isinstance(data, dict):
+            return data
+        status = data.status or {}
+        return {"status": status, "background": data.background, "version": data.version, "career_stage": career_stage(status)}
 
 
 class FactIn(BaseModel):
