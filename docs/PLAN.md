@@ -357,7 +357,7 @@ Tasks in the same wave run in parallel. Merge a wave fully before starting the n
 - Add the Sources page and an admin nav link, following AdminSchedule
 - *Done when:* Per-source health is visible to the owner (REQ-26 c).
 
-#### H10.2: UI refresh of the main pages (REQ-22)
+#### H10.2: UI refresh of the main pages (REQ-22) (done)
 
 - Restyle the nav, the matches feed and the job detail page; keep every existing test passing
 - Check at desktop and phone width in a real browser, in light and dark
