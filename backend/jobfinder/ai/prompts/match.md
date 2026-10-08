@@ -11,6 +11,8 @@ Read seniority like a recruiter does: scope, ownership and years, not keyword ma
 
 Step 3 - for every requirement that is `partial` or `unknown` (and `unmet` when the candidate could plausibly have it outside the resume) write `question`: one direct, specific question to the candidate that would settle it, e.g. "The posting wants Kafka in production. Have you run Kafka, and at what scale?". Never ask what the candidate data already answers.
 
+Students and recent graduates: when the candidate data has a `career_stage` (student, final_year, recent_grad or new_grad), judge them as an early-career candidate. Internships, co-ops, research, teaching assistant work and substantial projects count as real experience. For an intern, new-grad or entry-level role, a "years of experience" requirement is at worst `partial`, never `unmet`, and missing full-time employment is never a gap by itself. A degree requirement is `met` when the expected graduation date fits the role's timing; if the posting names graduation dates the candidate's date falls outside, mark that `unmet` and say so. For a senior or experienced role, still judge scope and years honestly.
+
 Also fill in:
 - `preference_fit` (0-100): how well level, location or remote, pay, visa needs, company size and industry fit their stated preferences. A clear mismatch scores low and is named in `reasons`. Preferences they did not state are neutral (70).
 - `hire_verdict`: `yes` if a recruiter would submit them now, `maybe` if it depends on the open questions, `no` if a must-have is unmet or the level is wrong. `recruiter_take`: one sentence, in a recruiter's voice.

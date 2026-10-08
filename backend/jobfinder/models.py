@@ -42,6 +42,7 @@ class User(Base):
     match_budget: Mapped[int | None] = mapped_column(Integer, nullable=True)  # LLM-scored jobs per rolling 24h; null = server default
     last_digest_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # throttled to one write per 10 min
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -77,6 +78,7 @@ class Profile(Base):
     # Recruiter-style audit of the profile (see ai/prompts/profile_audit.md).
     dossier: Mapped[dict] = mapped_column(JSONType, default=dict, server_default="{}")
     readiness: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    career_stage: Mapped[str] = mapped_column(String(16), default="", server_default="")  # see matching.prefilter.career_stage
     audit: Mapped[dict] = mapped_column(JSONType, default=dict, server_default="{}")  # {dimensions, questions, version}
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -257,3 +259,15 @@ class ClarifyingQuestion(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     emailed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     answered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class PlannerState(Base):
+    """What the background planner last decided for a user (shown on the admin schedule page)."""
+
+    __tablename__ = "planner_state"
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    last_planned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_reason: Mapped[str] = mapped_column(String(200), default="", server_default="")
+    last_skip: Mapped[str] = mapped_column(String(200), default="", server_default="")

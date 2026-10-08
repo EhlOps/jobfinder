@@ -9,6 +9,9 @@ import { AiErrorNotice } from "../components/AiErrorNotice";
 import { ErrorText } from "../components/fields";
 import { HireBadge, JobChips, ScoreBadge, StatusActions } from "../components/MatchBits";
 
+// Students and recent graduates see internships and new-grad roles first (they can untick the box).
+const EARLY_STAGES = ["student", "final_year", "recent_grad", "new_grad"];
+
 const TABS: [MatchStatus, string][] = [["new", "To review"], ["saved", "Saved"], ["applied", "Applied"], ["dismissed", "Dismissed"]];
 
 function useDebounced<T>(value: T, ms = 300): T {
@@ -28,6 +31,7 @@ export default function Matches() {
   const [workplace, setWorkplace] = useState("");
   const [sort, setSort] = useState<"score" | "recent">("score");
   const [search, setSearch] = useState("");
+  const [earlyChoice, setEarlyChoice] = useState<boolean | null>(null); // null = follow the default for this person
   const q = useDebounced(search);
   // The wizard sends us here with ?task=<id> so we can show the first matches as they arrive.
   const [taskId, setTaskId] = useState<number | null>(params.get("task") ? Number(params.get("task")) : null);
@@ -35,13 +39,20 @@ export default function Matches() {
   const task = useTask<{ scored?: number }>(taskId);
   const running = taskId !== null && task.data?.status !== "done" && task.data?.status !== "failed";
 
+  const stage = useQuery({
+    queryKey: ["matches-stage"], staleTime: 5 * 60_000,
+    queryFn: () => api<MatchList>("/api/matches?limit=1&status=dismissed").then((r) => r.summary.career_stage ?? null),
+  });
+  const early = earlyChoice ?? (stage.data ? EARLY_STAGES.includes(stage.data) : false);
+
   const list = useQuery({
-    queryKey: ["matches", status, minScore, workplace, sort, q],
+    queryKey: ["matches", status, minScore, workplace, sort, q, early],
     placeholderData: keepPreviousData,
     refetchInterval: running ? 10_000 : false, // partial progress is saved per job, so show it as it lands
     queryFn: () => {
       const p = new URLSearchParams({ status, min_score: String(minScore), sort });
       if (workplace) p.set("workplace", workplace);
+      if (early) p.set("early_career", "true");
       if (q.trim()) p.set("q", q.trim());
       return api<MatchList>(`/api/matches?${p}`);
     },
@@ -118,6 +129,9 @@ export default function Matches() {
           <option value="score">Best match first</option>
           <option value="recent">Newest first</option>
         </select>
+        <label className="check">
+          <input type="checkbox" checked={early} onChange={(e) => setEarlyChoice(e.target.checked)} /> New grad &amp; internships only
+        </label>
       </div>
 
       {list.isLoading && <p className="muted">Loading…</p>}

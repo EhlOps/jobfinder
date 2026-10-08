@@ -9,7 +9,7 @@ from jobfinder.ai.schemas import MatchScore, Unknown
 from jobfinder.config import get_settings
 from jobfinder.ingest.base import dedupe_hash
 from jobfinder.matching import service
-from jobfinder.models import Company, Job, JobMatch, Profile, Task, User
+from jobfinder.models import Company, Job, JobMatch, Profile, User
 
 STATUS = {"target_roles": ["Backend Engineer"], "target_locations": ["Boston"], "is_new_grad": True,
           "salary_min": 100000, "needs_visa_sponsorship": False}
@@ -21,7 +21,7 @@ class FakeAI:
     def __init__(self, scores=None, errors=None):
         self.scores, self.errors, self.calls = scores or {}, errors or {}, []
 
-    async def score_match(self, status, background, facts, job, dossier=None):
+    async def score_match(self, status, background, facts, job, dossier=None, stage_info=None):
         self.calls.append(job["title"])
         if (err := self.errors.get(job["title"])) is not None:
             raise err
@@ -256,22 +256,12 @@ async def test_company_data_feeds_prefilter_and_prompt(maker):
         seen = {}
 
         class SpyAI(FakeAI):
-            async def score_match(self, status, background, facts, job, dossier=None):
+            async def score_match(self, status, background, facts, job, dossier=None, stage_info=None):
                 seen.update(job)
                 return await super().score_match(status, background, facts, job)
 
         await service.match_user(db, SpyAI(), u.id)
         assert seen["company_size"] == "large" and seen["company_industry"] == "fintech" and seen["title"] == "Backend Engineer"
-
-
-async def test_enqueue_for_active_users_skips_unfinished_profiles(maker):
-    async with maker() as db:
-        a = await make_user(db, email="a@x.com")
-        await make_user(db, status={}, email="b@x.com")
-        assert await service.enqueue_for_active_users(db) == 1
-        assert await service.enqueue_for_active_users(db) == 1          # deduped while pending
-        tasks = (await db.scalars(sa.select(Task).where(Task.kind == "match_user"))).all()
-        assert [t.user_id for t in tasks] == [a.id]
 
 
 async def test_rescoring_resets_questions_collected(maker):
@@ -311,7 +301,7 @@ async def test_requirement_checks_drive_the_stored_score_and_persist(maker):
     from jobfinder.ai.schemas import RequirementCheck
 
     class ReqAI(FakeAI):
-        async def score_match(self, status, background, facts, job, dossier=None):
+        async def score_match(self, status, background, facts, job, dossier=None, stage_info=None):
             return MatchScore(
                 score=99, confidence=0.99, hire_verdict="maybe", recruiter_take="Promising; Kafka unconfirmed.",
                 requirements=[
@@ -328,3 +318,82 @@ async def test_requirement_checks_drive_the_stored_score_and_persist(maker):
         assert m.llm_score == 74 and m.confidence == 0.5  # 0.8*75 + 0.2*70 (both must-haves; Kafka unknown); the model's 99 is ignored
         assert [r["requirement"] for r in m.requirements] == ["Python", "Kafka"]
         assert m.unknowns[0]["question"] == "Have you run Kafka?" and m.hire_verdict == "maybe"
+
+
+# ── students and new grads ───────────────────────────────────────────────
+def _status(**kw):
+    return {**STATUS, "is_new_grad": None, **kw}
+
+
+async def test_student_sees_internships_not_new_grad_roles_until_final_year(maker):
+    from jobfinder.matching import prefilter
+
+    today = datetime.now(UTC).date()
+    far = f"{today.year + 2}-{today.month:02d}"
+    soon = f"{today.year}-{today.month:02d}"
+    async with maker() as db:
+        u = await make_user(db, status=_status(graduation_date=far))
+        await make_job(db, "Backend Engineer Intern", seniority="intern")
+        await make_job(db, "Backend Engineer, New Grad", seniority="new_grad")
+        await service.match_user(db, FakeAI(), u.id)
+        assert set(await matches(db)) == {"Backend Engineer Intern"}
+        (await db.get(Profile, u.id)).status = _status(graduation_date=soon)
+        await db.commit()
+        await service.match_user(db, FakeAI(), u.id)
+        assert set(await matches(db)) == {"Backend Engineer Intern", "Backend Engineer, New Grad"}
+    assert prefilter.career_stage(_status(graduation_date=soon)) == "final_year"
+
+
+async def test_postings_with_other_graduation_windows_are_skipped(maker):
+    async with maker() as db:
+        u = await make_user(db, status=_status(graduation_date="2027-05"))
+        await make_job(db, "Backend Engineer, New Grad A", seniority="new_grad", description_text="Python. Open to graduating between Dec 2026 and Jun 2027.")
+        await make_job(db, "Backend Engineer, New Grad B", seniority="new_grad", description_text="Python. Class of 2029 only.")
+        await make_job(db, "Backend Engineer, New Grad C", seniority="new_grad", description_text="Python Postgres.")
+        await service.match_user(db, FakeAI(), u.id)
+        assert set(await matches(db)) == {"Backend Engineer, New Grad A", "Backend Engineer, New Grad C"}
+
+
+async def test_early_career_roles_rank_first_for_a_graduating_student(maker):
+    async with maker() as db:
+        u = await make_user(db, status=_status(graduation_date="2027-05", seniority=["new_grad", "mid"]))
+        await make_job(db, "Backend Engineer", seniority="mid", description_text="Python Postgres")
+        await make_job(db, "Backend Engineer, New Grad", seniority="new_grad", description_text="Python Postgres")
+        ai = FakeAI()
+        await service.match_user(db, ai, u.id, budget=1)
+        assert ai.calls == ["Backend Engineer, New Grad"]
+
+
+async def test_scorer_is_told_the_career_stage_only_for_students(maker):
+    seen = {}
+
+    class SpyAI(FakeAI):
+        async def score_match(self, status, background, facts, job, dossier=None, stage_info=None):
+            seen[job["title"]] = stage_info
+            return await super().score_match(status, background, facts, job)
+
+    async with maker() as db:
+        u = await make_user(db, status=_status(graduation_date="2027-05", seniority=["new_grad", "mid"]), email="s@x.com")
+        v = await make_user(db, status=_status(seniority=["mid"]), email="v@x.com")
+        await make_job(db, "Backend Engineer", seniority="mid")
+        await service.match_user(db, SpyAI(), u.id)
+        assert seen["Backend Engineer"]["stage"] in ("student", "final_year", "recent_grad")
+        assert seen["Backend Engineer"]["graduation"] == "2027-05"
+        seen.clear()
+        await service.match_user(db, SpyAI(), v.id)
+        assert seen["Backend Engineer"] is None
+
+
+async def test_stage_change_bumps_the_version_but_the_first_record_does_not(maker):
+    from datetime import date
+
+    async with maker() as db:
+        u = await make_user(db, status=_status(graduation_date="2027-05"), version=3)
+        p = await db.get(Profile, u.id)
+        assert service.sync_career_stage(p, date(2026, 1, 15)) is False and p.career_stage == "student" and p.version == 3
+        assert service.sync_career_stage(p, date(2026, 2, 1)) is False and p.version == 3    # same stage: nothing
+        assert service.sync_career_stage(p, date(2026, 6, 1)) is True                        # 11 months out: final year
+        assert (p.career_stage, p.version) == ("final_year", 4)
+        assert service.sync_career_stage(p, date(2027, 8, 1)) is True                        # graduated
+        assert (p.career_stage, p.version) == ("recent_grad", 5)
+        assert service.sync_career_stage(p, date(2027, 9, 1)) is False

@@ -416,10 +416,19 @@
     {
       "id": "REQ-21",
       "area": "scheduling",
-      "status": "planned",
+      "status": "done",
       "source": "user",
       "requirement": "The system works for users while they are offline: it finds jobs, scores matches and generates questions without anyone prompting it. A planner fans out per-user tasks and spreads them over time, ordered by need and remaining budget, to make the best use of the shared Claude quota and worker capacity. Builds on REQ-17's queue and dedupe.",
-      "implemented_in": [],
+      "implemented_in": [
+        "backend/jobfinder/scheduling/planner.py",
+        "backend/jobfinder/scheduling/handlers.py",
+        "backend/jobfinder/worker.py",
+        "backend/jobfinder/config.py",
+        "backend/jobfinder/api/ai_admin.py",
+        "backend/jobfinder/auth/security.py",
+        "backend/alembic/versions/0013_planner_state.py",
+        "frontend/src/routes/AdminSchedule.tsx"
+      ],
       "acceptance": [
         "A periodic planner enqueues per-user match, question and audit tasks, never only on user action",
         "Users are prioritized by staleness, new jobs since their last run and remaining daily AI budget",
@@ -427,7 +436,9 @@
         "Idle or inactive users are throttled",
         "A rate-limit error backs off the whole fan-out",
         "An admin can see the last and next run per user"
-      ]
+      ],
+      "milestone": "H9",
+      "notes": "Built 2026-10-08 (H9). A `plan_work` task runs every PLANNER_INTERVAL_MINUTES (15) and after each ingest, replacing the old post-ingest fan-out to every user. It skips the whole tick while Claude's latest call failed with a rate-limit or auth error (PLANNER_BACKOFF_MINUTES), counts users with match/audit work already queued against PLANNER_MAX_PER_TICK (3), and ranks the rest: profile changed first, then new jobs since their last run plus hours waiting, then remaining budget. The top users get a match run (or an audit, which queues the match itself) staggered PLANNER_STAGGER_SECONDS apart, plus collect_questions when matches have uncollected questions. Idle users are throttled by users.last_seen_at (written at most every 10 min): seen within 3 days = every 3h, within 14 days = daily, longer = weekly. Per-user decisions are kept in planner_state and shown to admins at /settings/schedule (GET /api/admin/schedule). User-triggered runs still enqueue directly. Tests: test_scheduler.py (backend, 372 total passing) and AdminSchedule.test.tsx (30 frontend tests passing). Not yet watched on the live stack."
     },
     {
       "id": "REQ-22",
@@ -475,17 +486,28 @@
     {
       "id": "REQ-25",
       "area": "matching",
-      "status": "planned",
+      "status": "done",
       "source": "user",
       "requirement": "Students who are graduating soon get new-grad roles as a factor. Today is_new_grad and graduation_date are collected, but graduation_date is not used in matching.",
-      "implemented_in": [],
+      "implemented_in": [
+        "backend/jobfinder/matching/prefilter.py",
+        "backend/jobfinder/matching/service.py",
+        "backend/jobfinder/scheduling/planner.py",
+        "backend/jobfinder/ai/tasks.py",
+        "backend/jobfinder/ai/prompts/match.md",
+        "backend/jobfinder/api/matches.py",
+        "backend/alembic/versions/0014_career_stage.py",
+        "frontend/src/routes/Matches.tsx"
+      ],
       "acceptance": [
         "Use graduation_date to decide eligibility: new-grad roles open to the user's graduation window, internships while still enrolled, and 'graduating by X' requirements",
         "Boost roles labelled new grad, university or early career for soon-to-graduate users",
         "Do not penalize missing full-time experience for these users",
         "A 'New grad' filter or tab in the matches feed",
         "Re-evaluate automatically once the graduation date passes"
-      ]
+      ],
+      "milestone": "H13",
+      "notes": "Built 2026-10-08 (H13). The graduation date gives a career stage: student (more than 12 months out), final_year, recent_grad (up to 24 months after), graduated (no special handling); with no date, is_new_grad still means new_grad. When the user picked no levels the stage sets them: student = internships; final_year = internships, new grad, junior; recent_grad/new_grad = new grad, junior. An explicit choice always wins. Postings that name graduation dates ('graduating between Dec 2026 and Jun 2027', 'class of 2027', 'graduating by May 2027') are dropped when the user's date is outside them (one month of slack; a lone date covers its whole year; unknown never excludes). Early-career roles get +10 in the prefilter for final-year and recent grads, internships +10 for students and final-years. The scorer is given a career_stage block and the prompt says internships, projects and research count as experience and missing full-time years is at worst partial on entry-level roles. profiles.career_stage records the stage; when it changes (graduation date passes) the profile version bumps so matches are re-scored, and the H9 planner does this check for every user. The feed has a 'New grad & internships only' checkbox, on by default for students and recent grads. Tests: prefilter, service, matches API, scheduler and Matches.test.tsx."
     },
     {
       "id": "REQ-26",
@@ -599,6 +621,12 @@
       "topic": "Match scoring",
       "decision": "The LLM judges each posting requirement (met/partial/unknown/unmet, must/nice); the 0-100 score and confidence are computed in code (matching/scoring.py). Scoring and question consolidation use Sonnet (MATCH_MODEL, default sonnet).",
       "reason": "The holistic Haiku score treated anything not on the resume as a gap, so qualified users clustered near 50 and the question loop (score>=50 and confidence<0.6) never fired for them. Per-requirement checks separate 'unknown' from 'unmet' and give every gap a question."
+    },
+    {
+      "id": "DEC-17",
+      "topic": "Background scheduling",
+      "decision": "One periodic planner task picks which users get background AI work and staggers it, instead of queueing a match run for every user after each ingest. Rate-limit and auth errors from Claude pause the whole planner; idle users are throttled by last_seen_at.",
+      "reason": "Every user shares one Claude subscription and the worker runs only a couple of AI calls at a time, so a burst for all users after each ingest starves the people who need work most and keeps hitting the same rate limit. Rejected: one scheduler job per user (hard to cap, hard to see)."
     }
   ],
   "milestones": [
@@ -801,19 +829,6 @@
       ]
     },
     {
-      "id": "H9",
-      "priority": "P2",
-      "title": "Background fan-out scheduler (REQ-21)",
-      "findings": [],
-      "gaps": [],
-      "actions": [
-        "Add a planner task in backend/jobfinder/scheduling/handlers.py that ranks users by staleness, new jobs and remaining budget, and enqueues staggered per-user tasks",
-        "Register the planner tick in backend/jobfinder/worker.py and add caps and backoff settings in config.py",
-        "Add an admin view of last and next run per user",
-        "Tests in test_scheduler for ordering, caps and rate-limit backoff"
-      ]
-    },
-    {
       "id": "H10",
       "priority": "P2",
       "title": "UI refresh, site icon and apply confetti (REQ-22)",
@@ -850,19 +865,6 @@
         "Add a work-authorization field to backend/jobfinder/api/profile.py and frontend/src/routes/onboarding/StatusStep.tsx",
         "Add a sponsorship flag per company in backend/jobfinder/ingest/companies.yaml",
         "Show a sponsorship badge in frontend/src/components/MatchBits.tsx"
-      ]
-    },
-    {
-      "id": "H13",
-      "priority": "P2",
-      "title": "Student and new-grad awareness (REQ-25)",
-      "findings": [],
-      "gaps": [],
-      "actions": [
-        "Use graduation_date in backend/jobfinder/matching/prefilter.py for eligibility and boosts, and relax the experience filter",
-        "Update backend/jobfinder/ai/prompts/match.md so missing full-time experience is not a gap for these users",
-        "Add a New grad filter to frontend/src/routes/Matches.tsx",
-        "Re-score when the graduation date passes"
       ]
     },
     {
@@ -1938,6 +1940,16 @@
       "date": "2026-10-07",
       "task": "Requirement-level matching and the recruiter-grade profile interview",
       "summary": "Added RequirementCheck/ProfileAudit schemas, scoring.py, rewrote match.md, added profile_audit.md, the audit_profile task, /api/profile/interview, inline answers on matches (/api/matches/{id}/answers), migration 0011, removed the score>=50 / confidence<0.6 gates in question collection and the >=50 filter in re-scoring, and added the Strengthen page, requirements table and recruiter badge. Backend and frontend suites pass; not yet tried against the real Claude CLI."
+    },
+    {
+      "date": "2026-10-08",
+      "task": "H9 background fan-out scheduler (REQ-21)",
+      "summary": "H9: added the plan_work planner (scheduling/planner.py), planner_state table and users.last_seen_at (migration 0013), planner settings, the admin schedule endpoint and page, and removed enqueue_for_active_users. Tests added in test_scheduler.py and AdminSchedule.test.tsx."
+    },
+    {
+      "date": "2026-10-08",
+      "task": "H13 student and new-grad awareness (REQ-25)",
+      "summary": "Added career stage from graduation_date (prefilter.py), stage-based level eligibility, graduation-window filter for postings, early-career boost, career_stage block and prompt guidance for the scorer, profiles.career_stage (migration 0014) with re-scoring when the stage changes (also checked by the planner), the early_career filter on /api/matches and the feed checkbox."
     }
   ]
 }

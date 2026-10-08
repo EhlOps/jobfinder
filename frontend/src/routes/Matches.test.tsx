@@ -1,4 +1,5 @@
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import Matches from "./Matches";
 import { mockApi, renderApp } from "../test/helpers";
@@ -45,5 +46,34 @@ describe("matches feed", () => {
     mockApi(list([]));
     renderApp(<Matches />, { auth: false });
     expect(await screen.findByText(/no matches|nothing/i)).toBeInTheDocument();
+  });
+
+  it("offers new-grad & internship roles first to students, and lets them switch it off", async () => {
+    const urls: string[] = [];
+    mockApi({
+      "GET /api/matches": (_b, url) => {
+        urls.push(url);
+        return { items: [], total: 0, counts: { new: 0, saved: 0, applied: 0, dismissed: 0 }, summary: { career_stage: "final_year" } };
+      },
+      "GET /api/questions": () => ({ questions: [] }),
+    });
+    renderApp(<Matches />, { auth: false });
+    const box = await screen.findByRole("checkbox", { name: /new grad/i });
+    await waitFor(() => expect(box).toBeChecked());
+    await waitFor(() => expect(urls.some((u) => u.includes("early_career=true"))).toBe(true));
+    urls.length = 0;
+    await userEvent.click(box);
+    expect(box).not.toBeChecked();
+    await waitFor(() => expect(urls.length).toBeGreaterThan(0));
+    expect(urls.every((u) => !u.includes("early_career"))).toBe(true);
+  });
+
+  it("does not filter for people who are not students", async () => {
+    mockApi({
+      "GET /api/matches": () => ({ items: [], total: 0, counts: { new: 0, saved: 0, applied: 0, dismissed: 0 }, summary: { career_stage: null } }),
+      "GET /api/questions": () => ({ questions: [] }),
+    });
+    renderApp(<Matches />, { auth: false });
+    expect(await screen.findByRole("checkbox", { name: /new grad/i })).not.toBeChecked();
   });
 });
