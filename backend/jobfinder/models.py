@@ -158,6 +158,9 @@ class Company(Base):
     sponsors_visas: Mapped[bool | None] = mapped_column(nullable=True)  # None = unknown
     last_fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    consecutive_failures: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    disabled_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
 
 class Job(Base):

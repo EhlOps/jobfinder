@@ -153,6 +153,24 @@ def _describe(e: Exception) -> str:
     return f"{type(e).__name__}: {e}"[:300]
 
 
+def _record_failure(company: Company, error: str) -> None:
+    """Count a failed run; disable the board (with the reason) once it has failed N times in a row."""
+    company.last_error = error
+    company.consecutive_failures = (company.consecutive_failures or 0) + 1
+    limit = get_settings().ingest_max_consecutive_failures
+    if company.enabled and limit > 0 and company.consecutive_failures >= limit:
+        company.enabled = False
+        company.disabled_reason = f"auto-disabled after {company.consecutive_failures} consecutive failures: {error}"[:500]
+
+
+def _record_success(company: Company, now: datetime) -> None:
+    company.last_error = None
+    company.consecutive_failures = 0
+    company.last_success_at = now
+    if company.enabled:
+        company.disabled_reason = None
+
+
 async def ingest_company(db: AsyncSession, client: httpx.AsyncClient, company: Company) -> IngestStats:
     stats = IngestStats(source=company.ats, company=company.name)
     fetcher = ATS_FETCHERS[company.ats]
@@ -160,7 +178,7 @@ async def ingest_company(db: AsyncSession, client: httpx.AsyncClient, company: C
         postings = await _fetch_with_retry(fetcher, client, company.slug, company.name)
     except Exception as e:
         stats.error = _describe(e)
-        company.last_error = stats.error
+        _record_failure(company, stats.error)
         await db.commit()
         return stats
 
@@ -168,7 +186,6 @@ async def ingest_company(db: AsyncSession, client: httpx.AsyncClient, company: C
     if postings:
         stats.new, stats.updated = await upsert_postings(db, postings, company.id)
         stats.deactivated = await deactivate_missing(db, company.ats, company.id, [p.external_id for p in postings])
-        company.last_error = None
     else:
         active = await db.scalar(
             sa.select(sa.func.count()).select_from(Job).where(
@@ -177,11 +194,14 @@ async def ingest_company(db: AsyncSession, client: httpx.AsyncClient, company: C
         )
         if active and active > EMPTY_GUARD_MIN_ACTIVE:
             stats.error = f"empty response; kept {active} active jobs"
-            company.last_error = stats.error
         else:
             stats.deactivated = await deactivate_missing(db, company.ats, company.id, [])
-            company.last_error = None
-    company.last_fetched_at = datetime.now(UTC)
+    now = datetime.now(UTC)
+    if stats.error:
+        _record_failure(company, stats.error)
+    else:
+        _record_success(company, now)
+    company.last_fetched_at = now
     await db.commit()
     return stats
 
@@ -211,6 +231,13 @@ async def ingest_boards(
                     return await ingest_company(db, client, company)
                 except Exception as e:  # last line of defence: never lose the whole run
                     log.exception("ingest failed for %s", company.name)
-                    return IngestStats(source=company.ats, company=company.name, error=_describe(e))
+                    error = _describe(e)
+                    try:  # still count it toward the board's health
+                        await db.rollback()
+                        _record_failure(company, error)
+                        await db.commit()
+                    except Exception:
+                        log.exception("could not record failure for %s", company.name)
+                    return IngestStats(source=company.ats, company=company.name, error=error)
 
         return list(await asyncio.gather(*(one(i) for i in ids)))
