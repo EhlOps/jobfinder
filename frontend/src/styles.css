@@ -114,3 +114,5 @@ a.button-link { display: inline-block; border: 1px solid var(--border); color: v
 .chip.req-met { border-color: var(--ok); color: var(--ok); }
 .chip.req-partial, .chip.req-unknown { border-color: #d99a00; color: #b07c00; }
 .chip.req-unmet { border-color: var(--danger); color: var(--danger); }
+
+.confetti-canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 9999; }
