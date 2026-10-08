@@ -155,20 +155,42 @@ async def list_users() -> int:
     return 0
 
 
+async def add_board_cmd(args: argparse.Namespace) -> int:
+    from jobfinder.db import SessionLocal
+    from jobfinder.ingest.validate import add_board
+
+    if not (args.ats and args.slug and args.name):
+        print("Usage: add-board --ats greenhouse --slug acme --name 'Acme Inc' [--origin seed|discovered]")
+        return 2
+    if args.ats == "jobspy":
+        print("jobspy is not a board ATS")
+        return 2
+    async with SessionLocal() as db:
+        company, reason = await add_board(db, args.ats, args.slug, args.name, origin=args.origin or "seed")
+    if company:
+        print(f"Added {args.ats}/{args.slug}: {reason}")
+        return 0
+    print(f"Not added: {reason}")
+    return 0 if reason.startswith("duplicate") else 1
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="jobfinder.cli")
-    parser.add_argument("command", choices=["ai-check", "ingest", "daily", "questions", "test-email", "add-user", "reset-link", "list-users"])
-    parser.add_argument("--ats", choices=["greenhouse", "lever", "ashby", "jobspy"], help="ingest: only this source")
+    parser.add_argument("command", choices=["ai-check", "ingest", "daily", "questions", "test-email", "add-user", "reset-link", "list-users", "add-board"])
+    parser.add_argument("--ats", choices=["greenhouse", "lever", "ashby", "smartrecruiters", "workable", "recruitee", "bamboohr", "jobspy"], help="ingest/add-board: ATS")
     parser.add_argument("--company", help="ingest: only this company slug")
     parser.add_argument("--jobspy", action="store_true", help="ingest: also scrape LinkedIn/Indeed (needs the jobspy extra)")
     parser.add_argument("--email", help="daily/questions: only this user's email address")
     parser.add_argument("--preview", action="store_true", help="daily --email: send without marking anything as sent")
     parser.add_argument("--to", help="test-email: recipient")
+    parser.add_argument("--slug", help="add-board: board slug")
+    parser.add_argument("--name", help="add-board: company display name")
+    parser.add_argument("--origin", choices=["seed", "discovered"], help="add-board: origin (default seed)")
     args = parser.parse_args()
     handlers = {
         "ai-check": lambda: ai_check(), "ingest": lambda: ingest(args), "daily": lambda: daily(args),
         "questions": lambda: collect(args), "test-email": lambda: test_email(args),
-        "add-user": lambda: add_user(args), "reset-link": lambda: reset_link_cmd(args), "list-users": lambda: list_users(),
+        "add-user": lambda: add_user(args), "reset-link": lambda: reset_link_cmd(args), "list-users": lambda: list_users(), "add-board": lambda: add_board_cmd(args),
     }
     raise SystemExit(asyncio.run(handlers[args.command]()))
 
