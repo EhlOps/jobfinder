@@ -39,7 +39,7 @@ docker-compose: db (postgres:16) · api (FastAPI) · worker (APScheduler + queue
 ```
 Host ports: API on `127.0.0.1:${API_PORT:-8100}`, web on `127.0.0.1:${WEB_PORT:-8180}`. Port 8000 is used by another local project.
 
-**Status:** all seven milestones are done (scaffold; auth/profile/file store; AI layer, queue, worker and onboarding wizard; job ingestion; matching and the matches feed; cover letters; scheduling, email, daily digest and clarifying questions), plus the in-app "Connect Claude" setup and the profile/settings pages. Requirements, progress and known gaps live in [`PRD.json`](PRD.json), which is the source of truth; update both when something changes.
+**Status:** all seven milestones are done (scaffold; auth/profile/file store; AI layer, queue, worker and onboarding wizard; job ingestion; matching and the matches feed; cover letters; scheduling, email, daily digest and clarifying questions), plus the in-app "Connect Claude" setup and the profile/settings pages. The remaining H10, H11, H12 and H14 backlog items are broken into worktree-sized tasks in the last section of this file and in [`PLAN.json`](PLAN.json). Requirements, progress and known gaps live in [`PRD.json`](PRD.json), which is the source of truth; update both when something changes.
 The api and worker share one Python package. Only the api runs `alembic upgrade head` on start.
 
 ### Repo layout (`jobfinder/`)
@@ -197,3 +197,174 @@ Pages:
   5. Run `digest --now` and `questions --now`, then open Mailpit at `localhost:8025` to see both emails.
   6. Click the question link, answer, and confirm the job is scored again.
 - Frontend: `npm run build` and `tsc --noEmit` pass.
+
+## Remaining work: worktree batches
+
+The remaining PRD items (H10 UI refresh, H11 ATS resume, H12 visa sponsorship, H14 broader discovery) are split into small tasks that can run in separate git worktrees. [`PLAN.json`](PLAN.json) is the machine-readable source (files owned, dependencies, acceptance, tests, verify commands); [`PRD.json`](PRD.json) stays the source of truth for status. H6 and H8 need the owner and are not worktree tasks.
+
+### Rules
+
+- **Setup:** One task per worktree: git worktree add ../jobfinder-<id> -b plan/<id> main. Tasks in the same wave start from the same main commit.
+- **Test database:** Set TEST_DB=jobfinder_test_<id> so parallel pytest runs do not drop each other's database (needs T00). Use the TEST_ADMIN_URL recipe from the README.
+- **Migrations:** Each migration task has a reserved number. At merge time the integrator sets down_revision to the current head on main and runs 'alembic heads', which must show exactly one head.
+- **Shared files:** Files listed in 'hotspots' are append-only: add new items at the end and make the smallest possible change to existing code. Do not reformat or reorder.
+- **Dependencies:** At most one task per wave adds packages. That task names them in its PR. Everyone else rebases on lock file changes instead of editing them.
+- **Prd:** Worktrees never edit docs/PRD.json. Each task lists prd_on_merge; the integrator applies them and a REQ is marked done only when its last task has merged.
+- **Merge order:** Merge a wave completely, in task order, before starting the next wave. Rebase each branch on main and rerun its verify commands first.
+- **Definition of done:** Task acceptance lines met, tests added, verify commands pass, ruff is clean, no unrelated reformatting, and the task status is set to done in this file.
+- **Not exercised:** Nothing here is tried against the real Claude model or live job boards until the owner does it; say so in the PRD notes.
+
+### Waves
+
+| Wave | Task | Depends on | Migration | Main files |
+| --- | --- | --- | --- | --- |
+| 0 | **T00** Worktree prep: configurable test DB and clean lint | - | - | `conftest.py`, `README.md` |
+| 1 | **H12.1** Sponsorship signals and per-company flag | T00 | 0015 | `prefilter.py`, `companies.yaml`, `0015_company_sponsorship.py` … |
+| 1 | **H11.1** Resume tailoring AI core | T00 | - | `resume_tailor.md`, `__init__.py`, `service.py` … |
+| 1 | **H11.2** ATS keyword coverage check | T00 | - | `keywords.py`, `test_resume_keywords.py` |
+| 1 | **H11.3** ATS-safe DOCX and PDF export | T00 | - | `export.py`, `test_resume_export.py`, `pyproject.toml` … |
+| 1 | **H14.2a** ATS adapters: Workable and SmartRecruiters | T00 | - | `workable.py`, `smartrecruiters.py`, `workable_sample.json` … |
+| 1 | **H14.2b** ATS adapters: Recruitee and BambooHR | T00 | - | `recruitee.py`, `bamboohr.py`, `recruitee_sample.json` … |
+| 1 | **H10.1** Site icon and apply confetti | T00 | - | `favicon.svg`, `icon-192.png`, `apple-touch-icon.png` … |
+| 2 | **H12.2** Work authorization, LLM sponsorship fit and badge | H12.1 | - | `StatusStep.tsx`, `test_sponsorship_matching.py` |
+| 2 | **H11.4** Resume task and API | H11.1, H11.2, H11.3 | - | `resumes.py`, `test_resumes_api.py` |
+| 2 | **H14.1** Per-source health tracking and auto-disable | T00 | 0016 | `0016_source_health.py`, `test_ingest_health.py` |
+| 3 | **H11.5** Resume panel in the match detail page | H11.4 | - | `ResumePanel.tsx`, `ResumePanel.test.tsx` |
+| 3 | **H14.3** Board registry and validation | H14.1, H14.2a, H14.2b | 0017 | `validate.py`, `0017_company_origin.py`, `test_ingest_validate.py` |
+| 4 | **H14.4** Discovery sources | H14.3 | - | `__init__.py`, `github_lists.py`, `hn_hiring.py` … |
+| 4 | **H14.5** Target-driven board selection | H14.1, H14.3 | - | `selection.py`, `test_ingest_selection.py` |
+| 4 | **H14.6** Admin source health page | H14.1 | - | `AdminSources.tsx`, `AdminSources.test.tsx`, `test_admin_sources.py` |
+| 5 | **H10.2** UI refresh of the main pages | H10.1, H11.5, H12.2, H14.6 | - | `styles.css`, `Matches.tsx`, `MatchDetail.tsx` … |
+
+Tasks in the same wave run in parallel. Merge a wave fully before starting the next.
+
+### Tasks
+
+#### T00: Worktree prep: configurable test DB and clean lint
+
+- Make TEST_DB come from the TEST_DB env var, defaulting to jobfinder_test
+- Fix the two existing lint errors: I001 in ai/tasks.py:2 and RUF059 in api/matches.py
+- Add a 'Working in parallel worktrees' README section: git worktree add, set TEST_DB=jobfinder_test_<task>, run the tests
+- *Done when:* Two worktrees can run pytest at once without touching each other's database; ruff check is clean on the whole backend.
+
+#### H12.1: Sponsorship signals and per-company flag (REQ-24)
+
+- Add sponsorship_signal(description) returning 'sponsors', 'refuses' or None; detect 'will sponsor', H-1B, OPT/CPT and STEM-OPT friendly; keep refuses_sponsorship working
+- Add Company.sponsors_visas (bool, nullable) and migration 0015
+- Add sponsors_visas to known companies in companies.yaml and carry it through sync_companies
+- Add a sponsorship component to prefilter_score for users who need sponsorship; unknown stays neutral
+- *Done when:* Positive signals as well as refusals are detected (REQ-24 a); A per-company sponsorship flag exists in companies.yaml and the database (REQ-24 b); Sponsorship feeds the prefilter score; unknown is neutral (REQ-24 c, prefilter half).
+
+#### H11.1: Resume tailoring AI core (REQ-23)
+
+- Add a TailoredResume schema (contact, summary, skills, experience, projects, education) at the end of ai/schemas.py
+- Add the resume_tailor.md prompt: use only facts from profile, documents and answers; reorder and reword to mirror the posting; never invent
+- Add tailor_resume() at the end of ai/tasks.py, following score_match and the cover letter task
+- Add resumes/service.py that gathers the facts and stores the result in the file store as kind 'resume' tagged match:<id>
+- *Done when:* A tailored resume uses only supplied facts (REQ-23 a); Wording and order mirror the posting's keywords (REQ-23 b); The result is stored per match in the file store (REQ-23 e, storage half).
+
+#### H11.2: ATS keyword coverage check (REQ-23)
+
+- Pure module with no database access: extract_terms(posting_text), coverage(resume_text, terms, ats)
+- Per-ATS notes for Greenhouse, Lever, Ashby and a default (for example parsing quirks and keyword matching style)
+- Return covered terms, missing terms and a percentage
+- *Done when:* Shows which posting terms are missing from the resume (REQ-23 d); The posting's ATS is taken into account (REQ-23 d).
+
+#### H11.3: ATS-safe DOCX and PDF export (REQ-23)
+
+- Render a TailoredResume to DOCX with python-docx: single column, standard headings, no tables, images or text boxes, plain fonts
+- Render the same content to PDF with a text-based layout, still single column and selectable text
+- Reuse the pattern in letters/docx_export.py rather than duplicating helpers
+- *Done when:* Output is ATS-safe (REQ-23 c); DOCX and PDF export both work (REQ-23 c).
+
+#### H14.2a: ATS adapters: Workable and SmartRecruiters (REQ-26)
+
+- Write one fetcher per ATS with the same signature as fetch_greenhouse, using the providers' public job-board APIs
+- Capture real response fixtures and write parser tests
+- Register both at the end of ATS_FETCHERS
+- *Done when:* Jobs from other ATS providers can be ingested (REQ-26 a, adapter half).
+
+#### H14.2b: ATS adapters: Recruitee and BambooHR (REQ-26)
+
+- Same as H14.2a for Recruitee and BambooHR
+- Register both at the end of ATS_FETCHERS (a one-line merge conflict with H14.2a is expected)
+- *Done when:* Jobs from other ATS providers can be ingested (REQ-26 a, adapter half).
+
+#### H10.1: Site icon and apply confetti (REQ-22)
+
+- Design a simple SVG mark; export PNG and apple-touch versions; link all three from index.html
+- Write a small canvas confetti function with no package; skip it when prefers-reduced-motion is set
+- Call it from StatusActions when a match is marked Applied
+- *Done when:* A favicon and app icon are linked from index.html (REQ-22 b); Confetti on Applied, skipped under reduced motion (REQ-22 c).
+
+#### H12.2: Work authorization, LLM sponsorship fit and badge (REQ-24)
+
+- Add work_authorization (citizen, permanent resident, F-1 OPT, STEM OPT, H-1B transfer, other) to the status model and the onboarding step; derive needs_visa_sponsorship from it when unset
+- Pass the user's authorization, the company flag and the posting signal to score_match; update match.md so preference_fit reflects them and unknown stays neutral
+- Expose a sponsorship value on JobOut and show a badge in MatchBits
+- Bump the profile version when work_authorization changes so matches are re-scored
+- *Done when:* Work authorization is captured in the profile (REQ-24 e); Sponsorship feeds the LLM preference_fit (REQ-24 c); A sponsorship badge shows on matches (REQ-24 d).
+
+#### H11.4: Resume task and API (REQ-23)
+
+- Add a resume_tailor task handler at the end of the HANDLERS registry
+- Add router api/resumes.py: GET state, POST generate (202 with a task ref), PUT edits, DELETE, GET download?format=docx|pdf, all scoped to the user's match
+- Include keyword coverage computed from the saved text, so it updates after edits
+- Respect the per-user AI budget the way cover letters do
+- *Done when:* The resume is editable, regenerable and downloadable (REQ-23 e); The ATS is read from the job and used for the coverage check (REQ-23 d).
+
+#### H14.1: Per-source health tracking and auto-disable (REQ-26)
+
+- Add Company.consecutive_failures, last_success_at and disabled_reason with migration 0016
+- Update ingest_company to record success and failure; disable a board after N consecutive failures (setting) and say why
+- Check one failing board never stops the others, and add a test for it
+- *Done when:* Per-source health tracking and error isolation (REQ-26 c).
+
+#### H11.5: Resume panel in the match detail page (REQ-23)
+
+- Build a panel modelled on CoverLetterPanel: generate, edit, regenerate, delete, download DOCX and PDF
+- Show the keyword coverage with the missing terms
+- Show a warning to review the resume before sending, as the cover letter panel does
+- *Done when:* The resume is editable, regenerable and downloadable from the UI (REQ-23 e); Missing keywords are visible (REQ-23 d).
+
+#### H14.3: Board registry and validation (REQ-26)
+
+- Add Company.origin (seed or discovered) and validated_at with migration 0017
+- Add validate_board(ats, slug): a live fetch that requires a valid response and at least one posting
+- Add a CLI add-board command that validates before inserting; companies.yaml stays as the seed list
+- *Done when:* Each board is validated before it is added (REQ-26 b).
+
+#### H14.4: Discovery sources (REQ-26)
+
+- Add a robots.txt check and a per-source terms note; a source is only enabled when its terms allow it
+- Add discovery for new-grad GitHub lists, HN 'Who is hiring' (Algolia API) and YC Work at a Startup
+- Extract the ATS and slug from apply URLs, validate with H14.3, and add boards with origin 'discovered'
+- Add a weekly worker job and a discover_boards task, behind a setting
+- Wellfound only if its terms allow it; otherwise record that it was skipped and why
+- *Done when:* Companies and boards are auto-discovered from directories (REQ-26 a); Respects each site's terms and robots rules (REQ-26 e).
+
+#### H14.5: Target-driven board selection (REQ-26)
+
+- Rank boards by overlap with active users' target roles, industries and company sizes
+- Cap how many discovered boards one run fetches; seed boards always run
+- Rotate through the remainder so every board is eventually fetched
+- *Done when:* Boards are chosen from users' targets so cost scales sensibly (REQ-26 d).
+
+#### H14.6: Admin source health page (REQ-26)
+
+- Add an admin-only GET /api/admin/sources with per-board health and the last error
+- Add a POST to re-enable a disabled board
+- Add the Sources page and an admin nav link, following AdminSchedule
+- *Done when:* Per-source health is visible to the owner (REQ-26 c).
+
+#### H10.2: UI refresh of the main pages (REQ-22)
+
+- Restyle the nav, the matches feed and the job detail page; keep every existing test passing
+- Check at desktop and phone width in a real browser, in light and dark
+- Take care not to change behaviour; this is styling and layout only
+- *Done when:* Visual refresh of the main pages (REQ-22 a).
+
+### Optional
+
+- **GAP-06:** Stop follow-up questions re-asking status fields left as 'Not sure'. Could run in wave 1; owns questions/ and ai/prompts/followups.md.
+- **GAP-19:** Add a fact-check pass for cover letters, reusing H11.1's grounding approach. Could run in wave 3.
