@@ -64,18 +64,20 @@ async def remaining_budget(db: AsyncSession, user_id: int) -> int:
 
 
 def _score_batch(rows: list, descriptions: dict[int, str], status: dict, skills: list[str],
-                 acceptable: set[str] | None, needs_sponsorship: bool, threshold: float) -> list[Candidate]:
+                 acceptable: set[str] | None, needs_sponsorship: bool, threshold: float,
+                 stage: str | None = None) -> list[Candidate]:
     """CPU-bound part (regexes over long descriptions); plain data in and out so it can run in a thread."""
     out = []
     for r in rows:
         desc = descriptions.get(r.id, "")
         if needs_sponsorship and pf.refuses_sponsorship(desc):
             continue
-        if pf.too_experienced(desc, acceptable):
+        if pf.too_experienced(desc, acceptable) or pf.outside_grad_window(desc, status):
             continue
         s = pf.prefilter_score(
             title=r.title, description=desc, posted_at=r.posted_at, company_tier=r.prestige_tier,
             company_size=r.size, company_industry=r.industry, status=status, skills=skills,
+            seniority=r.seniority, stage=stage,
         )
         if s >= threshold:
             out.append(Candidate(r.id, s, r.posted_at.timestamp() if r.posted_at else 0, r.dedupe_hash))
@@ -90,7 +92,9 @@ async def find_candidates(db: AsyncSession, user_id: int, profile: Profile) -> l
     applies the cheap filters, then descriptions are loaded BATCH at a time for the rest and scored off
     the event loop."""
     status, background = profile.status or {}, profile.background or {}
-    acceptable = pf.acceptable_seniorities(status)
+    today = datetime.now(UTC).date()
+    acceptable = pf.acceptable_seniorities(status, today)
+    stage = pf.career_stage(status, today)
     place = pf.place_prefs(status)
     skills = pf.profile_skills(background)
     needs_sponsorship = status.get("needs_visa_sponsorship") is True
@@ -103,7 +107,7 @@ async def find_candidates(db: AsyncSession, user_id: int, profile: Profile) -> l
     q = (
         sa.select(
             Job.id, Job.title, Job.location, Job.workplace_type, Job.salary_max, Job.salary_currency,
-            Job.posted_at, Job.dedupe_hash,
+            Job.posted_at, Job.dedupe_hash, Job.seniority,
             Company.prestige_tier.label("prestige_tier"), Company.size.label("size"), Company.industry.label("industry"),
         )
         .outerjoin(Company, Company.id == Job.company_id)
@@ -123,7 +127,7 @@ async def find_candidates(db: AsyncSession, user_id: int, profile: Profile) -> l
             (await db.execute(sa.select(Job.id, Job.description_text).where(Job.id.in_([r.id for r in chunk])))).all()
         )
         scored += await asyncio.to_thread(
-            _score_batch, chunk, descriptions, status, skills, acceptable, needs_sponsorship, threshold
+            _score_batch, chunk, descriptions, status, skills, acceptable, needs_sponsorship, threshold, stage
         )
     scored.sort(key=lambda c: (-c.score, -c.posted_ts))
     out, seen_hashes = [], set()
@@ -186,9 +190,40 @@ async def _answered_match_ids(db: AsyncSession, user_id: int) -> list[int]:
     return sorted(ids) or [-1]
 
 
+def stage_info(status: dict, today=None) -> dict | None:
+    """What the scorer is told about a student or recent graduate (None for everyone else)."""
+    stage = pf.career_stage(status, today)
+    if stage is None or stage == pf.GRADUATED:
+        return None
+    info: dict = {"stage": stage}
+    months = pf.months_to_graduation(status, today)
+    if months is not None:
+        info.update(graduation=status.get("graduation_date"), months_to_graduation=months)
+    return info
+
+
+def sync_career_stage(profile: Profile, today=None) -> bool:
+    """Keep profiles.career_stage current. When the stage really changes (the graduation date passed, or a
+    student became a final-year), bump the profile version so saved and new matches are scored again.
+    The first time a stage is recorded nothing is re-scored. Returns True when the version was bumped."""
+    stage = pf.career_stage(profile.status or {}, today) or ""
+    previous = profile.career_stage or ""
+    if stage == previous:
+        return False
+    profile.career_stage = stage
+    if previous:
+        profile.version += 1
+        return True
+    return False
+
+
 async def _score(ai: AITasks, profile: Profile, facts: list[tuple[str, str]], job: Job, company: Company | None):
+    extra = {}
+    if info := stage_info(profile.status or {}):
+        extra["stage_info"] = info
     result = await ai.score_match(
-        profile.status or {}, profile.background or {}, facts, job_payload(job, company), dossier=profile.dossier or None
+        profile.status or {}, profile.background or {}, facts, job_payload(job, company), dossier=profile.dossier or None,
+        **extra,
     )
     return finalize(result)
 
@@ -222,6 +257,8 @@ async def match_user(db: AsyncSession, ai: AITasks, user_id: int, *, budget: int
         (f.question, f.answer)
         for f in (await db.scalars(sa.select(ProfileFact).where(ProfileFact.user_id == user_id).order_by(ProfileFact.id)))
     ]
+    if sync_career_stage(profile):
+        await db.commit()
     version = profile.version
     left = await remaining_budget(db, user_id) if budget is None else budget
 

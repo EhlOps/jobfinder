@@ -133,7 +133,7 @@ export interface MatchList {
   items: Match[];
   total: number;
   counts: Record<MatchStatus, number>;
-  summary: { last_run_at?: string; scored?: number; pending?: number; failed?: number };
+  summary: { last_run_at?: string; scored?: number; pending?: number; failed?: number; career_stage?: string | null };
 }
 
 export type Tone = "professional" | "warm" | "concise" | "enthusiastic";

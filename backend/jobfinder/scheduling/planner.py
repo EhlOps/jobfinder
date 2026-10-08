@@ -16,7 +16,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jobfinder.config import get_settings
-from jobfinder.matching.service import BUDGET_WINDOW, STALE_STATUSES, UNLIMITED
+from jobfinder.matching.service import BUDGET_WINDOW, STALE_STATUSES, UNLIMITED, sync_career_stage
 from jobfinder.models import AICall, Job, JobMatch, PlannerState, Profile, Task, User
 from jobfinder.scheduling import queue
 
@@ -89,6 +89,11 @@ async def _views(db: AsyncSession, now: datetime) -> list[UserView]:
             .order_by(User.id)
         )
     ).all()
+    # A graduation date that has passed changes what the user should see: bump the version before looking
+    # for stale matches so the re-score is planned like any other profile change.
+    bumped = [sync_career_stage(profile, now.date()) for _, profile, _ in rows]  # every profile, not just the first change
+    if any(bumped):
+        await db.commit()
     used = dict(
         (
             await db.execute(

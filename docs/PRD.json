@@ -486,17 +486,28 @@
     {
       "id": "REQ-25",
       "area": "matching",
-      "status": "planned",
+      "status": "done",
       "source": "user",
       "requirement": "Students who are graduating soon get new-grad roles as a factor. Today is_new_grad and graduation_date are collected, but graduation_date is not used in matching.",
-      "implemented_in": [],
+      "implemented_in": [
+        "backend/jobfinder/matching/prefilter.py",
+        "backend/jobfinder/matching/service.py",
+        "backend/jobfinder/scheduling/planner.py",
+        "backend/jobfinder/ai/tasks.py",
+        "backend/jobfinder/ai/prompts/match.md",
+        "backend/jobfinder/api/matches.py",
+        "backend/alembic/versions/0014_career_stage.py",
+        "frontend/src/routes/Matches.tsx"
+      ],
       "acceptance": [
         "Use graduation_date to decide eligibility: new-grad roles open to the user's graduation window, internships while still enrolled, and 'graduating by X' requirements",
         "Boost roles labelled new grad, university or early career for soon-to-graduate users",
         "Do not penalize missing full-time experience for these users",
         "A 'New grad' filter or tab in the matches feed",
         "Re-evaluate automatically once the graduation date passes"
-      ]
+      ],
+      "milestone": "H13",
+      "notes": "Built 2026-10-08 (H13). The graduation date gives a career stage: student (more than 12 months out), final_year, recent_grad (up to 24 months after), graduated (no special handling); with no date, is_new_grad still means new_grad. When the user picked no levels the stage sets them: student = internships; final_year = internships, new grad, junior; recent_grad/new_grad = new grad, junior. An explicit choice always wins. Postings that name graduation dates ('graduating between Dec 2026 and Jun 2027', 'class of 2027', 'graduating by May 2027') are dropped when the user's date is outside them (one month of slack; a lone date covers its whole year; unknown never excludes). Early-career roles get +10 in the prefilter for final-year and recent grads, internships +10 for students and final-years. The scorer is given a career_stage block and the prompt says internships, projects and research count as experience and missing full-time years is at worst partial on entry-level roles. profiles.career_stage records the stage; when it changes (graduation date passes) the profile version bumps so matches are re-scored, and the H9 planner does this check for every user. The feed has a 'New grad & internships only' checkbox, on by default for students and recent grads. Tests: prefilter, service, matches API, scheduler and Matches.test.tsx."
     },
     {
       "id": "REQ-26",
@@ -854,19 +865,6 @@
         "Add a work-authorization field to backend/jobfinder/api/profile.py and frontend/src/routes/onboarding/StatusStep.tsx",
         "Add a sponsorship flag per company in backend/jobfinder/ingest/companies.yaml",
         "Show a sponsorship badge in frontend/src/components/MatchBits.tsx"
-      ]
-    },
-    {
-      "id": "H13",
-      "priority": "P2",
-      "title": "Student and new-grad awareness (REQ-25)",
-      "findings": [],
-      "gaps": [],
-      "actions": [
-        "Use graduation_date in backend/jobfinder/matching/prefilter.py for eligibility and boosts, and relax the experience filter",
-        "Update backend/jobfinder/ai/prompts/match.md so missing full-time experience is not a gap for these users",
-        "Add a New grad filter to frontend/src/routes/Matches.tsx",
-        "Re-score when the graduation date passes"
       ]
     },
     {
@@ -1947,6 +1945,11 @@
       "date": "2026-10-08",
       "task": "H9 background fan-out scheduler (REQ-21)",
       "summary": "H9: added the plan_work planner (scheduling/planner.py), planner_state table and users.last_seen_at (migration 0013), planner settings, the admin schedule endpoint and page, and removed enqueue_for_active_users. Tests added in test_scheduler.py and AdminSchedule.test.tsx."
+    },
+    {
+      "date": "2026-10-08",
+      "task": "H13 student and new-grad awareness (REQ-25)",
+      "summary": "Added career stage from graduation_date (prefilter.py), stage-based level eligibility, graduation-window filter for postings, early-career boost, career_stage block and prompt guidance for the scorer, profiles.career_stage (migration 0014) with re-scoring when the stage changes (also checked by the planner), the early_career filter on /api/matches and the feed checkbox."
     }
   ]
 }

@@ -224,3 +224,26 @@ async def test_admin_schedule_endpoint(authed, engine, maker, monkeypatch):
     assert body["max_per_tick"] == 3 and body["backoff_until"] is None
     assert [u["email"] for u in body["users"]] == ["sam@example.com"]
     assert {"last_run_at", "next_due_at", "budget_left", "reason", "skip", "active"} <= set(body["users"][0])
+
+
+async def test_a_passed_graduation_date_gets_the_user_planned_again(maker):
+    async with maker() as db:
+        u = await _setup(db, "grad@x.com", last_run_ago=timedelta(hours=5))
+        p = await db.get(Profile, u.id)
+        p.status = {**p.status, "graduation_date": "2026-06"}
+        await db.commit()
+        # First look: records the stage ("final_year" as of NOW = 2026-06-01) without re-scoring anyone.
+        await planner.plan(db, NOW)
+        assert (await db.get(Profile, u.id)).career_stage == "final_year"
+        assert (await db.get(Profile, u.id)).version == 1
+        assert [t for t in await _tasks(db) if t.kind == "match_user"] == []
+        # Months later the date has passed: the stage changes, the version bumps and the user is planned.
+        later = NOW + timedelta(days=200)
+        p = await db.get(Profile, u.id)
+        p.match_summary = {**p.match_summary, "last_run_at": (later - timedelta(hours=5)).isoformat()}
+        (await db.get(User, u.id)).last_seen_at = later - timedelta(hours=1)      # still an active user
+        await db.commit()
+        await planner.plan(db, later)
+        assert (await db.get(Profile, u.id)).career_stage in ("recent_grad", "graduated")
+        # A profile change is re-audited first; the audit queues the match run itself.
+        assert [(t.kind, t.user_id) for t in await _tasks(db)] == [("audit_profile", u.id)]
