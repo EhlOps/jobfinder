@@ -25,3 +25,13 @@ async def test_users_are_isolated(client, make_account):
     await client.post("/api/auth/logout")
     await make_account("b@x.com", "password-bbbb")
     assert (await client.get("/api/profile/facts")).json() == []
+
+
+async def test_profile_exposes_career_stage(authed):
+    assert (await authed.get("/api/profile")).json()["career_stage"] is None
+    r = await authed.put("/api/profile/status", json={"is_new_grad": True})
+    assert r.json()["career_stage"] == "new_grad"
+    assert (await authed.get("/api/profile")).json()["career_stage"] == "new_grad"
+    r = await authed.put("/api/profile/status", json={"graduation_date": "2099-05"})
+    assert r.json()["career_stage"] == "student"
+    assert (await authed.put("/api/profile/background", json={})).json()["career_stage"] == "student"

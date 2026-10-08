@@ -66,7 +66,7 @@ export const emptyBackground: Background = {
   name: "", summary: "", education: [], experience: [], projects: [], skills: [], certifications: [],
 };
 
-export interface Profile { status: Partial<Status>; background: Partial<Background>; version: number }
+export interface Profile { status: Partial<Status>; background: Partial<Background>; version: number; career_stage?: string | null }
 export interface DocumentOut {
   id: string;
   kind: string;

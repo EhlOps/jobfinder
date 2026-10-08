@@ -4,7 +4,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { useTask } from "../lib/useTask";
-import type { MatchList, MatchStatus } from "../lib/types";
+import type { MatchList, MatchStatus, Profile } from "../lib/types";
 import { AiErrorNotice } from "../components/AiErrorNotice";
 import { ErrorText } from "../components/fields";
 import { HireBadge, JobChips, ScoreBadge, StatusActions } from "../components/MatchBits";
@@ -39,15 +39,15 @@ export default function Matches() {
   const task = useTask<{ scored?: number }>(taskId);
   const running = taskId !== null && task.data?.status !== "done" && task.data?.status !== "failed";
 
-  const stage = useQuery({
-    queryKey: ["matches-stage"], staleTime: 5 * 60_000,
-    queryFn: () => api<MatchList>("/api/matches?limit=1&status=dismissed").then((r) => r.summary.career_stage ?? null),
-  });
-  const early = earlyChoice ?? (stage.data ? EARLY_STAGES.includes(stage.data) : false);
+  // The default filter comes from the profile, so hold the first list fetch until it is known (or has failed).
+  const profile = useQuery({ queryKey: ["profile"], staleTime: 5 * 60_000, retry: false, queryFn: () => api<Profile>("/api/profile") });
+  const stage = profile.data?.career_stage;
+  const early = earlyChoice ?? (stage ? EARLY_STAGES.includes(stage) : false);
 
   const list = useQuery({
     queryKey: ["matches", status, minScore, workplace, sort, q, early],
     placeholderData: keepPreviousData,
+    enabled: profile.isSuccess || profile.isError,
     refetchInterval: running ? 10_000 : false, // partial progress is saved per job, so show it as it lands
     queryFn: () => {
       const p = new URLSearchParams({ status, min_score: String(minScore), sort });
@@ -134,7 +134,7 @@ export default function Matches() {
         </label>
       </div>
 
-      {list.isLoading && <p className="muted">Loading…</p>}
+      {list.isPending && <p className="muted">Loading…</p>}
       <ErrorText error={list.error} />
       {data && data.items.length === 0 && !running && (
         <div className="card">
