@@ -41,8 +41,10 @@ function Shell() {
           {user.is_admin && <NavLink to="/settings/schedule">Schedule</NavLink>}
           {user.is_admin && <NavLink to="/settings/sources">Sources</NavLink>}
         </nav>
-        <span className="muted">{user.email}</span>
-        <button className="link" onClick={() => logout()}>Log out</button>
+        <div className="user">
+          <span className="muted">{user.email}</span>
+          <button className="link" onClick={() => logout()}>Log out</button>
+        </div>
       </header>
       <main className="page"><Outlet /></main>
     </>
