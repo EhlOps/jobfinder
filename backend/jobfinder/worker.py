@@ -99,6 +99,11 @@ def make_scheduler() -> AsyncIOScheduler:
         next_run_time=datetime.now(UTC) + timedelta(minutes=5), coalesce=True, max_instances=1,
     )
     scheduler.add_job(enqueue_scheduled, "cron", minute=5, args=["daily_emails"], id="daily_emails", coalesce=True, max_instances=1)
+    if s.discovery_enabled:
+        scheduler.add_job(
+            enqueue_scheduled, "cron", day_of_week="sun", hour=4, minute=30, args=["discover_boards"],
+            id="discover_boards", coalesce=True, max_instances=1,
+        )
     return scheduler
 
 
@@ -109,6 +114,8 @@ async def main() -> None:
     running: set[asyncio.Task] = set()
     if get_settings().scheduler_enabled:
         make_scheduler().start()
+        if get_settings().discovery_enabled:
+            log.info("board discovery scheduled weekly (Sunday 04:30 UTC)")
         log.info(
             "scheduler started: ingest every %dh, planner every %dm, daily emails hourly at :05",
             get_settings().ingest_interval_hours, get_settings().planner_interval_minutes,
