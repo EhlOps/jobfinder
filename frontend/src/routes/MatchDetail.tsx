@@ -7,6 +7,7 @@ import type { MatchDetail as Detail, Requirement } from "../lib/types";
 import { ErrorText } from "../components/fields";
 import { HireBadge, JobChips, ScoreBadge, StatusActions } from "../components/MatchBits";
 import { CoverLetterPanel } from "../components/CoverLetterPanel";
+import { ResumePanel } from "../components/ResumePanel";
 
 const STATUS_LABEL = { met: "Met", partial: "Partly", unknown: "Not in profile", unmet: "Not met" } as const;
 
@@ -96,6 +97,8 @@ export default function MatchDetail() {
           </>
         )}
       </article>
+
+      <ResumePanel matchId={d.id} />
 
       <CoverLetterPanel matchId={d.id} />
 

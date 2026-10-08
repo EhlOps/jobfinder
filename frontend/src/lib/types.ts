@@ -211,3 +211,22 @@ export interface Schedule {
   next_tick: string | null;
   users: ScheduleRow[];
 }
+
+export interface ResumeContact { name: string; email: string; phone: string; location: string; links: string[] }
+export interface ResumeExperience {
+  kind: string; company: string; title: string; start: string; end: string; location: string;
+  summary: string; bullets: string[]; technologies: string[];
+}
+export interface ResumeProject { name: string; description: string; technologies: string[]; url: string }
+export interface ResumeEducation { school: string; degree: string; field: string; start: string; end: string; gpa: string }
+export interface TailoredResume {
+  contact: ResumeContact;
+  summary: string;
+  skills: string[];
+  experience: ResumeExperience[];
+  projects: ResumeProject[];
+  education: ResumeEducation[];
+}
+export interface ResumeCoverage { percent: number; covered: string[]; missing: string[]; loose: string[]; ats: string; notes: string[] }
+export interface Resume { content: TailoredResume; edited: boolean; coverage: ResumeCoverage; generated_at: string; updated_at: string }
+export interface ResumeState { resume: Resume | null; pending_task_id: number | null }
