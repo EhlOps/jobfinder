@@ -240,7 +240,7 @@ Tasks in the same wave run in parallel. Merge a wave fully before starting the n
 
 ### Tasks
 
-#### T00: Worktree prep: configurable test DB and clean lint
+#### T00: Worktree prep: configurable test DB and clean lint (done)
 
 - Make TEST_DB come from the TEST_DB env var, defaulting to jobfinder_test
 - Fix the two existing lint errors: I001 in ai/tasks.py:2 and RUF059 in api/matches.py

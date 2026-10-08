@@ -69,7 +69,7 @@
       "prd_on_merge": [
         "Add a work_log entry only; no requirement changes"
       ],
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "H12.1",
@@ -116,7 +116,7 @@
       "prd_on_merge": [
         "Do not mark REQ-24 done; add a note listing what H12.1 delivered"
       ],
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "H11.1",
@@ -162,7 +162,7 @@
       "prd_on_merge": [
         "Do not mark REQ-23 done; note the AI core is built"
       ],
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "H11.2",
@@ -201,7 +201,7 @@
       "prd_on_merge": [
         "Note in REQ-23: keyword coverage check built"
       ],
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "H11.3",
@@ -245,7 +245,7 @@
       "prd_on_merge": [
         "Note in REQ-23: export built"
       ],
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "H14.2a",
@@ -286,7 +286,7 @@
       "prd_on_merge": [
         "Note in REQ-26: Workable and SmartRecruiters adapters built"
       ],
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "H14.2b",
@@ -326,7 +326,7 @@
       "prd_on_merge": [
         "Note in REQ-26: Recruitee and BambooHR adapters built"
       ],
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "H10.1",
@@ -371,7 +371,7 @@
       "prd_on_merge": [
         "Note in REQ-22: icon and confetti built; REQ stays planned until H10.2"
       ],
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "H12.2",

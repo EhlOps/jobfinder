@@ -1,15 +1,15 @@
 import io
-from types import SimpleNamespace as NS
 
 import docx
 import pdfplumber
 
+from jobfinder.ai.schemas import Education, Experience, Project, ResumeContact, TailoredResume
 from jobfinder.resumes.export import HEADINGS, render_docx, render_pdf, resume_to_text
 
 
 def _resume():
-    return NS(
-        contact=NS(
+    return TailoredResume(
+        contact=ResumeContact(
             name="Ada Lovelace",
             email="ada@example.com",
             phone="555-0100",
@@ -19,9 +19,9 @@ def _resume():
         summary="Engineer who builds reliable analytical engines.",
         skills=["Python", "SQL", "FastAPI"],
         experience=[
-            NS(
+            Experience(
                 company="Acme",
-                role="Software Engineer",
+                title="Software Engineer",
                 start="2022",
                 end="Present",
                 location="Remote",
@@ -29,15 +29,10 @@ def _resume():
             ),
         ],
         projects=[
-            NS(name="Engine", bullets=["Open-source <calculator>"], link="github.com/ada/engine")
+            Project(name="Engine", description="Open-source <calculator>", url="github.com/ada/engine")
         ],
         education=[
-            NS(
-                school="Northeastern",
-                degree="BS Computer Science",
-                dates="2018-2022",
-                details=["GPA 3.9"],
-            )
+            Education(school="Northeastern", degree="BS Computer Science", start="2018", end="2022", gpa="3.9")
         ],
     )
 

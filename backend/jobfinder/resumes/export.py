@@ -1,10 +1,7 @@
 """ATS-safe resume export: single column, standard headings, no tables/images/text boxes.
 
-The renderers take any object shaped like the TailoredResume schema (attribute access):
-  contact {name, email, phone, location, links[]}, summary, skills[],
-  experience[{company, role, start, end, location, bullets[]}], projects[{name, bullets[], link}],
-  education[{school, degree, dates, details[]}].
-All field access goes through `_sections`, so adjusting names to the real schema happens there.
+The renderers take a TailoredResume (ai/schemas.py) or any object with the same attributes.
+All field access goes through `_sections`.
 """
 
 import io
@@ -25,6 +22,13 @@ def _join(parts, sep=" | ") -> str:
     return sep.join(str(p).strip() for p in parts if p and str(p).strip())
 
 
+def _bullets(summary, bullets, technologies) -> list[str]:
+    out = ([summary] if summary else []) + list(bullets or [])
+    if technologies:
+        out.append("Technologies: " + ", ".join(technologies))
+    return out
+
+
 def _sections(resume) -> tuple[str, list[str], list[tuple[str, list[tuple[str, list[str]]]]]]:
     """Normalise to (name, contact lines, [(heading, [(entry line, bullets)])]); empty sections are dropped."""
     c = resume.contact
@@ -40,8 +44,8 @@ def _sections(resume) -> tuple[str, list[str], list[tuple[str, list[tuple[str, l
                 "Experience",
                 [
                     (
-                        _join([e.role, e.company, e.location, _join([e.start, e.end], " - ")]),
-                        list(e.bullets or []),
+                        _join([e.title, e.company, e.location, _join([e.start, e.end], " - ")]),
+                        _bullets(e.summary, e.bullets, e.technologies),
                     )
                     for e in resume.experience
                 ],
@@ -51,7 +55,10 @@ def _sections(resume) -> tuple[str, list[str], list[tuple[str, list[tuple[str, l
         sections.append(
             (
                 "Projects",
-                [(_join([p.name, p.link]), list(p.bullets or [])) for p in resume.projects],
+                [
+                    (_join([p.name, p.url]), _bullets(p.description, [], p.technologies))
+                    for p in resume.projects
+                ],
             )
         )
     if resume.education:
@@ -59,7 +66,10 @@ def _sections(resume) -> tuple[str, list[str], list[tuple[str, list[tuple[str, l
             (
                 "Education",
                 [
-                    (_join([e.degree, e.school, e.dates]), list(e.details or []))
+                    (
+                        _join([_join([e.degree, e.field], ", "), e.school, _join([e.start, e.end], " - ")]),
+                        [f"GPA {e.gpa}"] if e.gpa else [],
+                    )
                     for e in resume.education
                 ],
             )
