@@ -84,3 +84,38 @@ def test_schema_rejects_missing_sections():
     for section in ("contact", "summary", "skills", "experience", "projects", "education"):
         with pytest.raises(ValidationError):
             TailoredResume.model_validate({k: v for k, v in data.items() if k != section})
+
+
+async def test_edit_made_while_queued_survives_generation(engine, tmp_path):
+    maker, store, uid, mid = await seed(engine, tmp_path)
+    async with maker() as db:
+        first = await service.tailor(db, AITasks(FakeClaude()), store, uid, mid)
+    store.set_tags(uid, first["document_id"], {**service.match_tags(mid), "edited": "1"})  # edited after enqueue
+    async with maker() as db:
+        with pytest.raises(ValueError, match="not regenerated"):
+            await service.tailor(db, AITasks(FakeClaude()), store, uid, mid)
+    docs = store.list(uid, kind="resume", tags=service.match_tags(mid))
+    assert [d.id for d in docs] == [first["document_id"]]
+
+
+async def test_forced_generation_replaces_edited_resume(engine, tmp_path):
+    maker, store, uid, mid = await seed(engine, tmp_path)
+    async with maker() as db:
+        first = await service.tailor(db, AITasks(FakeClaude()), store, uid, mid)
+        store.set_tags(uid, first["document_id"], {**service.match_tags(mid), "edited": "1"})
+        second = await service.tailor(db, AITasks(FakeClaude()), store, uid, mid, force=True)
+    docs = store.list(uid, kind="resume", tags=service.match_tags(mid))
+    assert [d.id for d in docs] == [second["document_id"]]
+
+
+def test_edit_landing_between_check_and_delete_is_kept(tmp_path, monkeypatch):
+    store = DocumentStore(tmp_path / "store")
+    old, _ = store.put(1, "resume", "a.json", text="{}", content_type="application/json", tags=service.match_tags(5))
+
+    def edit_now(*args):  # the user's edit lands right after the pre-save check
+        store.set_tags(1, old.id, {**service.match_tags(5), "edited": "1"})
+        return False
+
+    monkeypatch.setattr(service, "_edited", edit_now)
+    service.save(store, 1, 5, RESUME)
+    assert old.id in [m.id for m in store.list(1, kind="resume")]
