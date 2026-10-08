@@ -161,6 +161,8 @@ class Company(Base):
     consecutive_failures: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     disabled_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    origin: Mapped[str] = mapped_column(String(16), default="seed", server_default="seed")  # seed|discovered
+    validated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class Job(Base):
