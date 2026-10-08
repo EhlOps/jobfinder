@@ -424,7 +424,7 @@
       "prd_on_merge": [
         "Mark REQ-24 done (milestone H12) and remove H12 from remaining"
       ],
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "H11.4",
@@ -471,7 +471,7 @@
       "prd_on_merge": [
         "Note in REQ-23: backend complete"
       ],
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "H14.1",
@@ -513,7 +513,7 @@
       "prd_on_merge": [
         "Note in REQ-26: health tracking built"
       ],
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "H11.5",

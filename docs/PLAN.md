@@ -297,7 +297,7 @@ Tasks in the same wave run in parallel. Merge a wave fully before starting the n
 - Call it from StatusActions when a match is marked Applied
 - *Done when:* A favicon and app icon are linked from index.html (REQ-22 b); Confetti on Applied, skipped under reduced motion (REQ-22 c).
 
-#### H12.2: Work authorization, LLM sponsorship fit and badge (REQ-24)
+#### H12.2: Work authorization, LLM sponsorship fit and badge (REQ-24) (done)
 
 - Add work_authorization (citizen, permanent resident, F-1 OPT, STEM OPT, H-1B transfer, other) to the status model and the onboarding step; derive needs_visa_sponsorship from it when unset
 - Pass the user's authorization, the company flag and the posting signal to score_match; update match.md so preference_fit reflects them and unknown stays neutral
@@ -305,7 +305,7 @@ Tasks in the same wave run in parallel. Merge a wave fully before starting the n
 - Bump the profile version when work_authorization changes so matches are re-scored
 - *Done when:* Work authorization is captured in the profile (REQ-24 e); Sponsorship feeds the LLM preference_fit (REQ-24 c); A sponsorship badge shows on matches (REQ-24 d).
 
-#### H11.4: Resume task and API (REQ-23)
+#### H11.4: Resume task and API (REQ-23) (done)
 
 - Add a resume_tailor task handler at the end of the HANDLERS registry
 - Add router api/resumes.py: GET state, POST generate (202 with a task ref), PUT edits, DELETE, GET download?format=docx|pdf, all scoped to the user's match
@@ -313,7 +313,7 @@ Tasks in the same wave run in parallel. Merge a wave fully before starting the n
 - Respect the per-user AI budget the way cover letters do
 - *Done when:* The resume is editable, regenerable and downloadable (REQ-23 e); The ATS is read from the job and used for the coverage check (REQ-23 d).
 
-#### H14.1: Per-source health tracking and auto-disable (REQ-26)
+#### H14.1: Per-source health tracking and auto-disable (REQ-26) (done)
 
 - Add Company.consecutive_failures, last_success_at and disabled_reason with migration 0016
 - Update ingest_company to record success and failure; disable a board after N consecutive failures (setting) and say why
