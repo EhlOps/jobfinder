@@ -6,6 +6,8 @@ from jobfinder.ingest.base import JobPosting
 from jobfinder.ingest.sources.ashby import fetch_ashby
 from jobfinder.ingest.sources.greenhouse import fetch_greenhouse
 from jobfinder.ingest.sources.lever import fetch_lever
+from jobfinder.ingest.sources.smartrecruiters import fetch_smartrecruiters
+from jobfinder.ingest.sources.workable import fetch_workable
 
 Fetcher = Callable[[httpx.AsyncClient, str, str], Awaitable[list[JobPosting]]]
 
@@ -14,4 +16,6 @@ ATS_FETCHERS: dict[str, Fetcher] = {
     "greenhouse": fetch_greenhouse,
     "lever": fetch_lever,
     "ashby": fetch_ashby,
+    "smartrecruiters": fetch_smartrecruiters,
+    "workable": fetch_workable,
 }
