@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 import httpx
+import pytest
 
 from jobfinder.ingest.sources import ATS_FETCHERS
 from jobfinder.ingest.sources.smartrecruiters import fetch_smartrecruiters, parse_smartrecruiters
@@ -73,3 +74,16 @@ async def test_fetch_smartrecruiters_mock_transport():
     assert len(jobs) == 2
     assert "Spark" in jobs[0].description_text
     assert jobs[1].description_text == "" and jobs[1].url == "https://jobs.smartrecruiters.com/ExampleCo/743999000333444"
+
+
+async def test_fetch_smartrecruiters_raises_when_every_detail_fails():
+    fx = load("smartrecruiters_sample.json")
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        if req.url.path.endswith("/postings"):
+            return httpx.Response(200, json=fx["list"])
+        return httpx.Response(500)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as c:
+        with pytest.raises(RuntimeError, match="detail requests failed"):
+            await fetch_smartrecruiters(c, "ExampleCo", "Example Co")

@@ -71,6 +71,11 @@ async def sync_companies(db: AsyncSession, entries: list[dict] | None = None) ->
 
 
 # ── upsert / expire ───────────────────────────────────────────────────────
+_DETAIL_COLUMNS = (
+    "description_text", "salary_min", "salary_max", "salary_currency", "posted_at", "workplace_type",
+)
+
+
 def _clean(s: str | None) -> str:
     return (s or "").replace("\x00", "")  # Postgres text can't hold NUL
 
@@ -97,6 +102,10 @@ async def upsert_postings(db: AsyncSession, postings: list[JobPosting], company_
     for i in range(0, len(rows), UPSERT_CHUNK):
         stmt = insert(Job).values(rows[i : i + UPSERT_CHUNK])
         keep = {c: stmt.excluded[c] for c in rows[0] if c not in ("source", "external_id")}
+        # A failed detail fetch yields an empty description (and nothing derived from it); keep the stored values.
+        no_desc = stmt.excluded.description_text == ""
+        for c in _DETAIL_COLUMNS:
+            keep[c] = sa.case((no_desc, Job.__table__.c[c]), else_=stmt.excluded[c])
         res = await db.execute(
             stmt.on_conflict_do_update(constraint="uq_job_source_external", set_=keep)
             .returning(sa.literal_column("(xmax = 0)").label("inserted"))
