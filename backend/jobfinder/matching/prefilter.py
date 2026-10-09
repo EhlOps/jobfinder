@@ -285,9 +285,16 @@ def outside_grad_window(description: str, status: dict) -> bool:
     return (lo is not None and grad < lo - GRAD_WINDOW_SLACK) or (hi is not None and grad > hi + GRAD_WINDOW_SLACK)
 
 
-EARLY_CAREER_TITLE = re.compile(r"\b(new grad(?:uate)?|graduate|university|campus|early career|entry[- ]level)\b", re.IGNORECASE)
+EARLY_CAREER_TITLE = re.compile(
+    r"\b(new grad(?:uate)?|recent graduate|graduate (?:engineer|developer|program(?:me)?|scheme)s?"
+    r"|university (?:grad(?:uate)?|hire|program(?:me)?|recruit(?:ing)?)s?|campus (?:hire|recruit(?:ing)?)s?|early career|entry[- ]level)\b",
+    re.IGNORECASE,
+)
 # Same words for Postgres (\y is its word boundary); keep in step with EARLY_CAREER_TITLE.
-EARLY_CAREER_SQL = r"\y(new grad(uate)?|graduate|university|campus|early career|entry[- ]level)\y"
+EARLY_CAREER_SQL = (
+    r"\y(new grad(uate)?|recent graduate|graduate (engineer|developer|program(me)?|scheme)s?"
+    r"|university (grad(uate)?|hire|program(me)?|recruit(ing)?)s?|campus (hire|recruit(ing)?)s?|early career|entry[- ]level)\y"
+)
 _INTERN_TITLE = re.compile(r"\b(intern|internship|co-?op)\b", re.IGNORECASE)
 STAGE_BOOST = 10
 

@@ -1,3 +1,4 @@
+import re
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
@@ -327,3 +328,23 @@ def test_open_ended_grad_windows_do_not_exclude_eligible_candidates():
 def test_not_new_grad_means_no_seniority_filter(grad):
     assert pf.acceptable_seniorities({"graduation_date": grad, "is_new_grad": False}, TODAY) is None
     assert pf.acceptable_seniorities({"graduation_date": grad, "is_new_grad": False, "seniority": ["senior"]}, TODAY) == {"mid", "senior", "staff"}
+
+
+@pytest.mark.parametrize("title", [
+    "Campus Network Engineer", "University Relations Manager",
+    "Staff Engineer, University Platform", "Graduate-level ML Researcher",
+])
+def test_bare_university_campus_graduate_not_early_career(title):
+    assert not pf.is_early_career(title, None)
+    assert pf.early_career_boost(title, None, "final_year") == 0
+
+
+@pytest.mark.parametrize("title", [
+    "New Grad Software Engineer", "New Graduate Engineer", "Recent Graduate Analyst",
+    "Graduate Engineer", "Graduate Developer", "Graduate Program, Data", "Graduate Scheme 2026",
+    "University Grad SWE", "University Graduate Role", "University Hire", "University Program Engineer",
+    "Campus Hire", "Campus Recruit Engineer", "Campus Recruiting Engineer", "Graduate Programme", "Graduate Engineers", "Early Career Engineer", "Entry-Level Engineer",
+])
+def test_early_career_compound_titles(title):
+    assert pf.is_early_career(title, None)
+    assert re.search(pf.EARLY_CAREER_SQL.replace(r"\y", r"\b"), title, re.IGNORECASE)
