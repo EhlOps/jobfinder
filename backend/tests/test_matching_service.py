@@ -397,3 +397,13 @@ async def test_stage_change_bumps_the_version_but_the_first_record_does_not(make
         assert service.sync_career_stage(p, date(2027, 8, 1)) is True                        # graduated
         assert (p.career_stage, p.version) == ("recent_grad", 5)
         assert service.sync_career_stage(p, date(2027, 9, 1)) is False
+
+
+async def test_new_user_defaults_match_budget_enabled_true(maker):
+    # `cli add-user` inserts User(email=...) only; the column is NOT NULL (migration 0012)
+    async with maker() as db:
+        db.add(User(email="new@example.com"))
+        await db.commit()
+    async with maker() as db:
+        u = (await db.scalars(sa.select(User).where(User.email == "new@example.com"))).one()
+        assert u.match_budget_enabled is True
