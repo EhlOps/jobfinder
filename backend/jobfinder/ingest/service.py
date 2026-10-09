@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -28,6 +29,9 @@ UPSERT_CHUNK = 200
 # An empty response from a board that had more than this many active jobs is treated as an
 # API glitch: keep the jobs rather than deactivating the whole board.
 EMPTY_GUARD_MIN_ACTIVE = 5
+# ...but after this many consecutive empty runs the closure is real: deactivate and carry on.
+EMPTY_CONFIRM_RUNS = 3
+EMPTY_ERROR_PREFIX = "empty response"
 JOBSPY_EXPIRE_AFTER = timedelta(days=14)
 
 SessionFactory = Callable[[], AsyncSession]
@@ -177,18 +181,22 @@ def _record_failure(company: Company, error: str) -> bool:
     return False
 
 
-async def _fail_board(
-    db: AsyncSession, company: Company, error: str, now: datetime, *, deactivate: bool = True
-) -> None:
+async def _fail_board(db: AsyncSession, company: Company, error: str, now: datetime) -> None:
     """Record a failed attempt and commit. A board that just got auto-disabled is never polled again,
     so its jobs would stay active with dead apply links: deactivate them now."""
     disabled = _record_failure(company, error)
     company.last_fetched_at = now  # an attempt counts, so selection rotates past dead boards
-    if disabled and deactivate:
+    if disabled:
         await db.execute(
             sa.update(Job).where(Job.source == company.ats, Job.company_id == company.id, Job.is_active.is_(True)).values(is_active=False)
         )
     await db.commit()
+
+
+def _empty_streak(company: Company) -> int:
+    """Consecutive empty runs so far, read back from last_error ("empty response; ... (run k/N)")."""
+    m = re.fullmatch(rf"{EMPTY_ERROR_PREFIX}; .*\(run (\d+)/\d+\)", company.last_error or "")
+    return int(m.group(1)) if m else 0
 
 
 def _record_success(company: Company, now: datetime) -> None:
@@ -219,18 +227,20 @@ async def ingest_company(db: AsyncSession, client: httpx.AsyncClient, company: C
                 Job.source == company.ats, Job.company_id == company.id, Job.is_active.is_(True)
             )
         )
-        if active and active > EMPTY_GUARD_MIN_ACTIVE:
-            stats.error = f"empty response; kept {active} active jobs"
-        else:
-            stats.deactivated = await deactivate_missing(db, company.ats, company.id, [])
+        streak = _empty_streak(company) + 1
+        if active and active > EMPTY_GUARD_MIN_ACTIVE and streak < EMPTY_CONFIRM_RUNS:
+            # suspicious: keep the jobs. Not a failure (consecutive_failures untouched), so it never
+            # disables the board; the streak lives in last_error until it is confirmed or a fetch succeeds.
+            stats.error = f"{EMPTY_ERROR_PREFIX}; kept {active} active jobs (run {streak}/{EMPTY_CONFIRM_RUNS})"
+            company.last_error = stats.error
+            company.last_fetched_at = datetime.now(UTC)
+            await db.commit()
+            return stats
+        stats.deactivated = await deactivate_missing(db, company.ats, company.id, [])
     now = datetime.now(UTC)
-    if stats.error:
-        # the empty-response guard exists to keep jobs on a suspicious board, so it never wipes them
-        await _fail_board(db, company, stats.error, now, deactivate=not stats.error.startswith("empty response"))
-    else:
-        _record_success(company, now)
-        company.last_fetched_at = now
-        await db.commit()
+    _record_success(company, now)
+    company.last_fetched_at = now
+    await db.commit()
     return stats
 
 

@@ -110,3 +110,43 @@ async def test_auto_disabled_board_jobs_deactivated(maker, monkeypatch):
         assert c.enabled and await active() == 2  # not disabled yet: jobs untouched
         await service.ingest_company(db, client, c)
         assert c.enabled is False and await active() == 0
+
+
+async def test_empty_responses_never_disable_and_confirm_closure(maker, monkeypatch):
+    async with maker() as db, httpx.AsyncClient() as client:
+        c = await make_company(db)
+        n = service.EMPTY_GUARD_MIN_ACTIVE + 2
+        monkeypatch.setitem(service.ATS_FETCHERS, "greenhouse", fake_fetcher([posting(i) for i in range(n)]))
+        await service.ingest_company(db, client, c)
+
+        async def active():
+            return await db.scalar(sa.select(sa.func.count()).select_from(Job).where(
+                Job.company_id == c.id, Job.is_active.is_(True)))
+
+        monkeypatch.setitem(service.ATS_FETCHERS, "greenhouse", fake_fetcher([]))
+        for _ in range(service.EMPTY_CONFIRM_RUNS - 1):
+            stats = await service.ingest_company(db, client, c)
+            assert stats.error.startswith("empty response") and await active() == n
+            assert c.enabled and c.consecutive_failures == 0 and c.last_error.startswith("empty response")
+        stats = await service.ingest_company(db, client, c)
+        assert stats.error is None and stats.deactivated == n and await active() == 0
+        assert c.enabled and c.disabled_reason is None
+        assert c.consecutive_failures == 0 and c.last_error is None and c.last_success_at is not None
+
+
+async def test_empty_run_does_not_reset_or_add_failures(maker, monkeypatch):
+    async with maker() as db, httpx.AsyncClient() as client:
+        c = await make_company(db)
+        n = service.EMPTY_GUARD_MIN_ACTIVE + 2
+        monkeypatch.setitem(service.ATS_FETCHERS, "greenhouse", fake_fetcher([posting(i) for i in range(n)]))
+        await service.ingest_company(db, client, c)
+        monkeypatch.setitem(service.ATS_FETCHERS, "greenhouse", fake_fetcher([]))
+        monkeypatch.setitem(service.ATS_FETCHERS, "greenhouse", fake_fetcher(exc=status_error(404)))
+        await service.ingest_company(db, client, c)
+        await service.ingest_company(db, client, c)
+        monkeypatch.setitem(service.ATS_FETCHERS, "greenhouse", fake_fetcher([]))
+        await service.ingest_company(db, client, c)  # an empty run neither erases nor adds failures
+        assert c.enabled and c.consecutive_failures == 2
+        monkeypatch.setitem(service.ATS_FETCHERS, "greenhouse", fake_fetcher(exc=status_error(404)))
+        await service.ingest_company(db, client, c)
+        assert c.enabled is False and c.consecutive_failures == 3
