@@ -140,7 +140,7 @@ export default function Matches() {
         <div className="card">
           <h3 style={{ marginTop: 0 }}>{status === "new" ? "Nothing to review yet" : "Nothing here"}</h3>
           <p className="muted">
-            {data.total === 0 && Object.values(data.counts).every((n) => n === 0)
+            {data.total === 0 && !q.trim() && !workplace && Object.values(data.counts).every((n) => n === 0)
               ? "Click “Find new matches” and we'll look through thousands of openings for ones that fit you."
               : "No matches for these filters. Try lowering the minimum score."}
           </p>

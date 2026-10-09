@@ -134,14 +134,7 @@ async def list_matches(
     version = profile.version if profile else 1
     base = sa.select(JobMatch, Job).join(Job, Job.id == JobMatch.job_id).where(_visible(user.id))
 
-    counts = {s: 0 for s in ("new", "saved", "applied", "dismissed")}
-    rows = await db.execute(
-        sa.select(JobMatch.status, sa.func.count()).join(Job, Job.id == JobMatch.job_id).where(_visible(user.id)).group_by(JobMatch.status)
-    )
-    counts.update({s: n for s, n in rows.all()})
-
-    filters = [JobMatch.status == status] if status else [JobMatch.status.in_(("new", "saved"))]
-    filters.append(JobMatch.llm_score >= min_score)
+    filters = [JobMatch.llm_score >= min_score]
     if workplace:
         filters.append(Job.workplace_type == workplace)
     if early_career:
@@ -153,6 +146,15 @@ async def list_matches(
         like = f"%{q.strip()}%"
         filters.append(sa.or_(Job.title.ilike(like), Job.company_name.ilike(like)))
 
+    # Tab counts honour every filter except the status tab itself.
+    counts = {s: 0 for s in ("new", "saved", "applied", "dismissed")}
+    rows = await db.execute(
+        sa.select(JobMatch.status, sa.func.count()).join(Job, Job.id == JobMatch.job_id)
+        .where(_visible(user.id), *filters).group_by(JobMatch.status)
+    )
+    counts.update({s: n for s, n in rows.all()})
+
+    filters.append(JobMatch.status == status if status else JobMatch.status.in_(("new", "saved")))
     total = await db.scalar(
         sa.select(sa.func.count()).select_from(JobMatch).join(Job, Job.id == JobMatch.job_id).where(_visible(user.id), *filters)
     )
