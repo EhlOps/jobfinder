@@ -114,3 +114,23 @@ def test_pdf_unicode_roundtrip_and_cjk_does_not_crash():
     assert "Nguyễn decomposed" in text
     r.summary = "日本語 summary"  # not covered by DejaVu: renders a missing-glyph box, must not raise
     assert render_pdf(r).startswith(b"%PDF")
+
+
+def test_empty_heading_and_control_characters_do_not_crash():
+    r = _resume()
+    e = r.experience[0]
+    e.title = e.company = e.location = e.start = e.end = ""
+    e.bullets = ["Bullet\x00 with\x0bjunk\ufffe\ud83d", "Kept\ttab"]
+    r.summary = "Sum\x00mary\x0bline"
+    text = resume_to_text(r)
+    assert "Summary line" in text and "Bullet with junk" in text
+    assert "Experience\n- Bullet" in text
+    r.contact.phone = "\x00"
+    r.contact.email = r.contact.location = ""
+    assert render_docx(r)
+    assert not any(ch in text for ch in "\x00\x0b\ufffe\ud83d")
+    d = docx.Document(io.BytesIO(render_docx(r)))
+    assert "Bullet with junk" in [p.text for p in d.paragraphs]
+    with pdfplumber.open(io.BytesIO(render_pdf(r))) as p:
+        pdf_text = "\n".join(page.extract_text() for page in p.pages)
+    assert "Bullet with junk" in pdf_text
