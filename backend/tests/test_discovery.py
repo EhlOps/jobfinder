@@ -1,3 +1,5 @@
+import asyncio
+
 import httpx
 import pytest
 import sqlalchemy as sa
@@ -207,3 +209,49 @@ def test_terms_gate_and_scheduling(monkeypatch):
     assert "discover_boards" not in {j.id for j in worker.make_scheduler().get_jobs()}
     monkeypatch.setattr(settings, "discovery_enabled", True)
     assert "discover_boards" in {j.id for j in worker.make_scheduler().get_jobs()}
+
+
+def probe_handler(robots: dict[str, str], stats: dict, delay: float = 0.0, md: str = ""):
+    """Handler for bamboohr/smartrecruiters boards that records every URL and the max in-flight board probes."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        host, path = request.url.host, request.url.path
+        stats["urls"].append(str(request.url))
+        if path == "/robots.txt":
+            return httpx.Response(200, text=robots.get(host, ""))
+        if host == "raw.githubusercontent.com":
+            return httpx.Response(200, text=md)
+        stats["inflight"] += 1
+        stats["max"] = max(stats["max"], stats["inflight"])
+        await asyncio.sleep(delay)
+        stats["inflight"] -= 1
+        if host == "api.smartrecruiters.com":
+            return httpx.Response(200, json={"totalFound": 1, "content": [{"id": "9", "name": "Eng"}]})
+        if host.endswith(".bamboohr.com") and path == "/careers/list":
+            return httpx.Response(200, json={"result": [{"id": 1, "jobOpeningName": "Eng"}]})
+        return httpx.Response(404, json={})
+
+    return handler
+
+
+async def test_validate_candidates_list_only_robots_and_bounded_concurrency():
+    stats = {"urls": [], "inflight": 0, "max": 0}
+    boards = [("bamboohr", f"b{i}") for i in range(6)] + [("smartrecruiters", "sr1"), ("bamboohr", "blocked")]
+    handler = probe_handler({"blocked.bamboohr.com": "User-agent: *\nDisallow: /\n"}, stats, delay=0.02)
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as c:
+        results = await discovery.validate_candidates(PoliteFetcher(c), boards, concurrency=3)
+    assert [r.ok for r in results] == [True] * 7 + [False]
+    assert "robots.txt" in results[-1].reason
+    assert not any("/detail" in u or u.endswith("/postings/9") for u in stats["urls"])
+    assert not any(u.startswith("https://blocked.bamboohr.com/careers") for u in stats["urls"])
+    assert 1 < stats["max"] <= 3
+
+
+async def test_discover_boards_uses_probe_for_detail_heavy_ats(maker):
+    stats = {"urls": [], "inflight": 0, "max": 0}
+    md = "https://acme.bamboohr.com/careers/1 https://jobs.smartrecruiters.com/Sr1/5"
+    handler = probe_handler({}, stats, md=md)
+    async with maker() as db, httpx.AsyncClient(transport=httpx.MockTransport(handler)) as c:
+        res = await discovery.discover_boards(db, c, sources=[github_lists.SOURCE])
+    assert sorted(res.added) == ["bamboohr/acme", "smartrecruiters/Sr1"] and not res.rejected
+    assert not any("/detail" in u or u.endswith("/postings/9") for u in stats["urls"])

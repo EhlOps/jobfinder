@@ -68,11 +68,16 @@ def parse_bamboohr(listing: dict, details: dict[str, dict], company_name: str, s
     return out
 
 
-async def fetch_bamboohr(client: httpx.AsyncClient, slug: str, company_name: str) -> list[JobPosting]:
+async def fetch_bamboohr(
+    client: httpx.AsyncClient, slug: str, company_name: str, list_only: bool = False
+) -> list[JobPosting]:
+    """list_only skips the per-opening /detail calls (cheap existence probe; descriptions stay empty)."""
     base = BASE.format(slug=slug)
     resp = await client.get(f"{base}/list", headers={"Accept": "application/json"})
     resp.raise_for_status()
     listing = resp.json()
+    if list_only:
+        return parse_bamboohr(listing, {}, company_name, slug)
     sem = asyncio.Semaphore(DETAIL_CONCURRENCY)
 
     failed = 0

@@ -1,4 +1,5 @@
 """Board discovery (REQ-26 a, e): find apply links on public directories, validate and add the boards."""
+import asyncio
 import logging
 import re
 from collections.abc import Awaitable, Callable
@@ -11,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from jobfinder.config import get_settings
 from jobfinder.ingest.discovery.robots import PoliteFetcher, RobotsDisallowed, make_client
-from jobfinder.ingest.validate import SLUG_RE, add_board
+from jobfinder.ingest.validate import SLUG_RE, ValidationResult, add_board, validate_board
 from jobfinder.models import Company
 
 log = logging.getLogger("jobfinder.discovery")
@@ -72,6 +73,37 @@ def boards_from_text(text: str) -> list[tuple[str, str]]:
 
 def name_from_slug(slug: str) -> str:
     return re.sub(r"[-_.]+", " ", slug).strip().title() or slug
+
+
+class RobotsBlocked(httpx.HTTPError):
+    """robots.txt forbids a validation probe request."""
+
+
+class _PoliteClient:
+    """Duck-types the slice of httpx.AsyncClient the ATS fetchers use, routing each GET through robots.txt."""
+
+    def __init__(self, fetcher: PoliteFetcher):
+        self._fetcher = fetcher
+
+    async def get(self, url: str, **kwargs) -> httpx.Response:
+        try:
+            return await self._fetcher.get(url, **kwargs)
+        except RobotsDisallowed as e:
+            raise RobotsBlocked(str(e)) from e
+
+
+async def validate_candidates(
+    fetcher: PoliteFetcher, boards: list[tuple[str, str]], concurrency: int | None = None
+) -> list[ValidationResult]:
+    """Probe boards concurrently (bounded), list-only and robots-checked; results are in input order."""
+    sem = asyncio.Semaphore(max(concurrency or get_settings().ingest_concurrency, 1))
+    probe_client = _PoliteClient(fetcher)
+
+    async def one(ats: str, slug: str) -> ValidationResult:
+        async with sem:
+            return await validate_board(ats, slug, probe_client, list_only=True)  # type: ignore[arg-type]
+
+    return list(await asyncio.gather(*(one(a, s) for a, s in boards)))
 
 
 @dataclass
@@ -155,9 +187,13 @@ async def discover_boards(
         known = {(a, s.lower()) for a, s in rows}
         fresh = [b for k, b in found.items() if k not in known]
         result.already_known = len(found) - len(fresh)
-        for ats, slug in fresh[: max(cap, 0)]:
+        batch = fresh[: max(cap, 0)]
+        validations = await validate_candidates(fetcher, batch)
+        for (ats, slug), validation in zip(batch, validations, strict=True):
             result.checked += 1
-            company, reason = await add_board(session, ats, slug, name_from_slug(slug), "discovered", client)
+            company, reason = await add_board(
+                session, ats, slug, name_from_slug(slug), "discovered", client, validation=validation
+            )
             if company:
                 result.added.append(f"{ats}/{slug}")
             else:
