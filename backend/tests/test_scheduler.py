@@ -245,5 +245,56 @@ async def test_a_passed_graduation_date_gets_the_user_planned_again(maker):
         await db.commit()
         await planner.plan(db, later)
         assert (await db.get(Profile, u.id)).career_stage in ("recent_grad", "graduated")
-        # A profile change is re-audited first; the audit queues the match run itself.
-        assert [(t.kind, t.user_id) for t in await _tasks(db)] == [("audit_profile", u.id)]
+        # The bump came from the stage sync alone, so no AI audit is queued; the match run is.
+        assert [(t.kind, t.user_id) for t in await _tasks(db)] == [("match_user", u.id)]
+
+
+async def test_a_failing_audit_does_not_block_matching(maker):
+    async with maker() as db:
+        u = await _setup(db, "a@x.com", last_run_ago=timedelta(hours=30), changed=True)
+        (await db.get(Profile, u.id)).audit = {"version": 1}
+        await db.commit()
+        await planner.plan(db, NOW)
+        assert [t.kind for t in await _tasks(db)] == ["audit_profile"]
+        await db.execute(sa.update(Task).values(status="failed", finished_at=NOW))
+        (await db.get(PlannerState, u.id)).last_planned_at = None
+        await db.commit()
+        await planner.plan(db, NOW + timedelta(hours=1))
+        assert sorted(t.kind for t in await _tasks(db)) == ["audit_profile", "match_user"]
+        # Long after the failure the audit is tried again.
+        await db.execute(sa.update(Task).values(status="done"))
+        (await db.get(PlannerState, u.id)).last_planned_at = None
+        await db.commit()
+        await planner.plan(db, NOW + timedelta(hours=10))
+        assert [t.kind for t in await _tasks(db)].count("audit_profile") == 2
+
+
+async def test_new_job_counts_are_per_user_last_run(maker):
+    async with maker() as db:
+        a = await _setup(db, "a@x.com", last_run_ago=timedelta(hours=10))
+        b = await _setup(db, "b@x.com", last_run_ago=timedelta(hours=2))
+        c = await _setup(db, "c@x.com", last_run_ago=None)
+        job = (await db.scalars(sa.select(Job).limit(1))).one()
+        await db.execute(sa.update(Job).where(Job.id == job.id).values(first_seen_at=NOW - timedelta(hours=5)))
+        await db.commit()
+        views = {v.user.id: v for v in await planner._views(db, NOW)}
+        total = await db.scalar(sa.select(sa.func.count()).select_from(Job).where(Job.is_active.is_(True)))
+    assert views[a.id].new_jobs == 1
+    assert views[b.id].new_jobs == 0
+    assert views[c.id].new_jobs == total
+
+
+async def test_save_state_upserts_in_one_statement_and_keeps_last_planned(maker):
+    async with maker() as db:
+        a = await _setup(db, "a@x.com")
+        b = await _setup(db, "b@x.com")
+        views = await planner._views(db, NOW)
+        for v in views:
+            v.next_due_at, v.reason, v.skip = NOW, "r1", ""
+        await planner._save_state(db, views, NOW, {a.id})
+        for v in views:
+            v.reason, v.skip = "", "s2"
+        await planner._save_state(db, views, NOW + timedelta(hours=1), {b.id})
+        states = {s.user_id: s for s in await db.scalars(sa.select(PlannerState))}
+    assert (states[a.id].last_planned_at, states[a.id].last_skip) == (NOW, "s2")
+    assert (states[b.id].last_planned_at, states[b.id].last_reason) == (NOW + timedelta(hours=1), "")

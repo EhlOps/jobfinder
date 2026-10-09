@@ -7,7 +7,6 @@ people who are offline."""
 from __future__ import annotations
 
 import logging
-from bisect import bisect_right
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
@@ -29,6 +28,8 @@ STALE_AFTER = timedelta(hours=24)
 RECENT_GAP = timedelta(hours=24)  # users seen within ACTIVE_WITHIN..IDLE_AFTER
 IDLE_GAP = timedelta(days=7)
 NEW_JOBS_CAP = 50
+STATE_CHUNK = 1000
+AUDIT_RETRY_AFTER = timedelta(hours=6)  # after a failed audit, match instead of retrying it every tick
 
 
 @dataclass
@@ -41,6 +42,7 @@ class UserView:
     questions_pending: bool
     last_run_at: datetime | None
     last_planned_at: datetime | None
+    audit_failed_at: datetime | None
     seen_ago: timedelta
     reason: str = ""
     skip: str = ""
@@ -91,7 +93,14 @@ async def _views(db: AsyncSession, now: datetime) -> list[UserView]:
     ).all()
     # A graduation date that has passed changes what the user should see: bump the version before looking
     # for stale matches so the re-score is planned like any other profile change.
-    bumped = [sync_career_stage(profile, now.date()) for _, profile, _ in rows]  # every profile, not just the first change
+    bumped = []
+    for _, profile, _ in rows:
+        current = bool(profile.audit) and profile.audit.get("version", 0) >= profile.version
+        stage_changed = sync_career_stage(profile, now.date())  # every profile, not just the first change
+        if stage_changed and current:
+            # A stage-only bump (a date passing) is not worth a full AI audit; the re-score still runs.
+            profile.audit = {**profile.audit, "version": profile.version}
+        bumped.append(stage_changed)
     if any(bumped):
         await db.commit()
     used = dict(
@@ -114,7 +123,31 @@ async def _views(db: AsyncSession, now: datetime) -> list[UserView]:
             .where(JobMatch.questions_collected.is_(False), Job.is_active.is_(True)).distinct()
         )
     )
-    first_seen = sorted(await db.scalars(sa.select(Job.first_seen_at).where(Job.is_active.is_(True))))
+    audit_failed = dict(
+        (
+            await db.execute(
+                sa.select(Task.user_id, sa.func.max(Task.finished_at))
+                .where(Task.kind == "audit_profile", Task.status == "failed", Task.finished_at >= now - AUDIT_RETRY_AFTER, Task.user_id.is_not(None))
+                .group_by(Task.user_id)
+            )
+        ).all()
+    )
+    last_runs = {profile.user_id: _parse((profile.match_summary or {}).get("last_run_at")) for _, profile, _ in rows}
+    total_jobs = await db.scalar(sa.select(sa.func.count()).select_from(Job).where(Job.is_active.is_(True))) or 0
+    before_run: dict[int, int] = {}
+    if runs := [(uid, ts) for uid, ts in last_runs.items() if ts]:
+        # Jobs first seen at or before a user's last run are old news to them; the rest are new. Users with no
+        # last run have no row here and see every active job as new.
+        seen_runs = sa.values(sa.column("user_id", sa.Integer), sa.column("last_run", sa.DateTime(timezone=True)), name="runs").data(runs)
+        before_run = dict(
+            (
+                await db.execute(
+                    sa.select(seen_runs.c.user_id, sa.func.count(Job.id))
+                    .select_from(seen_runs.join(Job, sa.and_(Job.first_seen_at <= seen_runs.c.last_run, Job.is_active.is_(True))))
+                    .group_by(seen_runs.c.user_id)
+                )
+            ).all()
+        )
     defaults = get_settings().match_daily_llm_budget
     out = []
     for user, profile, state in rows:
@@ -122,12 +155,12 @@ async def _views(db: AsyncSession, now: datetime) -> list[UserView]:
             left = UNLIMITED
         else:
             left = max(0, (user.match_budget if user.match_budget is not None else defaults) - used.get(user.id, 0))
-        last_run = _parse((profile.match_summary or {}).get("last_run_at"))
-        new_jobs = len(first_seen) - (bisect_right(first_seen, last_run) if last_run else 0)
+        last_run = last_runs[user.id]
+        new_jobs = total_jobs - before_run.get(user.id, 0)
         out.append(UserView(
             user=user, profile=profile, left=left, new_jobs=new_jobs, profile_changed=user.id in changed,
             questions_pending=user.id in uncollected, last_run_at=last_run,
-            last_planned_at=state.last_planned_at if state else None,
+            last_planned_at=state.last_planned_at if state else None, audit_failed_at=audit_failed.get(user.id),
             seen_ago=now - user.last_seen_at if user.last_seen_at else IDLE_AFTER + timedelta(days=1),
         ))
     return out
@@ -165,18 +198,29 @@ def assess(v: UserView, now: datetime) -> bool:
 
 def _needs_audit(v: UserView) -> bool:
     audited = (v.profile.audit or {}).get("version", 0)
-    return bool(v.profile.background) and audited < v.profile.version and v.seen_ago <= IDLE_AFTER
+    return bool(v.profile.background) and audited < v.profile.version and v.seen_ago <= IDLE_AFTER and v.audit_failed_at is None
 
 
 async def _save_state(db: AsyncSession, views: list[UserView], now: datetime, planned: set[int]) -> None:
-    for v in views:
-        values = {
+    if not views:
+        return
+    # last_planned_at keeps its stored value for users not planned this tick (COALESCE), so one statement covers everyone.
+    rows = [
+        {
             "user_id": v.user.id, "next_due_at": v.next_due_at, "last_reason": v.reason[:200], "last_skip": v.skip[:200],
+            "last_planned_at": now if v.user.id in planned else None,
         }
-        if v.user.id in planned:
-            values["last_planned_at"] = now
-        stmt = insert(PlannerState).values(**values)
-        await db.execute(stmt.on_conflict_do_update(index_elements=["user_id"], set_={k: stmt.excluded[k] for k in values if k != "user_id"}))
+        for v in views
+    ]
+    for i in range(0, len(rows), STATE_CHUNK):  # keeps the bind-parameter count under the driver limit
+        stmt = insert(PlannerState).values(rows[i : i + STATE_CHUNK])
+        await db.execute(stmt.on_conflict_do_update(
+            index_elements=["user_id"],
+            set_={
+                "next_due_at": stmt.excluded.next_due_at, "last_reason": stmt.excluded.last_reason, "last_skip": stmt.excluded.last_skip,
+                "last_planned_at": sa.func.coalesce(stmt.excluded.last_planned_at, PlannerState.last_planned_at),
+            },
+        ))
     await db.commit()
 
 
