@@ -276,6 +276,16 @@ def _ix(y, m):
     ("graduated in 2015 from a top school", None),
     ("Join us in 2027 for an exciting year", None),
     ("", None),
+    ("graduating between December 2026 and June 2027; internship starts Summer 2026", (_ix(2026, 12), _ix(2027, 6))),
+    ("Class of 2027. We raised our Series B in 2029.", (_ix(2027, 1), _ix(2027, 12))),
+    ("Graduating in 2027\nSeries B in 2029", (_ix(2027, 1), _ix(2027, 12))),
+    ("graduating between Dec 2026 and Jun 2027, internship starts June 2026", (_ix(2026, 12), _ix(2027, 6))),
+    ("graduating students share in our Series B in 2027", None),
+    ("Class of 2027 and starting in 2029", (_ix(2027, 1), _ix(2027, 12))),
+    ("Graduating in December 2026 or May 2027", (_ix(2026, 12), _ix(2027, 5))),
+    ("Class of 2027/2028", (_ix(2027, 1), _ix(2028, 12))),
+    ("graduating in Spring 2027", (_ix(2027, 1), _ix(2027, 12))),
+    ("graduating on or after December 2026", (_ix(2026, 12), None)),
 ])
 def test_graduation_window(text, window):
     assert pf.graduation_window(text) == window
@@ -358,3 +368,10 @@ def test_bare_university_campus_graduate_not_early_career(title):
 def test_early_career_compound_titles(title):
     assert pf.is_early_career(title, None)
     assert re.search(pf.EARLY_CAREER_SQL.replace(r"\y", r"\b"), title, re.IGNORECASE)
+
+
+def test_unrelated_dates_do_not_drop_jobs():
+    may_2027 = {"graduation_date": "2027-05"}
+    assert not pf.outside_grad_window("graduating between December 2026 and June 2027; internship starts Summer 2026", may_2027)
+    assert not pf.outside_grad_window("Graduating in 2027. Series B in 2029.", may_2027)
+    assert not pf.outside_grad_window("graduating students welcome; we raised Series B in 2024", may_2027)
