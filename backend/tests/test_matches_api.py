@@ -136,3 +136,22 @@ async def test_early_career_filter_and_stage_in_summary(authed, engine):
     assert [i["job"]["title"] for i in r["items"]] == ["Backend Engineer Intern", "University Graduate Engineer", "Software Engineer, Early Career"]
     everything = (await authed.get("/api/matches")).json()
     assert everything["total"] == 6 and everything["summary"]["career_stage"] == "student"
+
+
+async def test_tab_counts_honour_filters(authed, engine):
+    maker = async_sessionmaker(engine, expire_on_commit=False)
+    uid = await me(authed)
+    await add_match(maker, uid, "Backend Engineer", 90, workplace="remote")
+    await add_match(maker, uid, "Backend Engineer Intern", 80, workplace="remote")
+    await add_match(maker, uid, "Data Intern", 70, workplace="remote", status="saved")
+    await add_match(maker, uid, "Ops Intern", 60, workplace="remote", status="dismissed")
+    await add_match(maker, uid, "Onsite Intern", 75, workplace="onsite")
+    await add_match(maker, uid, "Weak Intern", 10, workplace="remote", status="applied")
+    params = {"early_career": True, "workplace": "remote", "min_score": 50}
+    counts = (await authed.get("/api/matches", params=params)).json()["counts"]
+    assert counts == {"new": 1, "saved": 1, "applied": 0, "dismissed": 1}
+    for status, n in counts.items():
+        r = (await authed.get("/api/matches", params={**params, "status": status})).json()
+        assert r["total"] == n == len(r["items"])
+    by_q = (await authed.get("/api/matches", params={"q": "data"})).json()["counts"]
+    assert by_q == {"new": 0, "saved": 1, "applied": 0, "dismissed": 0}
