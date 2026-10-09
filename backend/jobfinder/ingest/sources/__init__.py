@@ -1,4 +1,5 @@
 from collections.abc import Awaitable, Callable
+from functools import partial
 
 import httpx
 
@@ -22,4 +23,11 @@ ATS_FETCHERS: dict[str, Fetcher] = {
     "workable": fetch_workable,
     "recruitee": fetch_recruitee,
     "bamboohr": fetch_bamboohr,
+}
+
+# Cheap existence probes (no per-posting detail requests) for the ATSes whose full fetch fans out; others reuse the full fetcher.
+PROBE_FETCHERS: dict[str, Fetcher] = {
+    **ATS_FETCHERS,
+    "smartrecruiters": partial(fetch_smartrecruiters, list_only=True),
+    "bamboohr": partial(fetch_bamboohr, list_only=True),
 }

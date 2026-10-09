@@ -8,7 +8,7 @@ import sqlalchemy as sa
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from jobfinder.ingest.sources import ATS_FETCHERS
+from jobfinder.ingest.sources import ATS_FETCHERS, PROBE_FETCHERS
 from jobfinder.models import Company
 
 SLUG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$")
@@ -22,9 +22,12 @@ class ValidationResult:
     job_count: int = 0
 
 
-async def validate_board(ats: str, slug: str, client: httpx.AsyncClient | None = None) -> ValidationResult:
-    """Fetch the board through its ATS fetcher. Never raises: failures come back as ok=False with a reason."""
-    fetcher = ATS_FETCHERS.get(ats)
+async def validate_board(
+    ats: str, slug: str, client: httpx.AsyncClient | None = None, list_only: bool = False
+) -> ValidationResult:
+    """Fetch the board through its ATS fetcher (list_only: the cheap probe without per-posting detail requests).
+    Never raises: failures come back as ok=False with a reason."""
+    fetcher = (PROBE_FETCHERS if list_only else ATS_FETCHERS).get(ats)
     if fetcher is None:
         return ValidationResult(False, f"unknown ATS '{ats}'")
     if not SLUG_RE.match(slug or ""):
@@ -54,8 +57,10 @@ async def add_board(
     name: str,
     origin: str = "discovered",
     client: httpx.AsyncClient | None = None,
+    validation: ValidationResult | None = None,
 ) -> tuple[Company | None, str]:
-    """Validate then insert a board. Returns (company, reason); company is None when refused or a duplicate."""
+    """Validate (unless a `validation` result is supplied) then insert a board.
+    Returns (company, reason); company is None when refused or a duplicate."""
     name = (name or "").strip()
     if not name or len(name) > 200:
         return None, "invalid name (must be 1-200 characters)"
@@ -64,7 +69,7 @@ async def add_board(
     existing = await session.scalar(sa.select(Company).where(Company.ats == ats, Company.slug == slug))
     if existing:
         return None, "duplicate: board already exists"
-    result = await validate_board(ats, slug, client)
+    result = validation or await validate_board(ats, slug, client)
     if not result.ok:
         return None, result.reason
     company = Company(name=name, ats=ats, slug=slug, origin=origin, validated_at=datetime.now(UTC))

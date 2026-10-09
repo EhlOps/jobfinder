@@ -1,4 +1,5 @@
 """Polite fetching for discovery: a descriptive User-Agent, robots.txt checks and low volume."""
+import asyncio
 import logging
 from urllib.parse import urlsplit
 from urllib.robotparser import RobotFileParser
@@ -24,10 +25,15 @@ class PoliteFetcher:
     def __init__(self, client: httpx.AsyncClient):
         self.client = client
         self._robots: dict[str, RobotFileParser | None] = {}
+        self._locks: dict[str, asyncio.Lock] = {}  # one robots.txt fetch per origin under concurrency
 
     async def _parser(self, origin: str) -> RobotFileParser | None:
-        if origin in self._robots:
+        async with self._locks.setdefault(origin, asyncio.Lock()):
+            if origin not in self._robots:
+                self._robots[origin] = await self._load(origin)
             return self._robots[origin]
+
+    async def _load(self, origin: str) -> RobotFileParser | None:
         parser: RobotFileParser | None = RobotFileParser()
         try:
             r = await self.client.get(f"{origin}/robots.txt", headers={"User-Agent": USER_AGENT})
@@ -41,7 +47,6 @@ class PoliteFetcher:
                 parser.parse(r.text.splitlines())
         except httpx.HTTPError:
             parser = None
-        self._robots[origin] = parser
         return parser
 
     async def allowed(self, url: str) -> bool:
@@ -54,6 +59,7 @@ class PoliteFetcher:
     async def get(self, url: str, **kwargs) -> httpx.Response:
         if not await self.allowed(url):
             raise RobotsDisallowed(f"robots.txt disallows {url}")
-        r = await self.client.get(url, headers={"User-Agent": USER_AGENT}, **kwargs)
+        headers = {"User-Agent": USER_AGENT, **(kwargs.pop("headers", None) or {})}
+        r = await self.client.get(url, headers=headers, **kwargs)
         r.raise_for_status()
         return r

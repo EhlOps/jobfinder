@@ -69,7 +69,10 @@ def parse_smartrecruiters(postings: list[dict], company_name: str) -> list[JobPo
     return out
 
 
-async def fetch_smartrecruiters(client: httpx.AsyncClient, slug: str, company_name: str) -> list[JobPosting]:
+async def fetch_smartrecruiters(
+    client: httpx.AsyncClient, slug: str, company_name: str, list_only: bool = False
+) -> list[JobPosting]:
+    """list_only fetches just the first listing page and skips the per-posting detail calls (cheap probe)."""
     listed: list[dict] = []
     for page in range(MAX_PAGES):
         resp = await client.get(API.format(slug=slug), params={"limit": PAGE, "offset": page * PAGE})
@@ -77,8 +80,13 @@ async def fetch_smartrecruiters(client: httpx.AsyncClient, slug: str, company_na
         body = resp.json()
         content = body.get("content") or []
         listed.extend(c for c in content if c.get("id"))
-        if not content or len(listed) >= body.get("totalFound", 0):
+        if list_only or not content or len(listed) >= body.get("totalFound", 0):
             break
+
+    if list_only:
+        return parse_smartrecruiters(
+            [{**i, "postingUrl": f"https://jobs.smartrecruiters.com/{slug}/{i.get('id')}"} for i in listed], company_name
+        )
 
     sem = asyncio.Semaphore(DETAIL_CONCURRENCY)
 
