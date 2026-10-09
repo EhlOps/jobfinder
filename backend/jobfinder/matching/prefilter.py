@@ -164,8 +164,8 @@ _NO_SPONSOR = re.compile(
     r"(?:unable|not able|cannot|can't|can not|do not|don't|does not|will not|won't|not)\s+(?:to\s+|be able to\s+)?"
     r"(?:provide|offer|sponsor|support)[^.\n]{0,50}(?:visa|sponsorship|work authori[sz]ation)"
     r"|(?:unable|not able|cannot|can't|can not|do not|don't|does not|will not|won't)\s+(?:to\s+)?sponsor\b(?!\s+(?:events?|conferences?|relocation|meetups?))"
-    r"|sponsorship\s+(?:is\s+)?(?:not\s+available|unavailable)"
-    r"|no\s+(?:visa\s+)?sponsorship"
+    r"|sponsorship\s+(?:(?:is|are|will)\s+not\s+(?:be\s+|currently\s+)?|(?:isn't|aren't)\s+(?:currently\s+)?|(?:is\s+)?un)(?:available|provided|offered|supported)"
+    r"|no\s+(?:(?:work\s+)?visa\s+|h-?1-?b\s+|immigration\s+)?sponsorship"
     r"|without\s+(?:requiring\s+|the need for\s+)?(?:visa\s+)?sponsorship"
     r"|(?:u\.?s\.?|united states)\s+citizen(?:ship)?\s+(?:is\s+)?required"
     r"|must\s+be\s+(?:a\s+)?(?:u\.?s\.?|united states)\s+citizen"
@@ -178,12 +178,12 @@ def refuses_sponsorship(description: str) -> bool:
     return bool(_NO_SPONSOR.search(description or ""))
 
 
+# OPT/CPT are deliberately not in _VISA: they need no employer sponsorship, so "OPT welcome" is no signal.
 # A positive signal needs a visa/immigration term: "sponsor" alone also means events, certifications, 401(k)s.
 _VISA = (
     r"\b(?:visas?|h-?1-?b|immigration|work\s+(?:permits?|authori[sz]ation)|employment\s+authori[sz]ation"
-    r"|green\s*cards?|(?:opt|cpt)(?!\s+(?:in|out)\b))\b"
+    r"|green\s*cards?)\b"
 )
-_OPT = r"\b(?:opt|cpt)\b(?!\s+(?:in|out)\b)"
 _SPONSORS = re.compile(
     r"(?:will|can|do|does|happy to|able to|willing to)\s+(?:also\s+)?(?:provide\s+|offer\s+)?"
     rf"(?:{_VISA}[^.\n]{{0,20}}sponsor|sponsor\b[^.\n]{{0,40}}{_VISA})"
@@ -192,9 +192,7 @@ _SPONSORS = re.compile(
     rf"|(?:offer|provide|provides|offers)[^.\n]{{0,30}}sponsorship[^.\n]{{0,30}}{_VISA}"
     rf"|{_VISA}\s+sponsorship\s+(?:is\s+|may be\s+)?(?:available|offered|provided)"
     r"|h-?1-?b[^.\n]{0,40}(?:sponsor|transfers?\s+(?:are\s+)?(?:welcome|accepted|ok))"
-    r"|sponsor[^.\n]{0,40}h-?1-?b"
-    rf"|{_OPT}[^.\n]{{0,40}}(?:eligible|welcome|friendly|accepted|\bok\b|considered)"
-    rf"|(?:eligible|welcome|friendly|accepted)[^.\n]{{0,30}}{_OPT}",
+    r"|sponsor[^.\n]{0,40}h-?1-?b",
     re.IGNORECASE,
 )
 
