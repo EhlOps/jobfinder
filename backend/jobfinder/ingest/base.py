@@ -104,7 +104,7 @@ def infer_workplace(*texts: str | None, declared: str | None = None) -> str | No
 
 _SENIORITY_RULES: list[tuple[str, re.Pattern[str]]] = [
     ("intern", re.compile(r"\b(intern|internship|co-?op)\b", re.IGNORECASE)),
-    ("new_grad", re.compile(r"\b(new grad|new graduate|university grad|graduate|early career|entry[- ]level)\b", re.IGNORECASE)),
+    ("new_grad", re.compile(r"\b(new grad(?:uate)?s?|recent graduates?|university grad(?:uate)?s?|graduate (?:engineers?|developers?|programs?|programmes?|schemes?)|early career|entry[- ]level)\b", re.IGNORECASE)),
     ("manager", re.compile(r"\b(manager|director|vp|vice president|head of|chief)\b", re.IGNORECASE)),
     ("staff", re.compile(r"\b(staff|principal|distinguished|fellow)\b", re.IGNORECASE)),
     # roman-numeral ladders: Engineer I is junior, II mid-level, III senior, IV staff

@@ -127,3 +127,9 @@ def test_dedupe_hash_ignores_case_punctuation_and_spacing():
     a = dedupe_hash("Stripe", "Software Engineer, Backend", "New York, NY")
     assert a == dedupe_hash("stripe", "software engineer - backend", "new  york ny")
     assert a != dedupe_hash("Stripe", "Software Engineer, Frontend", "New York, NY")
+
+
+def test_bare_graduate_in_title_is_not_new_grad():
+    assert infer_seniority("Graduate-level ML Researcher") is None
+    assert infer_seniority("Graduate Engineer") == "new_grad"
+    assert infer_seniority("Recent Graduate Analyst") == "new_grad"
