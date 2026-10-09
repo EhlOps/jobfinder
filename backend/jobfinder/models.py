@@ -38,7 +38,7 @@ class User(Base):
     digest_enabled: Mapped[bool | None] = mapped_column(nullable=True)
     is_admin: Mapped[bool | None] = mapped_column(nullable=True)
     question_emails_enabled: Mapped[bool | None] = mapped_column(nullable=True)
-    match_budget_enabled: Mapped[bool | None] = mapped_column(nullable=True)  # False = no daily scoring limit
+    match_budget_enabled: Mapped[bool] = mapped_column(default=True, server_default=text("true"))  # False = no daily scoring limit
     match_budget: Mapped[int | None] = mapped_column(Integer, nullable=True)  # LLM-scored jobs per rolling 24h; null = server default
     last_digest_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
