@@ -36,6 +36,14 @@ def _register_fonts() -> None:
 
 
 _NON_BMP = re.compile("[^\U00000000-\U0000ffff]")
+# XML 1.0 forbids C0 controls other than \t \n \r, lone surrogates and U+FFFE/U+FFFF; python-docx
+# raises on them. \x0b/\x0c are soft line/page breaks in pasted text, so they become spaces.
+_XML_INVALID = re.compile("[\x00-\x08\x0e-\x1f\ud800-\udfff\ufffe\uffff]")
+_BREAKS = re.compile("[\x0b\x0c]")
+
+
+def _clean(text: str) -> str:
+    return _XML_INVALID.sub("", _BREAKS.sub(" ", text))
 
 
 def _pdf_text(text: str) -> str:
@@ -103,7 +111,14 @@ def _sections(resume) -> tuple[str, list[str], list[tuple[str, list[tuple[str, l
                 ],
             )
         )
-    return c.name, [x for x in contact if x], sections
+    return (
+        _clean(c.name),
+        [y for y in (_clean(x) for x in contact) if y],
+        [
+            (h, [(_clean(line), [_clean(b) for b in bullets]) for line, bullets in entries])
+            for h, entries in sections
+        ],
+    )
 
 
 def resume_to_text(resume) -> str:
@@ -112,7 +127,8 @@ def resume_to_text(resume) -> str:
     for heading, entries in sections:
         lines += ["", heading]
         for line, bullets in entries:
-            lines.append(line)
+            if line:
+                lines.append(line)
             lines += [f"- {b}" for b in bullets]
     return "\n".join(lines) + "\n"
 
@@ -130,10 +146,11 @@ def render_docx(resume) -> bytes:
     for heading, entries in sections:
         d.add_heading(heading, level=1)
         for line, bullets in entries:
-            para = d.add_paragraph(line)
-            para.paragraph_format.space_after = Pt(2)
-            if bullets:
-                para.runs[0].bold = True
+            if line:
+                para = d.add_paragraph(line)
+                para.paragraph_format.space_after = Pt(2)
+                if bullets:
+                    para.runs[0].bold = True
             for b in bullets:
                 d.add_paragraph(b, style="List Bullet").paragraph_format.space_after = Pt(0)
     # Heading 1 defaults to a colored theme font; keep fonts plain and black for parsers
@@ -158,7 +175,8 @@ def render_pdf(resume) -> bytes:
     for heading, entries in sections:
         story.append(Paragraph(_pdf_text(heading), head))
         for line, bullets in entries:
-            story.append(Paragraph(_pdf_text(line), entry if bullets else base))
+            if line:
+                story.append(Paragraph(_pdf_text(line), entry if bullets else base))
             if bullets:
                 story.append(
                     ListFlowable(
