@@ -241,33 +241,41 @@ _BEFORE_WORDS = re.compile(r"\b(?:by|before|prior to|no later than|until)\s*$", 
 _AFTER_WORDS = re.compile(r"\b(?:after|since|no earlier than|not earlier than|not before)\s*$", re.IGNORECASE)
 _OR_LATER = re.compile(r"^\s*(?:,?\s*(?:or|and)\s+(?:later|after|afterwards|newer|onwards?)|\+|onwards?)(?=\s*(?:$|[.,;:)]))", re.IGNORECASE)
 _OR_EARLIER = re.compile(r"^\s*,?\s*(?:or|and)\s+(?:earlier|before|prior)(?=\s*(?:$|[.,;:)]))", re.IGNORECASE)
+_CLAUSE_END = re.compile(r"[;\n]|\.(?!\s*\d)")  # a period inside 'Dec. 2026' does not end the clause
+_GRAD_LEAD = re.compile(
+    r"(?:[\s,:(]|\b(?:in|on|or|of|the|spring|summer|fall|autumn|winter|date|dates|is|are|be|expected|anticipated|between|from|by|before|after|prior to|since|until"
+    r"|no later than|no earlier than|not earlier than|not before)\b)*",
+    re.IGNORECASE,
+)
+_RANGE_JOINER = re.compile(r"^\s*(?:and|or|to|through|until|/|[-\u2013\u2014])\s*", re.IGNORECASE)
 GRAD_WINDOW_SLACK = 1  # months
 
 
 def graduation_window(description: str) -> tuple[int | None, int | None] | None:
     """The graduation dates a posting accepts, as (first, last) month indexes (None = open ended), from
     phrases like 'graduating between December 2026 and June 2027', 'class of 2027' or 'graduating by May 2027'.
-    A lone date covers its whole year, since a single month rarely means an exact cut-off; 'after', 'or later'
+    Bounds come only from dates tied to the graduation phrase (up to the end of its clause); anything
+    ambiguous returns None so the posting is not dropped. A lone date covers its whole year, since a single month rarely means an exact cut-off; 'after', 'or later'
     and 'no earlier than' make it an open-ended lower bound, 'by', 'before' and 'or earlier' an upper one."""
     text = description or ""
     for trig in _GRAD_TRIGGER.finditer(text):
-        span = text[trig.end() : trig.end() + 90]
-        tokens = list(_DATE_TOKEN.finditer(span))
-        if not tokens:
+        clause = _CLAUSE_END.split(text[trig.end() : trig.end() + 200], maxsplit=1)[0]
+        lead = _GRAD_LEAD.match(clause)
+        first = _DATE_TOKEN.match(clause, lead.end())  # the date must follow the phrase directly
+        if not first:
             continue
-        first, last = tokens[0], tokens[-1]
         year = int(first.group(2))
         named = _MONTHS[first.group(1).lower()[:3]] if first.group(1) else None
-        before = span[: first.start()]
-        after = span[first.end() : tokens[1].start() if len(tokens) >= 2 else None]  # up to the next date
-        if _AFTER_WORDS.search(before) or _OR_LATER.search(after):
+        rest = clause[first.end() :]
+        if _AFTER_WORDS.search(lead.group()) or _OR_LATER.search(rest):
             return _month_index(year, named or 1), None
-        if _BEFORE_WORDS.search(before) or _OR_EARLIER.search(after):
+        if _BEFORE_WORDS.search(lead.group()) or _OR_EARLIER.search(rest):
             return None, _month_index(year, named or 12)
-        if len(tokens) >= 2:
-            lo_month = _MONTHS[first.group(1).lower()[:3]] if first.group(1) else 1
-            hi_month = _MONTHS[last.group(1).lower()[:3]] if last.group(1) else 12
-            lo, hi = _month_index(year, lo_month), _month_index(int(last.group(2)), hi_month)
+        joiner = _RANGE_JOINER.match(rest)
+        last = _DATE_TOKEN.match(rest, joiner.end()) if joiner else None
+        if last:
+            lo = _month_index(year, named or 1)
+            hi = _month_index(int(last.group(2)), _MONTHS[last.group(1).lower()[:3]] if last.group(1) else 12)
             return (lo, hi) if lo <= hi else None
         return _month_index(year, 1), _month_index(year, 12)
     return None
