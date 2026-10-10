@@ -18,6 +18,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import ListFlowable, ListItem, Paragraph, SimpleDocTemplate, Spacer
 
+from jobfinder.letters.docx_export import clean_text as _clean
 from jobfinder.letters.docx_export import new_document, to_bytes
 
 # The built-in Helvetica is Latin-1 only, so names like "Łukasz" or Cyrillic/Greek text would render
@@ -36,16 +37,6 @@ def _register_fonts() -> None:
 
 
 _NON_BMP = re.compile("[^\U00000000-\U0000ffff]")
-# XML 1.0 forbids C0 controls other than \t \n \r, lone surrogates and U+FFFE/U+FFFF; python-docx
-# raises on them. \x0b/\x0c are soft line/page breaks in pasted text, so they become spaces.
-_XML_INVALID = re.compile("[\x00-\x08\x0e-\x1f\ud800-\udfff\ufffe\uffff]")
-_BREAKS = re.compile("[\x0b\x0c]")
-
-
-def _clean(text: str) -> str:
-    return _XML_INVALID.sub("", _BREAKS.sub(" ", text))
-
-
 def _pdf_text(text: str) -> str:
     """NFC-compose (reportlab does no mark positioning) and replace non-BMP characters, which
     reportlab's TTF subsetting would otherwise truncate into different, wrong characters."""

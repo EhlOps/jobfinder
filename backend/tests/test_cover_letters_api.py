@@ -131,6 +131,12 @@ def test_docx_keeps_signature_lines_together_and_handles_odd_text():
     assert len(filename("x" * 300, "y")) <= 125
 
 
+def test_docx_survives_control_characters():
+    out = build_docx("Dear \x00team,\x0bthanks\n\nSincerely,\ufffeJane\ud800")
+    d = docx.Document(io.BytesIO(out))
+    assert [p.text for p in d.paragraphs] == ["Dear team, thanks", "Sincerely,Jane"]
+
+
 async def test_delete_and_flags_in_list(authed, engine):
     mid, _ = await setup(authed, engine)
     assert (await authed.get("/api/matches")).json()["items"][0]["has_cover_letter"] is False
