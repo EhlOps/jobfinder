@@ -95,7 +95,7 @@
       "migration": "0015",
       "adds_dependencies": [],
       "steps": [
-        "Add sponsorship_signal(description) returning 'sponsors', 'refuses' or None; detect 'will sponsor', H-1B, OPT/CPT and STEM-OPT friendly; keep refuses_sponsorship working",
+        "Add sponsorship_signal(description) returning 'sponsors', 'refuses' or None; detect 'will sponsor' and H-1B/visa sponsorship (OPT/CPT mentions alone do not count: they need no employer sponsorship, so they only count next to H-1B or visa-sponsorship language); detect refusals such as 'sponsorship is not provided/available/offered' and 'no visa sponsorship'; keep refuses_sponsorship working",
         "Add Company.sponsors_visas (bool, nullable) and migration 0015",
         "Add sponsors_visas to known companies in companies.yaml and carry it through sync_companies",
         "Add a sponsorship component to prefilter_score for users who need sponsorship; unknown stays neutral"

@@ -476,7 +476,7 @@
       "requirement": "Visa sponsorship is a real matching factor for users who are international and need sponsorship. Today it is collected (needs_visa_sponsorship) and used only to drop postings whose text refuses sponsorship.",
       "implemented_in": [],
       "acceptance": [
-        "Detect positive signals as well as refusals: 'will sponsor', H-1B, OPT/CPT and STEM-OPT friendly",
+        "Detect positive signals as well as refusals: 'will sponsor' and H-1B/visa sponsorship (OPT/CPT mentions alone are not a sponsorship signal, since they need no employer sponsorship)",
         "Use company sponsorship history where known, for example a per-company flag in companies.yaml",
         "Feed sponsorship into the prefilter score and the LLM preference_fit; unknown stays neutral",
         "Show a sponsorship badge on matches",
