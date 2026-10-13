@@ -38,13 +38,18 @@ class Settings(BaseSettings):
 
     github_token: str = ""
     enable_jobspy: bool = False
+    usajobs_api_key: str = ""  # free key at developer.usajobs.gov; the source needs this and usajobs_email
+    usajobs_email: str = ""  # sent as the User-Agent, as USAJobs requires
+    usajobs_max_locations: int = 10
+    usajobs_max_pages: int = 4  # x500 results per query
+    usajobs_days_posted: int = 30
     scheduler_enabled: bool = True  # worker runs ingestion and the daily emails on a schedule
     ingest_interval_hours: int = 6
     digest_min_score: int = 65  # only matches at least this good are included in the daily email
     digest_max_matches: int = 10
     questions_per_email: int = 6
     max_open_questions: int = 15  # stop collecting new questions while this many are unanswered
-    ingest_concurrency: int = 5
+    ingest_concurrency: int = 10
     ingest_max_consecutive_failures: int = 5  # a board failing this many runs in a row is disabled
     ingest_max_discovered_boards_per_run: int = 300  # cap on discovered boards fetched per run; seed boards always run; 0 = no cap
     match_daily_llm_budget: int = 25  # LLM-scored jobs per user per rolling 24h
@@ -69,6 +74,10 @@ class Settings(BaseSettings):
     login_failures_per_ip: int = 30
     login_failure_window_minutes: int = 15
     preview_emails_per_hour: int = 5
+
+    @property
+    def usajobs_enabled(self) -> bool:
+        return bool(self.usajobs_api_key and self.usajobs_email)
 
     @model_validator(mode="before")
     @classmethod

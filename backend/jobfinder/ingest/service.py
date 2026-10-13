@@ -24,6 +24,7 @@ from jobfinder.models import Company, Job, Profile, User
 log = logging.getLogger("jobfinder.ingest")
 
 COMPANIES_YAML = Path(__file__).parent / "companies.yaml"
+COMPANIES_DIR = Path(__file__).parent / "companies.d"
 VALID_SIZES = {"startup", "mid", "large"}
 UPSERT_CHUNK = 200
 # An empty response from a board that had more than this many active jobs is treated as an
@@ -33,6 +34,7 @@ EMPTY_GUARD_MIN_ACTIVE = 5
 EMPTY_CONFIRM_RUNS = 3
 EMPTY_ERROR_PREFIX = "empty response"
 JOBSPY_EXPIRE_AFTER = timedelta(days=14)
+USAJOBS_EXPIRE_AFTER = timedelta(days=14)
 
 SessionFactory = Callable[[], AsyncSession]
 
@@ -49,19 +51,43 @@ class IngestStats:
 
 
 # ── companies ─────────────────────────────────────────────────────────────
-def load_seed() -> list[dict]:
-    return yaml.safe_load(COMPANIES_YAML.read_text())["companies"]
+def load_seed(files: list[Path] | None = None) -> list[dict]:
+    """Seed rows from companies.yaml plus companies.d/*.yaml (sorted). First (ats, slug) wins."""
+    files = seed_files() if files is None else files
+    out: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+    for f in files:
+        for e in (yaml.safe_load(f.read_text()) or {}).get("companies") or []:
+            if not isinstance(e, dict) or not all(e.get(k) for k in ("name", "ats", "slug")):
+                log.warning("malformed seed company in %s: %r; skipping", f.name, e)
+                continue
+            if e["ats"] not in ATS_FETCHERS:
+                log.warning("unknown ATS in seed row in %s: %r; skipping", f.name, e)
+                continue
+            e["slug"] = str(e["slug"])
+            key = (e["ats"], e["slug"])
+            if key in seen:
+                log.warning("duplicate seed company %s/%s in %s; skipping", *key, f.name)
+                continue
+            seen.add(key)
+            out.append(e)
+    return out
+
+
+def seed_files() -> list[Path]:
+    return [COMPANIES_YAML, *sorted(COMPANIES_DIR.glob("*.yaml"))]
 
 
 async def sync_companies(db: AsyncSession, entries: list[dict] | None = None) -> int:
     """Upsert the seed list by (ats, slug). Returns the number of rows touched."""
     entries = load_seed() if entries is None else entries
-    for e in entries:
-        stmt = insert(Company).values(
-            name=e["name"], ats=e["ats"], slug=e["slug"], prestige_tier=e.get("prestige", 3),
-            size=e.get("size", "mid"), industry=e.get("industry", ""),
-            sponsors_visas=e.get("sponsors_visas"),
-        )
+    for i in range(0, len(entries), 200):
+        stmt = insert(Company).values([
+            {"name": e["name"], "ats": e["ats"], "slug": e["slug"], "prestige_tier": e.get("prestige", 3),
+             "size": e.get("size", "mid"), "industry": e.get("industry", ""),
+             "sponsors_visas": e.get("sponsors_visas")}
+            for e in entries[i:i + 200]
+        ])
         await db.execute(
             stmt.on_conflict_do_update(
                 constraint="uq_company_ats_slug",
@@ -109,7 +135,8 @@ async def upsert_postings(db: AsyncSession, postings: list[JobPosting], company_
         # A failed detail fetch yields an empty description (and nothing derived from it); keep the stored values.
         no_desc = stmt.excluded.description_text == ""
         for c in _DETAIL_COLUMNS:
-            keep[c] = sa.case((no_desc, Job.__table__.c[c]), else_=stmt.excluded[c])
+            new_val = sa.func.coalesce(stmt.excluded[c], Job.__table__.c[c]) if c == "posted_at" else stmt.excluded[c]
+            keep[c] = sa.case((no_desc, Job.__table__.c[c]), else_=new_val)  # a missing date never erases a known one
         res = await db.execute(
             stmt.on_conflict_do_update(constraint="uq_job_source_external", set_=keep)
             .returning(sa.literal_column("(xmax = 0)").label("inserted"))
@@ -135,7 +162,7 @@ async def deactivate_missing(db: AsyncSession, source: str, company_id: int, see
 
 
 async def expire_stale(db: AsyncSession, source: str, older_than: timedelta) -> int:
-    """For sources without per-company boards (jobspy): expire jobs not seen recently."""
+    """For sources without per-company boards (jobspy, usajobs): expire jobs not seen recently."""
     res = await db.execute(
         sa.update(Job)
         .where(Job.source == source, Job.is_active.is_(True), Job.last_seen_at < datetime.now(UTC) - older_than)

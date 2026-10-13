@@ -1,0 +1,121 @@
+# Workday boards (public CXS API). Slug format: {tenant}.{wdN}.{site}.
+# Every row was checked live with validate_board("workday", slug, list_only=True) and returned >=1 posting.
+# sponsors_visas: false only where a sample of 20 postings per board stated U.S.-person / citizenship /
+# ITAR / export-control requirements in at least 90% of them; omitted (unknown) everywhere else.
+# prestige: 1 (unknown) .. 5 (top-tier). size: startup | mid | large.
+companies:
+  - {name: "Boeing", ats: workday, slug: boeing.wd1.EXTERNAL_CAREERS, prestige: 5, size: large, industry: aerospace, sponsors_visas: false}
+  - {name: "Northrop Grumman", ats: workday, slug: ngc.wd1.Northrop_Grumman_External_Site, prestige: 5, size: large, industry: defense, sponsors_visas: false}
+  - {name: "RTX (Raytheon, Collins, Pratt & Whitney)", ats: workday, slug: globalhr.wd5.REC_RTX_Ext_Gateway, prestige: 5, size: large, industry: aerospace}
+  - {name: "GE Aerospace", ats: workday, slug: geaerospace.wd5.GE_ExternalSite, prestige: 5, size: large, industry: aerospace}
+  - {name: "GE Vernova", ats: workday, slug: gevernova.wd5.Vernova_ExternalSite, prestige: 4, size: large, industry: energy}
+  - {name: "GE HealthCare", ats: workday, slug: gehc.wd5.GEHC_ExternalSite, prestige: 4, size: large, industry: medical devices}
+  - {name: "General Dynamics IT", ats: workday, slug: gdit.wd5.External_Career_Site, prestige: 4, size: large, industry: defense, sponsors_visas: false}
+  - {name: "Leidos", ats: workday, slug: leidos.wd5.External, prestige: 4, size: large, industry: defense}
+  - {name: "Booz Allen Hamilton", ats: workday, slug: bah.wd1.BAH_Jobs, prestige: 4, size: large, industry: consulting}
+  - {name: "CACI", ats: workday, slug: caci.wd1.External, prestige: 3, size: large, industry: defense}
+  - {name: "Parsons", ats: workday, slug: parsons.wd5.Search, prestige: 3, size: large, industry: engineering}
+  - {name: "KBR", ats: workday, slug: kbr.wd5.KBR_Careers, prestige: 3, size: large, industry: engineering}
+  - {name: "Blue Origin", ats: workday, slug: blueorigin.wd5.BlueOrigin, prestige: 5, size: large, industry: aerospace, sponsors_visas: false}
+  - {name: "Sierra Nevada Corporation", ats: workday, slug: snc.wd1.SNC_External_Career_Site, prestige: 4, size: large, industry: aerospace, sponsors_visas: false}
+  - {name: "Sierra Space", ats: workday, slug: sierraspace.wd1.Sierra_Space_External_Career_Site, prestige: 4, size: mid, industry: aerospace}
+  - {name: "Draper", ats: workday, slug: draper.wd5.Draper_Careers, prestige: 4, size: mid, industry: aerospace, sponsors_visas: false}
+  - {name: "Woodward", ats: workday, slug: woodward.wd5.Woodward, prestige: 3, size: large, industry: aerospace}
+  - {name: "Moog", ats: workday, slug: moog.wd5.MOOG_External_Career_Site, prestige: 3, size: large, industry: aerospace}
+  - {name: "Curtiss-Wright", ats: workday, slug: curtisswright.wd1.CW_External_Career_Site, prestige: 3, size: large, industry: aerospace}
+  - {name: "Hexcel", ats: workday, slug: hexcel.wd5.HexcelCareers, prestige: 3, size: large, industry: aerospace}
+  - {name: "Cubic", ats: workday, slug: cubic.wd1.cubic_USA_careers, prestige: 3, size: large, industry: defense}
+  - {name: "Amentum", ats: workday, slug: pae.wd1.Amentum_Careers, prestige: 3, size: large, industry: defense}
+  - {name: "Vantor (Maxar)", ats: workday, slug: maxar.wd1.Vantor, prestige: 4, size: large, industry: aerospace, sponsors_visas: false}
+  - {name: "Planet Labs", ats: workday, slug: planet.wd3.Planet, prestige: 4, size: mid, industry: aerospace}
+  - {name: "NVIDIA", ats: workday, slug: nvidia.wd5.NVIDIAExternalCareerSite, prestige: 5, size: large, industry: semiconductors}
+  - {name: "Intel", ats: workday, slug: intel.wd1.External, prestige: 4, size: large, industry: semiconductors}
+  - {name: "Analog Devices", ats: workday, slug: analogdevices.wd1.External, prestige: 4, size: large, industry: semiconductors}
+  - {name: "Micron", ats: workday, slug: micron.wd1.External, prestige: 4, size: large, industry: semiconductors}
+  - {name: "Applied Materials", ats: workday, slug: amat.wd1.External, prestige: 4, size: large, industry: semiconductors}
+  - {name: "KLA", ats: workday, slug: kla.wd1.Search, prestige: 4, size: large, industry: semiconductors}
+  - {name: "Broadcom", ats: workday, slug: broadcom.wd1.External_Career, prestige: 4, size: large, industry: semiconductors}
+  - {name: "Marvell", ats: workday, slug: marvell.wd1.MarvellCareers, prestige: 4, size: large, industry: semiconductors}
+  - {name: "NXP", ats: workday, slug: nxp.wd3.careers, prestige: 4, size: large, industry: semiconductors}
+  - {name: "GlobalFoundries", ats: workday, slug: globalfoundries.wd1.External, prestige: 3, size: large, industry: semiconductors}
+  - {name: "SiFive", ats: workday, slug: sifive.wd1.sifivecareers, prestige: 3, size: mid, industry: semiconductors}
+  - {name: "Cadence", ats: workday, slug: cadence.wd1.External_Careers, prestige: 4, size: large, industry: eda}
+  - {name: "Autodesk", ats: workday, slug: autodesk.wd1.Ext, prestige: 4, size: large, industry: software}
+  - {name: "Salesforce", ats: workday, slug: salesforce.wd12.External_Career_Site, prestige: 5, size: large, industry: software}
+  - {name: "Adobe", ats: workday, slug: adobe.wd5.external_experienced, prestige: 5, size: large, industry: software}
+  - {name: "Workday", ats: workday, slug: workday.wd5.Workday, prestige: 4, size: large, industry: software}
+  - {name: "Cisco", ats: workday, slug: cisco.wd5.Cisco_Careers, prestige: 4, size: large, industry: networking}
+  - {name: "HP", ats: workday, slug: hp.wd5.ExternalCareerSite, prestige: 3, size: large, industry: hardware}
+  - {name: "Hewlett Packard Enterprise", ats: workday, slug: hpe.wd5.Jobsathpe, prestige: 3, size: large, industry: hardware}
+  - {name: "Zoom", ats: workday, slug: zoom.wd5.Zoom, prestige: 4, size: large, industry: software}
+  - {name: "PayPal", ats: workday, slug: paypal.wd1.jobs, prestige: 4, size: large, industry: fintech}
+  - {name: "Mastercard", ats: workday, slug: mastercard.wd1.CorporateCareers, prestige: 4, size: large, industry: fintech}
+  - {name: "Visa", ats: workday, slug: visa.wd5.visa, prestige: 4, size: large, industry: fintech}
+  - {name: "Capital One", ats: workday, slug: capitalone.wd12.Capital_One, prestige: 4, size: large, industry: fintech}
+  - {name: "Target", ats: workday, slug: target.wd5.targetcareers, prestige: 3, size: large, industry: retail}
+  - {name: "Verizon", ats: workday, slug: verizon.wd12.verizon-careers, prestige: 3, size: large, industry: telecom}
+  - {name: "Motorola Solutions", ats: workday, slug: motorolasolutions.wd5.Careers, prestige: 4, size: large, industry: communications}
+  - {name: "Trimble", ats: workday, slug: trimble.wd1.TrimbleCareers, prestige: 3, size: large, industry: hardware}
+  - {name: "Jabil", ats: workday, slug: jabil.wd5.Jabil_Careers, prestige: 3, size: large, industry: manufacturing}
+  - {name: "Medtronic", ats: workday, slug: medtronic.wd1.MedtronicCareers, prestige: 4, size: large, industry: medical devices}
+  - {name: "Stryker", ats: workday, slug: stryker.wd1.StrykerCareers, prestige: 4, size: large, industry: medical devices}
+  - {name: "BD", ats: workday, slug: bdx.wd1.EXTERNAL_CAREER_SITE_USA, prestige: 4, size: large, industry: medical devices}
+  - {name: "Baxter", ats: workday, slug: baxter.wd1.baxter, prestige: 3, size: large, industry: medical devices}
+  - {name: "Danaher", ats: workday, slug: danaher.wd1.DanaherJobs, prestige: 4, size: large, industry: life sciences}
+  - {name: "Thermo Fisher Scientific", ats: workday, slug: thermofisher.wd5.ThermoFisherCareers, prestige: 4, size: large, industry: life sciences}
+  - {name: "Abbott", ats: workday, slug: abbott.wd5.abbottcareers, prestige: 4, size: large, industry: life sciences}
+  - {name: "Agilent", ats: workday, slug: agilent.wd5.Agilent_Careers, prestige: 4, size: large, industry: life sciences}
+  - {name: "Illumina", ats: workday, slug: illumina.wd1.illumina-careers, prestige: 4, size: large, industry: life sciences}
+  - {name: "Pfizer", ats: workday, slug: pfizer.wd1.PfizerCareers, prestige: 4, size: large, industry: pharma}
+  - {name: "Merck", ats: workday, slug: msd.wd5.SearchJobs, prestige: 4, size: large, industry: pharma}
+  - {name: "Amgen", ats: workday, slug: amgen.wd1.Careers, prestige: 4, size: large, industry: pharma}
+  - {name: "Regeneron", ats: workday, slug: regeneron.wd1.Careers, prestige: 4, size: large, industry: pharma}
+  - {name: "Gilead Sciences", ats: workday, slug: gilead.wd1.gileadcareers, prestige: 4, size: large, industry: pharma}
+  - {name: "Dow", ats: workday, slug: dow.wd1.ExternalCareers, prestige: 4, size: large, industry: chemicals}
+  - {name: "DuPont", ats: workday, slug: dupont.wd5.Jobs, prestige: 4, size: large, industry: chemicals}
+  - {name: "3M", ats: workday, slug: 3m.wd1.Search, prestige: 4, size: large, industry: industrial}
+  - {name: "PPG", ats: workday, slug: ppg.wd5.PPG_Careers, prestige: 3, size: large, industry: chemicals}
+  - {name: "Air Products", ats: workday, slug: airproducts.wd5.AP0001, prestige: 3, size: large, industry: chemicals}
+  - {name: "Ecolab", ats: workday, slug: ecolab.wd1.Ecolab_External, prestige: 3, size: large, industry: chemicals}
+  - {name: "Huntsman", ats: workday, slug: huntsman.wd1.Huntsman, prestige: 3, size: large, industry: chemicals}
+  - {name: "Albemarle", ats: workday, slug: albemarle.wd5.External, prestige: 3, size: large, industry: chemicals}
+  - {name: "Chemours", ats: workday, slug: chemours.wd103.Chemours, prestige: 3, size: large, industry: chemicals}
+  - {name: "Westlake", ats: workday, slug: westlake.wd1.westlake, prestige: 3, size: large, industry: chemicals}
+  - {name: "Alcoa", ats: workday, slug: alcoa.wd5.Careers, prestige: 3, size: large, industry: materials}
+  - {name: "Caterpillar", ats: workday, slug: cat.wd5.CaterpillarCareers, prestige: 4, size: large, industry: industrial}
+  - {name: "General Motors", ats: workday, slug: generalmotors.wd5.Careers_GM, prestige: 4, size: large, industry: automotive}
+  - {name: "Stellantis", ats: workday, slug: stellantis.wd3.External_Career_Site_ID01, prestige: 3, size: large, industry: automotive}
+  - {name: "Aptiv", ats: workday, slug: aptiv.wd5.APTIV_CAREERS, prestige: 4, size: large, industry: automotive}
+  - {name: "Magna", ats: workday, slug: magna.wd3.Magna, prestige: 3, size: large, industry: automotive}
+  - {name: "BorgWarner", ats: workday, slug: borgwarner.wd5.BorgWarner_Careers, prestige: 3, size: large, industry: automotive}
+  - {name: "Goodyear", ats: workday, slug: goodyear.wd1.GoodyearCareers, prestige: 3, size: large, industry: automotive}
+  - {name: "Polaris", ats: workday, slug: polaris.wd5.PolarisJobs, prestige: 3, size: large, industry: automotive}
+  - {name: "Allison Transmission", ats: workday, slug: allisontransmission.wd1.ATI-External, prestige: 3, size: large, industry: automotive}
+  - {name: "Johnson Controls", ats: workday, slug: jci.wd5.JCI, prestige: 4, size: large, industry: industrial}
+  - {name: "Carrier", ats: workday, slug: carrier.wd5.jobs, prestige: 4, size: large, industry: industrial}
+  - {name: "Trane Technologies", ats: workday, slug: tranetechnologies.wd12.Trane_Technologies_Careers, prestige: 4, size: large, industry: industrial}
+  - {name: "Rockwell Automation", ats: workday, slug: rockwellautomation.wd1.External_Rockwell_Automation, prestige: 4, size: large, industry: industrial}
+  - {name: "Illinois Tool Works", ats: workday, slug: itw.wd5.External, prestige: 3, size: large, industry: industrial}
+  - {name: "Dover", ats: workday, slug: dover.wd103.Dover, prestige: 3, size: large, industry: industrial}
+  - {name: "Stanley Black & Decker", ats: workday, slug: sbdinc.wd1.Stanley_Black_Decker_Career_Site, prestige: 3, size: large, industry: industrial}
+  - {name: "Pentair", ats: workday, slug: pentair.wd5.Pentair_Careers, prestige: 3, size: large, industry: industrial}
+  - {name: "Graco", ats: workday, slug: graco.wd501.Graco_Careers, prestige: 3, size: large, industry: industrial}
+  - {name: "RegalRexnord", ats: workday, slug: regalrexnord.wd1.Careers, prestige: 3, size: large, industry: industrial}
+  - {name: "Sensata", ats: workday, slug: sensata.wd1.Sensata-Careers, prestige: 3, size: large, industry: industrial}
+  - {name: "Littelfuse", ats: workday, slug: littelfuse.wd1.Littelfuse-Careers, prestige: 3, size: large, industry: industrial}
+  - {name: "Terex", ats: workday, slug: terex.wd1.terexcareers, prestige: 3, size: large, industry: industrial}
+  - {name: "Brunswick", ats: workday, slug: brunswick.wd1.search, prestige: 3, size: large, industry: industrial}
+  - {name: "Generac", ats: workday, slug: generac.wd5.ExternalCareers, prestige: 3, size: large, industry: energy}
+  - {name: "Flowserve", ats: workday, slug: flowserve.wd1.applied, prestige: 3, size: large, industry: industrial}
+  - {name: "Baker Hughes", ats: workday, slug: bakerhughes.wd5.BakerHughes, prestige: 4, size: large, industry: energy}
+  - {name: "Chevron", ats: workday, slug: chevron.wd5.jobs, prestige: 4, size: large, industry: energy}
+  - {name: "ConocoPhillips", ats: workday, slug: conocophillips.wd1.External, prestige: 4, size: large, industry: energy}
+  - {name: "Duke Energy", ats: workday, slug: dukeenergy.wd1.search, prestige: 3, size: large, industry: energy}
+  - {name: "Sunrun", ats: workday, slug: sunrun.wd5.Sunrun_Careers, prestige: 3, size: large, industry: energy}
+  - {name: "Nextpower (Nextracker)", ats: workday, slug: nextracker.wd5.nextpower_careers, prestige: 3, size: large, industry: energy}
+  - {name: "Bloom Energy", ats: workday, slug: bloomenergy.wd1.BloomEnergyCareers, prestige: 4, size: large, industry: energy}
+  - {name: "Plug Power", ats: workday, slug: plugpower.wd5.Plug_Power_Inc, prestige: 3, size: large, industry: energy}
+  - {name: "X-energy", ats: workday, slug: xenergy.wd5.X-energyUS, prestige: 4, size: mid, industry: energy}
+  - {name: "Stem", ats: workday, slug: stem.wd12.StemInc, prestige: 3, size: mid, industry: energy}
+  - {name: "GE Appliances", ats: workday, slug: haier.wd3.GE_Appliances, prestige: 3, size: large, industry: consumer hardware}
+  - {name: "Rolls-Royce", ats: workday, slug: rollsroyce.wd3.professional, prestige: 4, size: large, industry: aerospace}

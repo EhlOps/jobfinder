@@ -57,7 +57,7 @@ export default function StatusStep({ initial, onDone, submitLabel = "Save & cont
         </select>
       </Field>
       <Field label="Company size"><CheckGroup options={SIZES} value={s.company_sizes} onChange={(v) => set("company_sizes", v)} /></Field>
-      <Field label="Industries you like" hint="Comma separated, e.g. fintech, healthcare, dev tools"><ListInput value={s.industries} onChange={(v) => set("industries", v)} /></Field>
+      <Field label="Industries you like" hint="Comma separated, e.g. fintech, aerospace, robotics, semiconductors, energy, dev tools"><ListInput value={s.industries} onChange={(v) => set("industries", v)} /></Field>
       <Field label="Anything else we should know?"><textarea rows={3} value={s.notes ?? ""} onChange={(e) => set("notes", e.target.value || null)} /></Field>
       <ErrorText error={save.error} />
       <button disabled={save.isPending}>{save.isPending ? "Saving…" : submitLabel}</button>

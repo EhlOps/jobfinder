@@ -1,0 +1,161 @@
+# Fintech, quant trading, insurtech, HR/enterprise SaaS, security/data/dev tools and health software boards.
+# Every row was checked against its live ATS API (non-empty board) when added. Row format: see ../companies.yaml.
+companies:
+  # -- greenhouse --
+  - {name: Abnormal Security, ats: greenhouse, slug: abnormalsecurity, prestige: 3, size: mid, industry: security}
+  - {name: Adyen, ats: greenhouse, slug: adyen, prestige: 4, size: large, industry: fintech}
+  - {name: Affirm, ats: greenhouse, slug: affirm, prestige: 4, size: large, industry: fintech}
+  - {name: Akuna Capital, ats: greenhouse, slug: akunacapital, prestige: 4, size: mid, industry: quant trading}
+  - {name: Algolia, ats: greenhouse, slug: algolia, prestige: 3, size: mid, industry: dev tools}
+  - {name: Alpaca, ats: greenhouse, slug: alpaca, prestige: 3, size: startup, industry: fintech}
+  - {name: Anaplan, ats: greenhouse, slug: anaplan, prestige: 3, size: large, industry: enterprise software}
+  - {name: Attentive, ats: greenhouse, slug: attentive, prestige: 3, size: mid, industry: enterprise software}
+  - {name: Bandwidth, ats: greenhouse, slug: bandwidth, prestige: 2, size: mid, industry: infrastructure}
+  - {name: Betterment, ats: greenhouse, slug: betterment, prestige: 3, size: mid, industry: fintech}
+  - {name: Blend, ats: greenhouse, slug: blend, prestige: 3, size: mid, industry: fintech}
+  - {name: Block, ats: greenhouse, slug: block, prestige: 4, size: large, industry: fintech}
+  - {name: Braze, ats: greenhouse, slug: braze, prestige: 3, size: large, industry: enterprise software}
+  - {name: Brex, ats: greenhouse, slug: brex, prestige: 4, size: mid, industry: fintech}
+  - {name: Calendly, ats: greenhouse, slug: calendly, prestige: 3, size: mid, industry: productivity}
+  - {name: Carta, ats: greenhouse, slug: carta, prestige: 3, size: mid, industry: fintech}
+  - {name: Celonis, ats: greenhouse, slug: celonis, prestige: 3, size: large, industry: enterprise software}
+  - {name: Chime, ats: greenhouse, slug: chime, prestige: 4, size: large, industry: fintech}
+  - {name: CircleCI, ats: greenhouse, slug: circleci, prestige: 3, size: mid, industry: dev tools}
+  - {name: Clear Street, ats: greenhouse, slug: clearstreet, prestige: 3, size: mid, industry: fintech}
+  - {name: Clover Health, ats: greenhouse, slug: cloverhealth, prestige: 3, size: mid, industry: health software}
+  - {name: Coalition, ats: greenhouse, slug: coalition, prestige: 3, size: mid, industry: insurtech}
+  - {name: Cockroach Labs, ats: greenhouse, slug: cockroachlabs, prestige: 3, size: mid, industry: data}
+  - {name: Consensys, ats: greenhouse, slug: consensys, prestige: 3, size: mid, industry: fintech}
+  - {name: Contentful, ats: greenhouse, slug: contentful, prestige: 3, size: mid, industry: dev tools}
+  - {name: Culture Amp, ats: greenhouse, slug: cultureamp, prestige: 3, size: mid, industry: hr software}
+  - {name: Dataiku, ats: greenhouse, slug: dataiku, prestige: 3, size: mid, industry: ai}
+  - {name: Dialpad, ats: greenhouse, slug: dialpad, prestige: 3, size: mid, industry: enterprise software}
+  - {name: Doximity, ats: greenhouse, slug: doximity, prestige: 3, size: mid, industry: health software}
+  - {name: Elastic, ats: greenhouse, slug: elastic, prestige: 3, size: large, industry: data}
+  - {name: Elation Health, ats: greenhouse, slug: elationhealth, prestige: 2, size: startup, industry: health software}
+  - {name: Everlaw, ats: greenhouse, slug: everlaw, prestige: 3, size: mid, industry: enterprise software}
+  - {name: Fireblocks, ats: greenhouse, slug: fireblocks, prestige: 3, size: mid, industry: fintech}
+  - {name: Five9, ats: greenhouse, slug: five9, prestige: 2, size: large, industry: enterprise software}
+  - {name: Fivetran, ats: greenhouse, slug: fivetran, prestige: 3, size: mid, industry: data}
+  - {name: Flatiron Health, ats: greenhouse, slug: flatironhealth, prestige: 3, size: mid, industry: health software}
+  - {name: Flow Traders, ats: greenhouse, slug: flowtraders, prestige: 3, size: mid, industry: quant trading}
+  - {name: Galileo, ats: greenhouse, slug: galileo, prestige: 2, size: mid, industry: fintech}
+  - {name: Gemini, ats: greenhouse, slug: gemini, prestige: 3, size: mid, industry: fintech}
+  - {name: Grafana Labs, ats: greenhouse, slug: grafanalabs, prestige: 4, size: mid, industry: infrastructure}
+  - {name: Greenhouse, ats: greenhouse, slug: greenhouse, prestige: 3, size: mid, industry: hr software}
+  - {name: Gusto, ats: greenhouse, slug: gusto, prestige: 3, size: large, industry: hr software}
+  - {name: IMC Trading, ats: greenhouse, slug: imc, prestige: 4, size: large, industry: quant trading}
+  - {name: Intercom, ats: greenhouse, slug: intercom, prestige: 3, size: large, industry: enterprise software}
+  - {name: Jane Street, ats: greenhouse, slug: janestreet, prestige: 5, size: large, industry: quant trading}
+  - {name: JFrog, ats: greenhouse, slug: jfrog, prestige: 3, size: large, industry: dev tools}
+  - {name: Jump Trading, ats: greenhouse, slug: jumptrading, prestige: 5, size: large, industry: quant trading}
+  - {name: Justworks, ats: greenhouse, slug: justworks, prestige: 2, size: mid, industry: hr software}
+  - {name: Klaviyo, ats: greenhouse, slug: klaviyo, prestige: 3, size: large, industry: enterprise software}
+  - {name: Komodo Health, ats: greenhouse, slug: komodohealth, prestige: 3, size: mid, industry: health software}
+  - {name: Lattice, ats: greenhouse, slug: lattice, prestige: 3, size: mid, industry: hr software}
+  - {name: LaunchDarkly, ats: greenhouse, slug: launchdarkly, prestige: 3, size: mid, industry: dev tools}
+  - {name: Lithic, ats: greenhouse, slug: lithic, prestige: 3, size: startup, industry: fintech}
+  - {name: Maven Clinic, ats: greenhouse, slug: mavenclinic, prestige: 3, size: mid, industry: health software}
+  - {name: Melio, ats: greenhouse, slug: melio, prestige: 3, size: mid, industry: fintech}
+  - {name: Mercury, ats: greenhouse, slug: mercury, prestige: 4, size: mid, industry: fintech}
+  - {name: Mixpanel, ats: greenhouse, slug: mixpanel, prestige: 3, size: mid, industry: data}
+  - {name: Monzo, ats: greenhouse, slug: monzo, prestige: 3, size: large, industry: fintech}
+  - {name: Neo4j, ats: greenhouse, slug: neo4j, prestige: 3, size: mid, industry: data}
+  - {name: New Relic, ats: greenhouse, slug: newrelic, prestige: 3, size: large, industry: infrastructure}
+  - {name: Okta, ats: greenhouse, slug: okta, prestige: 4, size: large, industry: security}
+  - {name: Omada Health, ats: greenhouse, slug: omadahealth, prestige: 3, size: mid, industry: health software}
+  - {name: Oportun, ats: greenhouse, slug: oportun, prestige: 2, size: mid, industry: fintech}
+  - {name: Oscar Health, ats: greenhouse, slug: oscar, prestige: 3, size: large, industry: health software}
+  - {name: Oura, ats: greenhouse, slug: oura, prestige: 4, size: mid, industry: health software}
+  - {name: Pagaya, ats: greenhouse, slug: pagaya, prestige: 3, size: mid, industry: fintech}
+  - {name: PagerDuty, ats: greenhouse, slug: pagerduty, prestige: 3, size: mid, industry: infrastructure}
+  - {name: Payoneer, ats: greenhouse, slug: payoneer, prestige: 3, size: large, industry: fintech}
+  - {name: Peloton, ats: greenhouse, slug: peloton, prestige: 3, size: large, industry: consumer}
+  - {name: Pendo, ats: greenhouse, slug: pendo, prestige: 3, size: mid, industry: enterprise software}
+  - {name: Pie Insurance, ats: greenhouse, slug: pieinsurance, prestige: 2, size: mid, industry: insurtech}
+  - {name: PlanetScale, ats: greenhouse, slug: planetscale, prestige: 3, size: startup, industry: data}
+  - {name: Point72, ats: greenhouse, slug: point72, prestige: 4, size: large, industry: quant trading}
+  - {name: Qualtrics, ats: greenhouse, slug: qualtrics, prestige: 3, size: large, industry: enterprise software}
+  - {name: Qventus, ats: greenhouse, slug: qventus, prestige: 3, size: mid, industry: health software}
+  - {name: Ripple, ats: greenhouse, slug: ripple, prestige: 3, size: mid, industry: fintech}
+  - {name: Rubrik, ats: greenhouse, slug: rubrik, prestige: 4, size: large, industry: enterprise software}
+  - {name: Samsara, ats: greenhouse, slug: samsara, prestige: 4, size: large, industry: iot}
+  - {name: Scale AI, ats: greenhouse, slug: scaleai, prestige: 4, size: large, industry: ai}
+  - {name: Sigma Computing, ats: greenhouse, slug: sigmacomputing, prestige: 3, size: mid, industry: data}
+  - {name: Smartsheet, ats: greenhouse, slug: smartsheet, prestige: 3, size: large, industry: productivity}
+  - {name: SoFi, ats: greenhouse, slug: sofi, prestige: 3, size: large, industry: fintech}
+  - {name: Squarespace, ats: greenhouse, slug: squarespace, prestige: 3, size: large, industry: consumer}
+  - {name: Starburst, ats: greenhouse, slug: starburst, prestige: 3, size: mid, industry: data}
+  - {name: Sumo Logic, ats: greenhouse, slug: sumologic, prestige: 2, size: mid, industry: data}
+  - {name: Sword Health, ats: greenhouse, slug: swordhealth, prestige: 3, size: mid, industry: health software}
+  - {name: Tanium, ats: greenhouse, slug: tanium, prestige: 3, size: mid, industry: security}
+  - {name: Toast, ats: greenhouse, slug: toast, prestige: 3, size: large, industry: fintech}
+  - {name: Twitch, ats: greenhouse, slug: twitch, prestige: 3, size: large, industry: media}
+  - {name: Upstart, ats: greenhouse, slug: upstart, prestige: 3, size: mid, industry: fintech}
+  - {name: Vercel, ats: greenhouse, slug: vercel, prestige: 4, size: mid, industry: dev tools}
+  - {name: Virtu Financial, ats: greenhouse, slug: virtu, prestige: 3, size: large, industry: quant trading}
+  - {name: Webflow, ats: greenhouse, slug: webflow, prestige: 3, size: mid, industry: dev tools}
+  - {name: Workato, ats: greenhouse, slug: workato, prestige: 3, size: mid, industry: enterprise software}
+  - {name: Yext, ats: greenhouse, slug: yext, prestige: 2, size: mid, industry: enterprise software}
+  - {name: Zocdoc, ats: greenhouse, slug: zocdoc, prestige: 3, size: mid, industry: health software}
+  - {name: Zscaler, ats: greenhouse, slug: zscaler, prestige: 3, size: large, industry: security}
+  # -- lever --
+  - {name: Anchorage Digital, ats: lever, slug: anchorage, prestige: 3, size: mid, industry: fintech}
+  - {name: Coupa, ats: lever, slug: coupa, prestige: 3, size: large, industry: enterprise software}
+  - {name: Greenlight, ats: lever, slug: greenlight, prestige: 3, size: mid, industry: fintech}
+  - {name: Included Health, ats: lever, slug: includedhealth, prestige: 3, size: mid, industry: health software}
+  - {name: Lyra Health, ats: lever, slug: lyrahealth, prestige: 3, size: mid, industry: health software}
+  - {name: Outreach, ats: lever, slug: outreach, prestige: 3, size: mid, industry: enterprise software}
+  - {name: Ro, ats: lever, slug: ro, prestige: 3, size: mid, industry: health software}
+  - {name: Veeva, ats: lever, slug: veeva, prestige: 4, size: large, industry: health software}
+  - {name: Wealthfront, ats: lever, slug: wealthfront, prestige: 3, size: mid, industry: fintech}
+  # -- ashby --
+  - {name: 1Password, ats: ashby, slug: 1password, prestige: 3, size: mid, industry: security}
+  - {name: Abridge, ats: ashby, slug: abridge, prestige: 4, size: mid, industry: health software}
+  - {name: Acorns, ats: ashby, slug: acorns, prestige: 3, size: mid, industry: fintech}
+  - {name: Airwallex, ats: ashby, slug: airwallex, prestige: 3, size: large, industry: fintech}
+  - {name: Alchemy, ats: ashby, slug: alchemy, prestige: 3, size: mid, industry: fintech}
+  - {name: Ambience Healthcare, ats: ashby, slug: ambiencehealthcare, prestige: 3, size: mid, industry: health software}
+  - {name: Amplitude, ats: ashby, slug: amplitude, prestige: 3, size: mid, industry: data}
+  - {name: Circle, ats: ashby, slug: circle, prestige: 3, size: mid, industry: fintech}
+  - {name: ClickHouse, ats: ashby, slug: clickhouse, prestige: 3, size: mid, industry: data}
+  - {name: ClickUp, ats: ashby, slug: clickup, prestige: 3, size: mid, industry: productivity}
+  - {name: Cohere, ats: ashby, slug: cohere, prestige: 4, size: mid, industry: ai}
+  - {name: Column, ats: ashby, slug: column, prestige: 3, size: startup, industry: fintech}
+  - {name: Commure, ats: ashby, slug: commure, prestige: 3, size: mid, industry: health software}
+  - {name: Dave, ats: ashby, slug: dave, prestige: 2, size: mid, industry: fintech}
+  - {name: Drata, ats: ashby, slug: drata, prestige: 3, size: mid, industry: security}
+  - {name: Gainsight, ats: ashby, slug: gainsight, prestige: 2, size: mid, industry: enterprise software}
+  - {name: Harvey, ats: ashby, slug: harvey, prestige: 4, size: mid, industry: ai}
+  - {name: Headway, ats: ashby, slug: headway, prestige: 3, size: mid, industry: health software}
+  - {name: Hex, ats: ashby, slug: hex, prestige: 3, size: startup, industry: data}
+  - {name: Imprint, ats: ashby, slug: imprint, prestige: 3, size: startup, industry: fintech}
+  - {name: Iterable, ats: ashby, slug: iterable, prestige: 2, size: mid, industry: enterprise software}
+  - {name: Kin Insurance, ats: ashby, slug: kin, prestige: 2, size: mid, industry: insurtech}
+  - {name: Lemonade, ats: ashby, slug: lemonade, prestige: 3, size: mid, industry: insurtech}
+  - {name: Miro, ats: ashby, slug: miro, prestige: 3, size: large, industry: productivity}
+  - {name: Modern Treasury, ats: ashby, slug: moderntreasury, prestige: 3, size: startup, industry: fintech}
+  - {name: Nabla, ats: ashby, slug: nabla, prestige: 3, size: mid, industry: health software}
+  - {name: Nubank, ats: ashby, slug: nubank, prestige: 3, size: large, industry: fintech}
+  - {name: Paxos, ats: ashby, slug: paxos, prestige: 3, size: mid, industry: fintech}
+  - {name: Perplexity, ats: ashby, slug: perplexity, prestige: 4, size: mid, industry: ai}
+  - {name: Plaid, ats: ashby, slug: plaid, prestige: 4, size: large, industry: fintech}
+  - {name: Redis, ats: ashby, slug: redis, prestige: 3, size: mid, industry: data}
+  - {name: Sanity, ats: ashby, slug: sanity, prestige: 3, size: startup, industry: dev tools}
+  - {name: Sentry, ats: ashby, slug: sentry, prestige: 3, size: mid, industry: dev tools}
+  - {name: Sierra, ats: ashby, slug: sierra, prestige: 4, size: mid, industry: ai}
+  - {name: Snowflake, ats: ashby, slug: snowflake, prestige: 5, size: large, industry: data}
+  - {name: Snyk, ats: ashby, slug: snyk, prestige: 3, size: mid, industry: security}
+  - {name: Strava, ats: ashby, slug: strava, prestige: 3, size: mid, industry: consumer}
+  - {name: Temporal, ats: ashby, slug: temporal, prestige: 3, size: mid, industry: dev tools}
+  - {name: UiPath, ats: ashby, slug: uipath, prestige: 3, size: large, industry: enterprise software}
+  - {name: Vanta, ats: ashby, slug: vanta, prestige: 3, size: mid, industry: security}
+  - {name: Whoop, ats: ashby, slug: whoop, prestige: 4, size: mid, industry: health software}
+  - {name: Workhuman, ats: ashby, slug: workhuman, prestige: 2, size: mid, industry: hr software}
+  - {name: Zapier, ats: ashby, slug: zapier, prestige: 3, size: mid, industry: productivity}
+  # -- smartrecruiters --
+  - {name: Canva, ats: smartrecruiters, slug: canva, prestige: 4, size: large, industry: productivity}
+  - {name: Freshworks, ats: smartrecruiters, slug: freshworks, prestige: 3, size: large, industry: enterprise software}
+  - {name: Gong, ats: smartrecruiters, slug: gong, prestige: 3, size: mid, industry: enterprise software}
+  - {name: ServiceNow, ats: smartrecruiters, slug: servicenow, prestige: 4, size: large, industry: enterprise software}
+  - {name: Wise, ats: smartrecruiters, slug: wise, prestige: 3, size: large, industry: fintech}

@@ -1,7 +1,7 @@
 # JobFinder
 
 Profile-driven job matching: onboarding questionnaire + resume/GitHub/portfolio ingestion,
-job scraping (Greenhouse/Lever/Ashby, optional LinkedIn/Indeed), LLM matching, cover letter
+job scraping (Greenhouse, Lever, Ashby and other public ATS boards, optional LinkedIn/Indeed), LLM matching, cover letter
 drafts, a daily email digest, and emailed clarifying questions for uncertain matches.
 
 Stack: FastAPI + uv, Postgres, Vite + React + TypeScript, docker compose.
@@ -75,10 +75,17 @@ First-time setup is `add-user`, then `grant-admin`, then `reset-link`. `ADMIN_EM
 ## Jobs
 
 `docker compose exec worker python -m jobfinder.cli ingest` pulls every board in
-`backend/jobfinder/ingest/companies.yaml` (Greenhouse, Lever, Ashby) into the `jobs` table; use
-`--company discord` for one board. Add companies by adding rows to that file. LinkedIn/Indeed scraping is
+`backend/jobfinder/ingest/companies.yaml` plus every `backend/jobfinder/ingest/companies.d/*.yaml` (per-sector
+seed files; duplicates by `(ats, slug)` are skipped, first file wins) into the `jobs` table; use
+`--company discord` for one board. Add companies by adding rows to one of those files. LinkedIn/Indeed scraping is
 opt-in and against those sites' terms: set `ENABLE_JOBSPY=true` in `backend/.env`, build the worker with
 `WITH_JOBSPY=true` (root `.env`), then `ingest --jobspy`. The worker also runs it on a schedule (see Daily email below).
+
+US federal jobs (engineering, computer science, IT and program-management series) come from the official
+USAJobs API. Request a free key at <https://developer.usajobs.gov/APIRequest>, then set `USAJOBS_API_KEY` and
+`USAJOBS_EMAIL` in `backend/.env`; the source turns on automatically once both are set and runs with every ingest
+(nationwide plus users' target locations; postings not seen for 14 days expire). Postings state that U.S.
+citizenship is required, so they are filtered out for users who need sponsorship.
 
 ## Matches
 

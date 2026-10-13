@@ -11,6 +11,13 @@
 - Candidates beyond the per-run cap are now picked in random order, since rejected boards are not remembered and a
   fixed order would re-probe the same dead boards every week. Every candidate still passes `validate_board`.
 
+## 2026-10-13: seed list split across companies.d/
+
+- `load_seed()` now reads `companies.yaml` plus every `ingest/companies.d/*.yaml` (sorted), de-duplicating on
+  `(ats, slug)` (first wins, with a warning). The seed test validates every row in every file against the ATS
+  registry. `--ats` choices come from `ATS_FETCHERS`; `INGEST_CONCURRENCY` default raised 5 to 10; the onboarding
+  industry hint now has engineering examples.
+
 ## 2026-10-13: admin managed from the CLI
 
 - `users.is_admin` is now the only source of admin; `ADMIN_EMAILS` is retired. New CLI commands `grant-admin` and

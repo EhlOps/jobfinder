@@ -11,6 +11,7 @@ from jobfinder.ingest.sources.lever import fetch_lever
 from jobfinder.ingest.sources.recruitee import fetch_recruitee
 from jobfinder.ingest.sources.smartrecruiters import fetch_smartrecruiters
 from jobfinder.ingest.sources.workable import fetch_workable
+from jobfinder.ingest.sources.workday import fetch_workday
 
 Fetcher = Callable[[httpx.AsyncClient, str, str], Awaitable[list[JobPosting]]]
 
@@ -23,6 +24,7 @@ ATS_FETCHERS: dict[str, Fetcher] = {
     "workable": fetch_workable,
     "recruitee": fetch_recruitee,
     "bamboohr": fetch_bamboohr,
+    "workday": fetch_workday,
 }
 
 # Cheap existence probes (no per-posting detail requests) for the ATSes whose full fetch fans out; others reuse the full fetcher.
@@ -30,4 +32,5 @@ PROBE_FETCHERS: dict[str, Fetcher] = {
     **ATS_FETCHERS,
     "smartrecruiters": partial(fetch_smartrecruiters, list_only=True),
     "bamboohr": partial(fetch_bamboohr, list_only=True),
+    "workday": partial(fetch_workday, list_only=True),
 }

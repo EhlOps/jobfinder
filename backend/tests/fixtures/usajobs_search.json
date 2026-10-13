@@ -1,0 +1,57 @@
+{
+  "LanguageCode": "EN",
+  "SearchParameters": {"ResultsPerPage": 500, "Page": 1},
+  "SearchResult": {
+    "SearchResultCount": 3,
+    "SearchResultCountAll": 3,
+    "SearchResultItems": [
+      {
+        "MatchedObjectId": "790000001",
+        "MatchedObjectDescriptor": {
+          "PositionTitle": "Aerospace Engineer",
+          "PositionURI": "https://www.usajobs.gov/job/790000001",
+          "ApplyURI": ["https://www.usajobs.gov/job/790000001/apply"],
+          "OrganizationName": "National Aeronautics and Space Administration",
+          "DepartmentName": "National Aeronautics and Space Administration",
+          "PositionLocation": [
+            {"LocationName": "Houston, Texas"},
+            {"LocationName": "Cleveland, Ohio"},
+            {"LocationName": "Houston, Texas"}
+          ],
+          "PositionSchedule": [{"Name": "Full-time"}],
+          "PositionRemuneration": [{"MinimumRange": "99172", "MaximumRange": "128341", "RateIntervalCode": "PA"}],
+          "PublicationStartDate": "2026-10-01T00:00:00.000",
+          "UserArea": {"Details": {
+            "JobSummary": "Design <b>spacecraft</b> propulsion systems.",
+            "MajorDuties": ["Perform thermal analysis.", "Support test campaigns."],
+            "RemoteIndicator": "False"
+          }}
+        }
+      },
+      {
+        "MatchedObjectId": "790000002",
+        "MatchedObjectDescriptor": {
+          "PositionTitle": "Senior IT Specialist (Software)",
+          "PositionURI": "",
+          "ApplyURI": ["https://www.usajobs.gov/job/790000002/apply"],
+          "OrganizationName": "Department of the Navy",
+          "PositionLocation": [{"LocationName": "Anywhere in the U.S. (remote job)"}],
+          "PositionSchedule": [{"Name": "Full-time"}],
+          "PositionRemuneration": [{"MinimumRange": "45.50", "MaximumRange": "60.00", "RateIntervalCode": "PH"}],
+          "PublicationStartDate": "2026-10-05T00:00:00.000",
+          "UserArea": {"Details": {
+            "JobSummary": "Develop software. You must be a U.S. citizen to apply.",
+            "RemoteIndicator": "True"
+          }}
+        }
+      },
+      {
+        "MatchedObjectId": "790000003",
+        "MatchedObjectDescriptor": {
+          "PositionTitle": "",
+          "PositionURI": "https://www.usajobs.gov/job/790000003"
+        }
+      }
+    ]
+  }
+}

@@ -189,8 +189,8 @@ async def add_board_cmd(args: argparse.Namespace) -> int:
     if not (args.ats and args.slug and args.name):
         print("Usage: add-board --ats greenhouse --slug acme --name 'Acme Inc' [--origin seed|discovered]")
         return 2
-    if args.ats == "jobspy":
-        print("jobspy is not a board ATS")
+    if args.ats in ("jobspy", "usajobs"):
+        print(f"{args.ats} is not a board ATS")
         return 2
     async with SessionLocal() as db:
         company, reason = await add_board(db, args.ats, args.slug, args.name, origin=args.origin or "seed")
@@ -202,9 +202,11 @@ async def add_board_cmd(args: argparse.Namespace) -> int:
 
 
 def main() -> None:
+    from jobfinder.ingest.sources import ATS_FETCHERS
+
     parser = argparse.ArgumentParser(prog="jobfinder.cli")
     parser.add_argument("command", choices=["ai-check", "ingest", "daily", "questions", "test-email", "add-user", "reset-link", "list-users", "add-board", "grant-admin", "revoke-admin"])
-    parser.add_argument("--ats", choices=["greenhouse", "lever", "ashby", "smartrecruiters", "workable", "recruitee", "bamboohr", "jobspy"], help="ingest/add-board: ATS")
+    parser.add_argument("--ats", choices=[*sorted(ATS_FETCHERS), "jobspy", "usajobs"], help="ingest/add-board: ATS")
     parser.add_argument("--company", help="ingest: only this company slug")
     parser.add_argument("--jobspy", action="store_true", help="ingest: also scrape LinkedIn/Indeed (needs the jobspy extra)")
     parser.add_argument("--email", help="daily/questions: only this user; add-user/reset-link/grant-admin/revoke-admin: the user")
