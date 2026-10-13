@@ -1,0 +1,34 @@
+{
+  "list": {
+    "total": 3,
+    "jobPostings": [
+      {"title": "Senior Avionics Software Engineer", "externalPath": "/job/USA---Huntsville-AL/Senior-Avionics-Software-Engineer_JR100-1", "locationsText": "USA - Huntsville, AL", "postedOn": "Posted Today", "remoteType": "Hybrid Job", "bulletFields": ["JR100"]},
+      {"title": "Mechanical Engineer Intern", "externalPath": "/job/USA---El-Segundo-CA/Mechanical-Engineer-Intern_JR101", "locationsText": "USA - El Segundo, CA", "postedOn": "Posted 5 Days Ago", "remoteType": "Onsite Job", "bulletFields": ["JR101"]},
+      {"title": "Project Manager", "externalPath": "/job/2-Locations/Project-Manager_JR102", "locationsText": "2 Locations", "postedOn": "Posted 30+ Days Ago", "bulletFields": ["JR102"]}
+    ]
+  },
+  "details": {
+    "Senior-Avionics-Software-Engineer_JR100-1": {
+      "jobPostingInfo": {
+        "title": "Senior Avionics Software Engineer",
+        "jobDescription": "<p>Design flight software for next-generation aircraft.</p><ul><li>C++ and Ada</li></ul><p>Pay range: $120,000 - $160,000 per year</p>",
+        "location": "USA - Huntsville, AL",
+        "startDate": "2026-10-12",
+        "timeType": "Full time",
+        "jobReqId": "JR100",
+        "remoteType": "Hybrid Job",
+        "externalUrl": "https://acme.wd1.myworkdayjobs.com/EXT/job/USA---Huntsville-AL/Senior-Avionics-Software-Engineer_JR100-1"
+      }
+    },
+    "Mechanical-Engineer-Intern_JR101": {
+      "jobPostingInfo": {
+        "title": "Mechanical Engineer Intern",
+        "jobDescription": "<p>Support structural test campaigns.</p>",
+        "location": "USA - El Segundo, CA",
+        "timeType": "Full time",
+        "jobReqId": "JR101",
+        "externalUrl": "javascript:alert(1)"
+      }
+    }
+  }
+}
