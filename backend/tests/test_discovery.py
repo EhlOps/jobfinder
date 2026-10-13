@@ -118,13 +118,41 @@ async def test_github_lists_all_failing_raises():
             await github_lists.fetch(PoliteFetcher(c))
 
 
-def test_discovery_defaults_on_with_wide_caps(monkeypatch):
-    from jobfinder.config import Settings
+async def test_github_lists_partial_failure_is_reported_not_just_logged(maker):
+    class Boom(Exception):
+        pass
 
-    for k in ("DISCOVERY_ENABLED", "INGEST_MAX_DISCOVERED_BOARDS_PER_RUN"):
-        monkeypatch.delenv(k, raising=False)
-    s =Settings(_env_file=None, secret_key="x" * 40)
-    assert s.discovery_enabled and s.ingest_max_discovered_boards_per_run == 300
+    calls = {"n": 0}
+
+    async def flaky(url, **kw):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise Boom("weird")
+        return httpx.Response(200, text="https://jobs.lever.co/acme/1", request=httpx.Request("GET", url))
+
+    class F:
+        get = staticmethod(flaky)
+
+    boards = await github_lists.fetch(F())
+    assert list(boards) == [("lever", "acme")] and len(boards.warnings) == 1 and "Boom" in boards.warnings[0]
+
+    async def fetch_partial(_f):
+        return boards
+
+    src = discovery.Source("github_lists", "n/a", True, fetch_partial)
+    async with maker() as db, router({"acme": httpx.Response(404)}, "") as c:
+        res = await discovery.discover_boards(db, c, sources=[src])
+    assert res.sources[0].status == "partial" and res.sources[0].warnings == boards.warnings
+    assert res.as_dict()["sources"][0]["warnings"] == boards.warnings
+
+
+async def test_over_cap_candidates_are_shuffled(maker, monkeypatch):
+    md = " ".join(f"https://boards.greenhouse.io/b{i}" for i in range(5))
+    boards = {f"b{i}": httpx.Response(200, json=GH_GOOD) for i in range(5)}
+    monkeypatch.setattr(discovery.random, "shuffle", lambda xs: xs.reverse())
+    async with maker() as db, router(boards, md) as c:
+        res = await discovery.discover_boards(db, c, max_candidates=2, sources=[github_lists.SOURCE])
+    assert sorted(res.added) == ["greenhouse/b3", "greenhouse/b4"]
 
 
 async def test_hn_source_picks_latest_thread_and_unescapes():

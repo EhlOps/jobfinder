@@ -119,10 +119,19 @@ class Source:
 @dataclass
 class SourceReport:
     name: str
-    status: str  # ok | skipped | error
+    status: str  # ok | partial (some inputs failed, see warnings) | skipped | error
     reason: str = ""
     found: int = 0
     terms: str = ""
+    warnings: list[str] = field(default_factory=list)
+
+
+class FoundBoards(list):
+    """A source's boards plus a warning for each input it had to skip."""
+
+    def __init__(self, boards=(), warnings: list[str] | None = None):
+        super().__init__(boards)
+        self.warnings = warnings or []
 
 
 @dataclass
@@ -181,6 +190,9 @@ async def discover_boards(
                 rep.status, rep.reason = "error", f"{type(e).__name__}: {e}"[:300]
                 continue
             rep.found = len(boards)
+            rep.warnings = list(getattr(boards, "warnings", []))
+            if rep.warnings:
+                rep.status = "partial"
             for ats, slug in boards:
                 found.setdefault((ats, slug.lower()), (ats, slug))
         result.candidates = len(found)

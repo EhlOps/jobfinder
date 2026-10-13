@@ -1,10 +1,8 @@
 """Job lists on GitHub: the raw README/markdown/JSON holds the apply links, mapped to (ats, slug) boards."""
 import logging
 
-import httpx
-
-from jobfinder.ingest.discovery import Source, boards_from_text
-from jobfinder.ingest.discovery.robots import PoliteFetcher, RobotsDisallowed
+from jobfinder.ingest.discovery import FoundBoards, Source, boards_from_text
+from jobfinder.ingest.discovery.robots import PoliteFetcher
 
 log = logging.getLogger("jobfinder.discovery")
 
@@ -31,29 +29,33 @@ URLS = [
 ]
 
 
-async def fetch(fetcher: PoliteFetcher) -> list[tuple[str, str]]:
-    """Boards from every list; one dead or blocked list is skipped, but all failing re-raises the last error."""
+async def fetch(fetcher: PoliteFetcher) -> FoundBoards:
+    """Boards from every list. A list that fails for any reason is skipped and reported in `warnings`;
+    only when every list fails is the last error re-raised."""
     out: dict[tuple[str, str], tuple[str, str]] = {}
+    warnings: list[str] = []
     last: Exception | None = None
     ok = 0
     for url in URLS:
         try:
             text = (await fetcher.get(url)).text
-        except (httpx.HTTPError, RobotsDisallowed) as e:
+            found = boards_from_text(text)
+        except Exception as e:  # one bad list must not discard the boards already collected
             log.warning("github list %s unavailable: %s", url, e)
+            warnings.append(f"{url}: {type(e).__name__}: {e}"[:300])
             last = e
             continue
         ok += 1
-        for b in boards_from_text(text):
+        for b in found:
             out.setdefault((b[0], b[1].lower()), b)
     if not ok and last is not None:
-        raise last
-    return list(out.values())
+        raise last  # a RobotsDisallowed here is reported as "skipped" by the runner
+    return FoundBoards(out.values(), warnings)
 
 
 SOURCE = Source(
     "github_lists",
-    "Public community-maintained GitHub lists read through raw.githubusercontent.com: a handful of README and "
+    "Public community-maintained GitHub lists read through raw.githubusercontent.com: a fixed set of README and "
     "JSON files, each fetched at most weekly, subject to that host's robots.txt.",
     True,
     fetch,
