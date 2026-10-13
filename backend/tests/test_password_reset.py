@@ -56,9 +56,8 @@ async def test_confirm_activates_pending_row_and_signs_in(client, make_account, 
     assert (await client.post("/api/auth/login", json={"email": "new@x.com", "password": NEW_PW})).status_code == 200
 
 
-async def test_bad_timezone_falls_back_to_utc_and_admin_from_env(client, make_account, sent_mail):
-    get_settings().admin_emails = "boss@x.com"
-    await make_account("boss@x.com", pending=True)
+async def test_bad_timezone_falls_back_to_utc_and_admin_survives_activation(client, make_account, sent_mail):
+    await make_account("boss@x.com", pending=True, admin=True)
     await client.post(REQ, json={"email": "boss@x.com"})
     r = await client.post(CONF, json={"token": token_in(sent_mail), "password": NEW_PW, "timezone": "Mars/Base"})
     assert r.json()["timezone"] == "UTC" and r.json()["is_admin"] is True
@@ -221,6 +220,28 @@ async def test_cli_add_list_and_reset_link(engine, monkeypatch, capsys):
     assert await cli.reset_link_cmd(ns) == 0
     assert "/reset-password#token=" in capsys.readouterr().out
     assert await cli.reset_link_cmd(argparse.Namespace(email="no@x.com")) == 1
+
+
+async def test_cli_grant_and_revoke_admin(engine, monkeypatch, capsys):
+    import argparse
+
+    from jobfinder import cli
+    from jobfinder import db as dbmod
+
+    monkeypatch.setattr(dbmod, "SessionLocal", async_sessionmaker(engine, expire_on_commit=False))
+    ns = argparse.Namespace(email=" Boss@X.com ")
+    assert await cli.add_user(ns) == 0
+    assert await cli.set_admin(ns, True) == 0
+    assert "Granted admin for boss@x.com" in capsys.readouterr().out
+    assert await cli.list_users() == 0
+    assert "admin" in capsys.readouterr().out.split("pending")[1]
+    assert await cli.set_admin(ns, True) == 0
+    assert "already an admin" in capsys.readouterr().out
+    assert await cli.set_admin(ns, False) == 0
+    out = capsys.readouterr().out
+    assert "Revoked" in out and "no admins left" in out
+    assert await cli.set_admin(argparse.Namespace(email="no@x.com"), True) == 1
+    assert await cli.set_admin(argparse.Namespace(email=None), True) == 2
 
 
 def test_database_url_is_built_from_parts_with_an_encoded_password(monkeypatch):

@@ -86,7 +86,6 @@ async def current_user(
             )
         ).scalar_one_or_none()
         if row:
-            row.is_admin = is_admin_email(row.email)  # ADMIN_EMAILS is the only source of admin
             now = datetime.now(UTC)
             if row.last_seen_at is None or now - row.last_seen_at > SEEN_EVERY:
                 row.last_seen_at = now  # the planner throttles idle users by this
@@ -96,10 +95,6 @@ async def current_user(
 
 
 async def require_admin(user: Annotated[User, Depends(current_user)]) -> User:
-    if not is_admin_email(user.email):
+    if not user.is_admin:
         raise HTTPException(403, "Admin only")
     return user
-
-
-def is_admin_email(email: str) -> bool:
-    return email.lower() in {e.strip().lower() for e in get_settings().admin_emails.split(",") if e.strip()}

@@ -31,7 +31,7 @@ Two ways to run the same compose stack: this one on your own machine (plain HTTP
 
 ```sh
 cp .env.example .env              # set POSTGRES_PASSWORD
-cp backend/.env.example backend/.env   # set SECRET_KEY (required) and ADMIN_EMAILS
+cp backend/.env.example backend/.env   # set SECRET_KEY (required)
 docker compose up --build
 ```
 
@@ -56,6 +56,21 @@ docker compose exec api python -m jobfinder.cli reset-link --email them@example.
 ```
 
 (Plain SQL works too: `INSERT INTO users (email) VALUES ('them@example.com')`, lowercase.) They open the sign-in page and choose "Email me a link". Links work once and expire after `PASSWORD_LINK_TTL_MINUTES` (60). Links go out through your real SMTP relay in every mode.
+
+### Admins
+
+Admin is a flag on the user, managed from the CLI:
+
+```sh
+docker compose exec api python -m jobfinder.cli grant-admin --email you@example.com
+docker compose exec api python -m jobfinder.cli revoke-admin --email you@example.com
+```
+
+1. Add the person as a normal user first (`add-user` above); the email must match. Granting a pending user works and applies once they activate.
+2. It takes effect on their next page load, with no re-login and no container restart.
+3. `list-users` shows an `admin` column to confirm. Admins get the **AI setup** page and the admin pages (for example, re-enabling company boards that were auto-disabled).
+
+First-time setup is `add-user`, then `grant-admin`, then `reset-link`. `ADMIN_EMAILS` is retired: on upgrade, the migration copies any emails still listed in it into the flag once, and the variable is ignored after that.
 
 ## Jobs
 
@@ -113,7 +128,7 @@ service relays through Gmail/Outlook (set `RELAYHOST*` in `.env`) or delivers di
 All AI runs through the Claude Code CLI (`claude -p`) on your Claude subscription, in the `worker`
 container only. There is no API key, and you never need to open the worker container to set it up:
 
-1. Sign in as an admin (admins are only the emails listed in `ADMIN_EMAILS`).
+1. Sign in as an admin (see Admins under Access).
 2. Open **AI setup** in the header.
 3. On any computer with Claude Code, run `claude setup-token` and paste the token it prints.
 4. Click **Save & test**. It is stored on a private docker volume and applies immediately.
@@ -133,10 +148,10 @@ gets its own Let's Encrypt certificate. `docker-compose.prod.yml` adds the publi
 3. Root `.env`: a strong `POSTGRES_PASSWORD`, `SITE_ADDRESS=jobs.example.com`,
    `COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml` (so every `docker compose` command uses the
    production override), and the mail relay settings (`ALLOWED_SENDER_DOMAINS`, `RELAYHOST*`).
-4. `backend/.env`: `SECRET_KEY`, `ADMIN_EMAILS`, `PUBLIC_BASE_URL=https://jobs.example.com`,
+4. `backend/.env`: `SECRET_KEY`, `PUBLIC_BASE_URL=https://jobs.example.com`,
    `SMTP_HOST=smtp`, `SMTP_PORT=587`, a real `EMAIL_FROM`.
 5. `docker compose up -d --build`. Every service restarts after a reboot.
-6. Sign in as an admin, connect the AI on **AI setup**, then add users with `cli add-user` (see Access).
+6. Make yourself an admin (`add-user`, `grant-admin`, `reset-link`; see Admins), sign in, connect the AI on **AI setup**, then add users with `cli add-user` (see Access).
 7. Set up the nightly backup below.
 
 ### Updating

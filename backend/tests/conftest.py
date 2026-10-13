@@ -1,21 +1,31 @@
 import os
+from pathlib import Path
+from urllib.parse import quote
 
 import pytest
 import pytest_asyncio
 import sqlalchemy as sa
+from dotenv import dotenv_values
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
 # Needs a reachable Postgres (docker compose up -d db publishes it on :5433).
-ADMIN_URL = os.environ.get(
-    "TEST_ADMIN_URL", "postgresql+asyncpg://jobfinder:change-me@localhost:5433/postgres"
+# Credentials come from the repo-root .env (the same POSTGRES_* the compose db is created with);
+# TEST_ADMIN_URL overrides everything, and real environment variables win over the file.
+_env = {**dotenv_values(Path(__file__).resolve().parents[2] / ".env"), **os.environ}
+ADMIN_URL = os.environ.get("TEST_ADMIN_URL") or (
+    f"postgresql+asyncpg://{quote(_env.get('POSTGRES_USER') or 'jobfinder', safe='')}"
+    f":{quote(_env.get('POSTGRES_PASSWORD') or 'change-me', safe='')}"
+    f"@localhost:{os.environ.get('TEST_DB_PORT') or _env.get('DB_PORT') or '5433'}/postgres"
 )
 TEST_DB = os.environ.get("TEST_DB", "jobfinder_test")
 TEST_URL = ADMIN_URL.rsplit("/", 1)[0] + f"/{TEST_DB}"
 
 os.environ["DATABASE_URL"] = TEST_URL
 os.environ["SECRET_KEY"] = "test-secret-key-0123456789-abcdefghijklmnop"
+# An https value in backend/.env would make the session cookie Secure, which the http test client drops.
+os.environ["PUBLIC_BASE_URL"] = "http://test"
 
 from jobfinder.db import Base, get_db
 from jobfinder.main import app
@@ -65,7 +75,6 @@ def isolated_claude_auth(tmp_path, monkeypatch):
     s = get_settings()
     monkeypatch.setattr(s, "claude_auth_dir", str(tmp_path / "claude-auth"))
     monkeypatch.setattr(s, "claude_code_oauth_token", "")
-    monkeypatch.setattr(s, "admin_emails", "")
 
 
 @pytest.fixture
@@ -84,14 +93,9 @@ async def make_account(client, engine):
     async def make(email="sam@example.com", password="correct-horse-battery", *, admin=False, login=True, pending=False):
         from datetime import UTC, datetime
 
-        from jobfinder.config import get_settings
-
-        if admin:
-            s = get_settings()
-            s.admin_emails = ",".join(x for x in (s.admin_emails, email) if x)
         async with maker() as db:
             if pending:
-                u = User(email=email.lower())
+                u = User(email=email.lower(), is_admin=admin)
             else:
                 u = User(
                     email=email.lower(), password_hash=hash_password(password), timezone="UTC", digest_hour=8,

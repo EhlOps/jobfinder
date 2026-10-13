@@ -15,7 +15,6 @@ from jobfinder.auth.security import (
     current_user,
     hash_password_async,
     hash_session_token,
-    is_admin_email,
     verify_or_dummy,
 )
 from jobfinder.config import get_settings
@@ -119,7 +118,6 @@ async def login(body: LoginBody, request: Request, resp: Response, db: Annotated
         await ratelimit.hit(db, "login_fail_email", email)
         await ratelimit.hit(db, "login_fail_ip", ip)
         raise HTTPException(401, "Invalid email or password")
-    user.is_admin = is_admin_email(user.email)
     await db.commit()
     _set_cookie(resp, await create_session(db, user.id))
     return user
@@ -166,7 +164,6 @@ async def confirm_reset(body: ConfirmBody, resp: Response, db: Annotated[AsyncSe
         user.activated_at = datetime.now(UTC)
         if not await db.get(Profile, user.id):
             db.add(Profile(user_id=user.id, status={}, background={}, version=1))
-    user.is_admin = is_admin_email(user.email)
     await db.execute(delete(Session).where(Session.user_id == user.id))
     _set_cookie(resp, await create_session(db, user.id))  # commits everything above
     return user

@@ -36,7 +36,7 @@ class User(Base):
     timezone: Mapped[str | None] = mapped_column(String(64), nullable=True)
     digest_hour: Mapped[int | None] = mapped_column(Integer, nullable=True)
     digest_enabled: Mapped[bool | None] = mapped_column(nullable=True)
-    is_admin: Mapped[bool | None] = mapped_column(nullable=True)
+    is_admin: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
     question_emails_enabled: Mapped[bool | None] = mapped_column(nullable=True)
     match_budget_enabled: Mapped[bool] = mapped_column(default=True, server_default=text("true"))  # False = no daily scoring limit
     match_budget: Mapped[int | None] = mapped_column(Integer, nullable=True)  # LLM-scored jobs per rolling 24h; null = server default
