@@ -9,11 +9,20 @@ from jobfinder.profile import interview
 
 
 class AuditAI:
-    def __init__(self):
+    def __init__(self, questions=None, during=None):
         self.seen = None
+        self.questions = questions
+        self.during = during  # awaited inside the "AI call", to simulate the user acting meanwhile
 
-    async def audit_profile(self, status, background, facts, demand, skipped):
-        self.seen = {"facts": facts, "demand": demand, "skipped": skipped}
+    async def audit_profile(self, status, background, facts, demand, skipped, queued=None):
+        self.seen = {"facts": facts, "demand": demand, "skipped": skipped, "queued": queued}
+        if self.during:
+            await self.during()
+        if self.questions is not None:
+            return ProfileAudit(
+                dossier=Dossier(headline="Backend engineer", hire_view="x"), readiness=62, dimensions={"skills": 70},
+                questions=[AuditQuestion(question=q, why="w", dimension="skills") for q in self.questions],
+            )
         return ProfileAudit(
             dossier=Dossier(headline="Backend engineer", hire_view="I could hire this person for backend roles."),
             readiness=62, dimensions={"skills": 70, "impact": 40},
@@ -63,12 +72,53 @@ async def test_answering_saves_facts_drops_questions_and_requeues_audit(maker):
         facts = (await db.scalars(sa.select(ProfileFact))).all()
         assert [(f.source, f.question) for f in facts] == [("interview", "What did you own at Acme?")]
         p = await db.get(Profile, u.id)
-        assert p.version == version + 1 and p.audit["questions"] == [] and p.audit["skipped"] == ["Notice period?"]
+        assert p.version == version + 1 and [q["question"] for q in p.audit["questions"]] == ["Notice period?"]
+        assert p.audit["skipped"] == ["Notice period?"]
         assert (await db.scalar(sa.select(sa.func.count()).select_from(Task).where(Task.kind == "audit_profile"))) == 1
 
         ai = AuditAI()
         await interview.run_audit(db, ai, u.id)
         assert ai.seen["skipped"] == ["Notice period?"] and ai.seen["facts"][0][0] == "What did you own at Acme?"
+
+
+async def test_audit_keeps_queue_order_and_appends_only_new_questions(maker):
+    async with maker() as db:
+        u = await make_user(db)
+        await interview.run_audit(db, AuditAI(), u.id)
+        ai = AuditAI(questions=["Why this next role?", "notice  period?", "What did you own at Acme?"])
+        await interview.run_audit(db, ai, u.id)
+        qs = [q["question"] for q in (await db.get(Profile, u.id)).audit["questions"]]
+        assert qs == ["What did you own at Acme?", "Notice period?", "Why this next role?"]
+        assert ai.seen["queued"] == ["What did you own at Acme?", "Notice period?"]
+
+
+async def test_answer_during_audit_is_not_readded_and_skip_survives(maker):
+    async with maker() as db:
+        u = await make_user(db)
+        await interview.run_audit(db, AuditAI(), u.id)
+
+    async def act():
+        async with maker() as other:
+            await interview.answer(other, u.id, [
+                {"question": "What did you own at Acme?", "answer": "Billing."},
+                {"question": "Notice period?", "skip": True},
+            ])
+
+    async with maker() as db:
+        await interview.run_audit(db, AuditAI(during=act), u.id)
+        p = await db.get(Profile, u.id)
+        assert [q["question"] for q in p.audit["questions"]] == ["Notice period?"]
+        assert p.audit["skipped"] == ["Notice period?"]
+
+
+async def test_skip_only_moves_question_to_back_without_new_audit(maker):
+    async with maker() as db:
+        u = await make_user(db)
+        await interview.run_audit(db, AuditAI(), u.id)
+        await interview.answer(db, u.id, [{"question": "What did you own at Acme?", "skip": True}])
+        p = await db.get(Profile, u.id)
+        assert [q["question"] for q in p.audit["questions"]] == ["Notice period?", "What did you own at Acme?"]
+        assert (await db.scalar(sa.select(sa.func.count()).select_from(Task).where(Task.kind == "audit_profile"))) == 0
 
 
 async def test_interview_api_view_and_answers(authed):
@@ -77,3 +127,37 @@ async def test_interview_api_view_and_answers(authed):
     assert r.status_code == 200 and r.json()["audited"] is False and r.json()["questions"] == []
     assert (await authed.post("/api/profile/interview/refresh")).status_code == 202
     assert (await authed.post("/api/profile/interview/answers", json={"answers": [{"question": "x", "answer": "y"}]})).json()["answered"] == 0
+
+
+async def test_audit_retires_unreturned_questions_but_keeps_the_head(maker):
+    async with maker() as db:
+        u = await make_user(db)
+        await interview.run_audit(db, AuditAI(questions=["A?", "B?", "C?"]), u.id)
+        await interview.run_audit(db, AuditAI(questions=["C?", "D?"]), u.id)
+        qs = [q["question"] for q in (await db.get(Profile, u.id)).audit["questions"]]
+        assert qs == ["A?", "C?", "D?"]  # A is on screen so it stays; B was retired
+
+
+async def test_new_questions_come_before_skipped_and_skipped_are_trimmed_first(maker, monkeypatch):
+    monkeypatch.setattr(interview, "QUEUE_LIMIT", 4)
+    async with maker() as db:
+        u = await make_user(db)
+        await interview.run_audit(db, AuditAI(questions=["A?", "B?", "C?"]), u.id)
+        await interview.answer(db, u.id, [{"question": "B?", "skip": True}])
+        await interview.run_audit(db, AuditAI(questions=["A?", "B?", "C?", "D?", "E?"]), u.id)
+        qs = [q["question"] for q in (await db.get(Profile, u.id)).audit["questions"]]
+        assert qs == ["A?", "C?", "D?", "E?"]  # skipped B is trimmed, not the new questions
+
+
+async def test_same_question_twice_in_one_request_is_handled_once(maker):
+    async with maker() as db:
+        u = await make_user(db)
+        await interview.run_audit(db, AuditAI(), u.id)
+        out = await interview.answer(db, u.id, [
+            {"question": "What did you own at Acme?", "answer": "Billing."},
+            {"question": "What did you own at Acme?", "skip": True},
+        ])
+        assert out == {"answered": 1, "skipped": 0}
+        p = await db.get(Profile, u.id)
+        assert [q["question"] for q in p.audit["questions"]] == ["Notice period?"]
+        assert (await db.scalar(sa.select(sa.func.count()).select_from(ProfileFact))) == 1
