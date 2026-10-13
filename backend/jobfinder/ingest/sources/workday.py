@@ -23,12 +23,43 @@ PAGE = 20  # Workday rejects larger page sizes
 MAX_PAGES = 100  # 2000 listed postings; a 400/404/422 past page 0 ends paging early
 MAX_DETAILS = 300  # per-board cap on description fetches; the rest keep title/location only
 DETAIL_CONCURRENCY = 8
+HOST_CONCURRENCY = 4  # boards share wdN hosts; cap in-flight requests per host across all boards
+MAX_ATTEMPTS = 3
+MAX_RETRY_WAIT = 30.0
+_host_sems: dict[tuple[int, str], asyncio.Semaphore] = {}
 
 _TENANT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$")
 _WD_RE = re.compile(r"^wd\d{1,3}$", re.IGNORECASE)
 _SITE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
 _PATH_RE = re.compile(r"^/[^?#\s]+$")
 _POSTED_RE = re.compile(r"posted\s+(\d+)\+?\s+days?\s+ago", re.IGNORECASE)
+
+
+def _host_sem(host: str) -> asyncio.Semaphore:
+    key = (id(asyncio.get_running_loop()), host)
+    if key not in _host_sems:
+        _host_sems[key] = asyncio.Semaphore(HOST_CONCURRENCY)
+    return _host_sems[key]
+
+
+def _retry_wait(resp: httpx.Response, attempt: int) -> float:
+    try:
+        return min(float(resp.headers.get("Retry-After", "")), MAX_RETRY_WAIT)
+    except ValueError:
+        return min(2.0 ** attempt, MAX_RETRY_WAIT)
+
+
+async def _request(client: httpx.AsyncClient, method: str, url: str, **kw) -> httpx.Response:
+    """Per-host throttled request that backs off on 429/503 (Workday rate-limits shared wdN hosts)."""
+    host = httpx.URL(url).host
+    for attempt in range(MAX_ATTEMPTS):
+        async with _host_sem(host):
+            resp = await client.request(method, url, **kw)
+        if resp.status_code not in (429, 503) or attempt == MAX_ATTEMPTS - 1:
+            resp.raise_for_status()
+            return resp
+        await asyncio.sleep(_retry_wait(resp, attempt))
+    raise AssertionError("unreachable")
 
 
 def parse_slug(slug: str) -> tuple[str, str, str]:
@@ -55,6 +86,14 @@ def parse_posted_on(text: str | None, now: datetime | None = None) -> datetime |
     return today - timedelta(days=int(m.group(1)))
 
 
+def _start_date(detail: dict) -> datetime | None:
+    """The detail's `startDate` ("2026-10-12") is exact, unlike the listing's "Posted 30+ Days Ago"."""
+    try:
+        return datetime.strptime(str(detail.get("startDate") or "")[:10], "%Y-%m-%d").replace(tzinfo=UTC)
+    except ValueError:
+        return None
+
+
 def _declared(remote_type: str | None) -> str | None:
     """"Hybrid Job" / "Remote Job" / "Onsite" -> the bare word infer_workplace understands."""
     return re.sub(r"\s*(job|work)s?$", "", remote_type.strip(), flags=re.IGNORECASE) if remote_type else None
@@ -70,7 +109,8 @@ def parse_workday(items: list[dict], company_name: str, slug: str, now: datetime
         path = it.get("externalPath") or ""
         if not title or not _PATH_RE.match(path) or ".." in path:
             continue
-        ext_id = path.rstrip("/").rsplit("/", 1)[-1]
+        last = path.rstrip("/").rsplit("/", 1)[-1]
+        ext_id = last.rsplit("_", 1)[-1] if "_" in last else last  # req id only; the title part of the path can be edited
         location = (d.get("location") or it.get("locationsText") or "").strip()
         desc = html_to_text(d.get("jobDescription") or "")
         sal = parse_salary_range(desc)
@@ -90,7 +130,7 @@ def parse_workday(items: list[dict], company_name: str, slug: str, now: datetime
                 salary_max=sal[1] if sal else None,
                 salary_currency=sal[2] if sal else None,
                 seniority=infer_seniority(title),
-                posted_at=parse_posted_on(it.get("postedOn") or d.get("postedOn"), now),
+                posted_at=parse_posted_on(it.get("postedOn") or d.get("postedOn"), now) or _start_date(d),
             )
         )
     return out
@@ -107,8 +147,7 @@ async def fetch_workday(
     for page in range(1 if list_only else MAX_PAGES):
         body = {"appliedFacets": {}, "limit": PAGE, "offset": page * PAGE, "searchText": ""}
         try:
-            resp = await client.post(url, json=body)
-            resp.raise_for_status()
+            resp = await _request(client, "POST", url, json=body)
         except httpx.HTTPStatusError as e:
             # Workday refuses offsets past its cap: keep what we have, but a failing first page is a real error
             if page > 0 and e.response.status_code in (400, 404, 422):
@@ -131,8 +170,7 @@ async def fetch_workday(
         nonlocal failed
         async with sem:
             try:
-                r = await client.get(DETAIL_API.format(tenant=tenant, wd=wd, site=site, path=item["externalPath"]))
-                r.raise_for_status()
+                r = await _request(client, "GET", DETAIL_API.format(tenant=tenant, wd=wd, site=site, path=item["externalPath"]))
                 return {**item, "detail": r.json().get("jobPostingInfo") or {}}
             except (httpx.HTTPError, ValueError, AttributeError):
                 # keep the posting (so it isn't deactivated) with an empty description; the upsert

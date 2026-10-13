@@ -48,8 +48,8 @@ def test_parse_with_details():
              for p in DATA["list"]["jobPostings"]]
     jobs = parse_workday(items, "Acme", SLUG, NOW)
     assert [j.external_id for j in jobs] == [
-        "acme:Senior-Avionics-Software-Engineer_JR100-1", "acme:Mechanical-Engineer-Intern_JR101",
-        "acme:Project-Manager_JR102",
+        "acme:JR100-1", "acme:JR101",
+        "acme:JR102",
     ]
     a, b, c = jobs
     assert a.source == "workday" and a.seniority == "senior" and a.workplace_type == "hybrid"
@@ -169,3 +169,46 @@ def test_unsafe_external_path_is_skipped():
         {"title": "C", "externalPath": "/job/x/C_3?q=1"},
     ]
     assert [j.title for j in parse_workday(items, "Acme", SLUG, NOW)] == ["A"]
+
+
+def test_429_is_retried_with_retry_after(monkeypatch):
+    waits = []
+
+    async def fake_sleep(s):
+        waits.append(s)
+
+    monkeypatch.setattr("jobfinder.ingest.sources.workday.asyncio.sleep", fake_sleep)
+    inner = _handler()
+    calls = {"n": 0}
+
+    def handler(req):
+        if req.method == "POST":
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return httpx.Response(429, headers={"Retry-After": "7"})
+        return inner(req)
+
+    jobs = _run(lambda c: fetch_workday(c, SLUG, "Acme", list_only=True), handler)
+    assert len(jobs) == 3 and waits == [7.0]
+
+
+def test_persistent_429_raises(monkeypatch):
+    async def fake_sleep(s):
+        pass
+
+    monkeypatch.setattr("jobfinder.ingest.sources.workday.asyncio.sleep", fake_sleep)
+    with pytest.raises(httpx.HTTPStatusError):
+        _run(lambda c: fetch_workday(c, SLUG, "Acme", list_only=True), lambda req: httpx.Response(429))
+
+
+def test_thirty_plus_days_falls_back_to_detail_start_date():
+    item = {"title": "T", "externalPath": "/job/X/T_JR9", "postedOn": "Posted 30+ Days Ago",
+            "detail": {"startDate": "2026-08-01"}}
+    (j,) = parse_workday([item], "Acme", SLUG, NOW)
+    assert j.posted_at == datetime(2026, 8, 1, tzinfo=UTC)
+
+
+def test_external_id_ignores_title_edits():
+    a, b = (parse_workday([{"title": t, "externalPath": f"/job/X/{s}_JR9"}], "Acme", SLUG)[0]
+            for t, s in (("Old Title", "Old-Title"), ("New Title", "New-Title")))
+    assert a.external_id == b.external_id == "acme:JR9"

@@ -17,6 +17,16 @@ from jobfinder.models import Company, Job, Profile, User
 FIX = Path(__file__).parent / "fixtures"
 
 
+@pytest.fixture(autouse=True)
+def _no_network_fetchers(monkeypatch):
+    """The seed spans every source; tests patch the ones they care about and the rest return nothing."""
+    async def nothing(client, slug, name):
+        return []
+
+    for ats in ATS_FETCHERS:
+        monkeypatch.setitem(service.ATS_FETCHERS, ats, nothing)
+
+
 @pytest.fixture
 def maker(engine):
     return async_sessionmaker(engine, expire_on_commit=False)
