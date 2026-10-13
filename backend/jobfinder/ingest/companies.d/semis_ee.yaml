@@ -1,0 +1,49 @@
+# Semiconductors, photonics, EE hardware, quantum, networking, embedded, lidar/sensors companies.
+# Every (ats, slug) below was checked against the live ATS API and returned postings.
+# Row format matches ../companies.yaml. sponsors_visas is omitted where there is no evidence.
+companies:
+  # -- ashby --
+  - {name: "Axelera AI", ats: ashby, slug: axelera, prestige: 3, size: startup, industry: semiconductors}
+  - {name: "Cerebras", ats: ashby, slug: cerebras, prestige: 4, size: mid, industry: semiconductors}
+  - {name: "d-Matrix", ats: ashby, slug: d-matrix, prestige: 4, size: startup, industry: semiconductors}
+  - {name: "Eight Sleep", ats: ashby, slug: eightsleep, prestige: 3, size: mid, industry: hardware}
+  - {name: "Etched", ats: ashby, slug: etched, prestige: 4, size: startup, industry: semiconductors}
+  - {name: "Netgear", ats: ashby, slug: netgear, prestige: 2, size: large, industry: networking}
+  - {name: "Quadric", ats: ashby, slug: quadric, prestige: 3, size: startup, industry: semiconductors}
+  - {name: "Skydio", ats: ashby, slug: skydio, prestige: 4, size: mid, industry: robotics}
+  - {name: "Skylo", ats: ashby, slug: skylo, prestige: 3, size: startup, industry: space}
+  - {name: "Whoop", ats: ashby, slug: whoop, prestige: 4, size: mid, industry: hardware}
+  # -- bamboohr --
+  - {name: "Codasip", ats: bamboohr, slug: codasip, prestige: 3, size: startup, industry: semiconductors}
+  - {name: "EdgeCortix", ats: bamboohr, slug: edgecortix, prestige: 3, size: startup, industry: semiconductors}
+  # -- greenhouse --
+  - {name: "Apptronik", ats: greenhouse, slug: apptronik, prestige: 4, size: mid, industry: robotics}
+  - {name: "AST SpaceMobile", ats: greenhouse, slug: astspacemobile, prestige: 3, size: mid, industry: space}
+  - {name: "Astera Labs", ats: greenhouse, slug: asteralabs, prestige: 4, size: mid, industry: semiconductors}
+  - {name: "Epirus", ats: greenhouse, slug: epirus, prestige: 4, size: mid, industry: defense}
+  - {name: "Fastly", ats: greenhouse, slug: fastly, prestige: 4, size: large, industry: infrastructure}
+  - {name: "Formlabs", ats: greenhouse, slug: formlabs, prestige: 4, size: mid, industry: hardware}
+  - {name: "Hubble Network", ats: greenhouse, slug: hubblenetwork, prestige: 3, size: startup, industry: space}
+  - {name: "IonQ", ats: greenhouse, slug: ionq, prestige: 4, size: mid, industry: quantum}
+  - {name: "Lightmatter", ats: greenhouse, slug: lightmatter, prestige: 4, size: mid, industry: semiconductors}
+  - {name: "Maybell Quantum", ats: greenhouse, slug: maybellquantum, prestige: 3, size: startup, industry: quantum}
+  - {name: "Neuralink", ats: greenhouse, slug: neuralink, prestige: 5, size: mid, industry: hardware}
+  - {name: "Oura", ats: greenhouse, slug: oura, prestige: 4, size: mid, industry: hardware}
+  - {name: "PsiQuantum", ats: greenhouse, slug: psiquantum, prestige: 5, size: mid, industry: quantum}
+  - {name: "Pure Storage", ats: greenhouse, slug: purestorage, prestige: 4, size: large, industry: infrastructure}
+  - {name: "SambaNova", ats: greenhouse, slug: sambanovasystems, prestige: 3, size: mid, industry: semiconductors}
+  - {name: "Samsara", ats: greenhouse, slug: samsara, prestige: 4, size: large, industry: iot}
+  - {name: "SimpliSafe", ats: greenhouse, slug: simplisafe, prestige: 3, size: mid, industry: hardware}
+  - {name: "Tenstorrent", ats: greenhouse, slug: tenstorrent, prestige: 4, size: mid, industry: semiconductors}
+  - {name: "Ubiquiti", ats: greenhouse, slug: ubiquiti, prestige: 3, size: mid, industry: networking}
+  # -- lever --
+  - {name: "Aeva", ats: lever, slug: aeva, prestige: 3, size: mid, industry: lidar}
+  - {name: "Alice & Bob", ats: lever, slug: alice-bob, prestige: 3, size: mid, industry: quantum}
+  - {name: "Atom Computing", ats: lever, slug: atomcomputing, prestige: 4, size: startup, industry: quantum}
+  - {name: "Eliyan", ats: lever, slug: eliyan, prestige: 3, size: startup, industry: semiconductors}
+  - {name: "Extreme Networks", ats: lever, slug: extremenetworks, prestige: 3, size: large, industry: networking}
+  - {name: "Q-CTRL", ats: lever, slug: q-ctrl, prestige: 3, size: mid, industry: quantum}
+  - {name: "Rigetti", ats: lever, slug: rigetti, prestige: 3, size: mid, industry: quantum}
+  # -- smartrecruiters --
+  - {name: "Arista Networks", ats: smartrecruiters, slug: aristanetworks, prestige: 4, size: large, industry: networking}
+  - {name: "Microchip", ats: smartrecruiters, slug: microchip, prestige: 3, size: large, industry: semiconductors}
