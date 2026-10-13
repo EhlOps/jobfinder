@@ -25,7 +25,7 @@ Two ways to run the same compose stack: this one on your own machine (plain HTTP
 | Command | `docker compose up --build` | `docker compose up -d --build` |
 | URL | http://localhost:8180 | `https://<SITE_ADDRESS>` (ports 80/443) |
 | TLS | none | Caddy gets and renews a Let's Encrypt certificate |
-| Mail | Mailpit inbox at http://localhost:8025 | `smtp` postfix service relaying through Gmail/Outlook |
+| Mail | `smtp` postfix service relaying through Gmail/Outlook (real emails) | the same |
 | Config | root `.env` + `backend/.env`, `COMPOSE_FILE=docker-compose.yml:docker-compose.dev.yml` | the same, plus `SITE_ADDRESS` and the prod `COMPOSE_FILE` |
 | Restarts, backups | no | `restart: unless-stopped`, `deploy/backup.sh` |
 
@@ -36,13 +36,12 @@ docker compose up --build
 ```
 
 `.env.example` already selects development (`COMPOSE_FILE=docker-compose.yml:docker-compose.dev.yml`): plain
-HTTP, Mailpit instead of the postfix relay, and no domain or certificate, whatever `SITE_ADDRESS` is set to.
+HTTP and no domain or certificate, whatever `SITE_ADDRESS` is set to.
 Ports are bound to `127.0.0.1`. On a remote machine, tunnel them to browse from your laptop:
-`ssh -L 8180:localhost:8180 -L 8025:localhost:8025 user@server`, then open http://localhost:8180.
+`ssh -L 8180:localhost:8180 user@server`, then open http://localhost:8180.
 
 - Web app: http://localhost:8180
 - API: http://localhost:8100 (`/healthz`, `/docs`)
-- Mailpit (dev mail inbox): http://localhost:8025
 
 Postgres is also published on `localhost:5433` (for host-side tests and migrations). Set `API_PORT` / `WEB_PORT` / `DB_PORT` in `.env` to change host ports. AI steps need `CLAUDE_CODE_OAUTH_TOKEN` in `backend/.env` (see below).
 
@@ -56,7 +55,7 @@ docker compose exec api python -m jobfinder.cli list-users
 docker compose exec api python -m jobfinder.cli reset-link --email them@example.com   # prints a link instead of emailing (use if SMTP is down)
 ```
 
-(Plain SQL works too: `INSERT INTO users (email) VALUES ('them@example.com')`, lowercase.) They open the sign-in page and choose "Email me a link". Links work once and expire after `PASSWORD_LINK_TTL_MINUTES` (60). Note that links go out through your real SMTP relay unless you use the Mailpit dev setup.
+(Plain SQL works too: `INSERT INTO users (email) VALUES ('them@example.com')`, lowercase.) They open the sign-in page and choose "Email me a link". Links work once and expire after `PASSWORD_LINK_TTL_MINUTES` (60). Links go out through your real SMTP relay in every mode.
 
 ## Jobs
 
@@ -91,7 +90,7 @@ their matches. Question links are signed and need no login; every email has a on
 is sent when there's nothing to say. Try it without real email:
 
 ```sh
-docker compose up -d                              # development mode already sends mail to Mailpit: http://localhost:8025
+docker compose up -d                              # mail goes through the smtp relay
 docker compose exec worker python -m jobfinder.cli daily --email you@example.com --preview
 ```
 
@@ -105,7 +104,7 @@ Uploaded documents and fetched link text are stored on the `store` docker volume
 
 ## Email
 
-The app speaks plain SMTP. In dev, mail goes to Mailpit. In production the `smtp` (postfix)
+The app speaks plain SMTP. In dev and production the `smtp` (postfix)
 service relays through Gmail/Outlook (set `RELAYHOST*` in `.env`) or delivers directly
 (needs SPF/DKIM/DMARC and open outbound port 25). See PLAN.md.
 
@@ -136,7 +135,7 @@ gets its own Let's Encrypt certificate. `docker-compose.prod.yml` adds the publi
    production override), and the mail relay settings (`ALLOWED_SENDER_DOMAINS`, `RELAYHOST*`).
 4. `backend/.env`: `SECRET_KEY`, `ADMIN_EMAILS`, `PUBLIC_BASE_URL=https://jobs.example.com`,
    `SMTP_HOST=smtp`, `SMTP_PORT=587`, a real `EMAIL_FROM`.
-5. `docker compose up -d --build` (the prod `COMPOSE_FILE` leaves out the dev override, so no Mailpit). Every service restarts after a reboot.
+5. `docker compose up -d --build`. Every service restarts after a reboot.
 6. Sign in as an admin, connect the AI on **AI setup**, then add users with `cli add-user` (see Access).
 7. Set up the nightly backup below.
 

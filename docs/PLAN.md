@@ -28,14 +28,13 @@ The repo will go in the empty `jobfinder/` folder, which is greenfield. Two sibl
   - **Production:** a `smtp` compose service using the `boky/postfix` image. The app sends to `smtp:587` on the private compose network, and the port is never published to the host. Postfix has two modes, chosen by env alone with no code change:
     - **Relay mode (recommended default):** `RELAYHOST=[smtp.gmail.com]:587` plus a Gmail/Outlook app password. Mail leaves through a reputable provider, so it lands in inboxes. Gmail's ~500/day limit is plenty for this group.
     - **Direct mode:** Postfix delivers straight to recipients' mail servers and signs mail with DKIM (the image has built-in OpenDKIM; keys go in a volume). This needs a domain with SPF/DKIM/DMARC records and a host with outbound port 25 open. Residential ISPs and most clouds block port 25, and mail from those IPs gets spam-foldered, so only use this on a proper VPS.
-  - **Development:** the `mailpit` service (dev profile) catches all mail at `localhost:8025`, with `SMTP_HOST=mailpit`, `SMTP_PORT=1025`.
+  - **Development:** the same `smtp` service, so dev sends real mail; `cli reset-link` prints a link instead.
   - You answer questions through signed links to an in-app Q&A page.
 
 ## Architecture
 ```
 docker-compose: db (postgres:16) · api (FastAPI) · worker (APScheduler + queue consumer, has claude CLI)
                 · web (Vite build → Caddy, proxies /api, TLS) · smtp (boky/postfix, internal only)
-                · mailpit (dev profile; catches mail locally)
 ```
 Host ports: API on `127.0.0.1:${API_PORT:-8100}`, web on `127.0.0.1:${WEB_PORT:-8180}`. Port 8000 is used by another local project.
 
@@ -179,7 +178,7 @@ Pages:
    - Already in the scaffold: SMTP env vars, the `smtp` compose service, Mailpit and the `aiosmtplib` dependency. Remaining: the sending code, templates, scheduler and the flows above.
 
 ## Verification
-- `docker compose --profile dev up --build` brings up db, api, worker, web, smtp and mailpit. Check `/healthz` and that the web app loads at `localhost:8180`.
+- `docker compose up --build` brings up db, api, worker, web and smtp. Check `/healthz` and that the web app loads at `localhost:8180`.
 - SMTP relay test: point `SMTP_HOST=smtp`, set the relay credentials, and run `uv run python -m jobfinder.cli test-email you@…`. Confirm it arrives in a real inbox, not spam, and check the postfix logs with `docker compose logs smtp`.
 - Backend: `docker compose up -d db`, then `uv run pytest` (tests create and use a `jobfinder_test` database on `localhost:5433`). Already covered: auth, profile, documents, links, the SSRF guard, the queue, and the AI runner against a stub `claude` binary (argv, env scrubbing, error classification, repair retry, timeout).
   - Source parsers tested against saved JSON fixtures (no network).
@@ -194,7 +193,7 @@ Pages:
   2. Trigger ingestion with an admin endpoint/CLI (`uv run python -m jobfinder.cli ingest`) and see rows in `jobs`.
   3. Run `match` and see the scored feed.
   4. Generate a cover letter.
-  5. Run `digest --now` and `questions --now`, then open Mailpit at `localhost:8025` to see both emails.
+  5. Run `digest --now` and `questions --now`, then check your inbox for both emails.
   6. Click the question link, answer, and confirm the job is scored again.
 - Frontend: `npm run build` and `tsc --noEmit` pass.
 

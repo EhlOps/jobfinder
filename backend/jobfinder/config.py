@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     ai_max_concurrency: int = 2
 
     smtp_host: str = "localhost"
-    smtp_port: int = 1025
+    smtp_port: int = 587
     smtp_user: str = ""
     smtp_password: str = ""
     smtp_starttls: bool = False

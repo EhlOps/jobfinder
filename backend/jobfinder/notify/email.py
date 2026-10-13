@@ -1,4 +1,4 @@
-"""Outbound email over plain SMTP: Mailpit in dev, the `smtp` (postfix) service in production."""
+"""Outbound email over plain SMTP: sent through the `smtp` (postfix) service."""
 from email import policy
 from email.message import EmailMessage
 from email.utils import formataddr, parseaddr
