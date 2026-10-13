@@ -1,0 +1,149 @@
+import json
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+
+import httpx
+import pytest
+import sqlalchemy as sa
+from sqlalchemy.ext.asyncio import async_sessionmaker
+
+from jobfinder.config import get_settings
+from jobfinder.ingest import runner, service
+from jobfinder.ingest.base import JobPosting
+from jobfinder.ingest.sources import usajobs
+from jobfinder.models import Job, Profile, User
+
+FIX = json.loads((Path(__file__).parent / "fixtures" / "usajobs_search.json").read_text())
+
+
+@pytest.fixture
+def maker(engine):
+    return async_sessionmaker(engine, expire_on_commit=False)
+
+
+@pytest.fixture(autouse=True)
+def fast(monkeypatch):
+    monkeypatch.setattr(usajobs, "PAUSE_BETWEEN_REQUESTS_S", 0)
+
+
+def test_parse_usajobs():
+    a, b = usajobs.parse_usajobs(FIX)  # third item has no title: skipped
+    assert (a.source, a.external_id, a.title) == ("usajobs", "790000001", "Aerospace Engineer")
+    assert a.company_name.startswith("National Aeronautics") and a.url == "https://www.usajobs.gov/job/790000001"
+    assert a.location == "Houston, Texas; Cleveland, Ohio" and (a.salary_min, a.salary_max) == (99172, 128341)
+    assert a.posted_at.date().isoformat() == "2026-10-01" and a.employment_type == "Full-time"
+    assert "spacecraft" in a.description_text and "<b>" not in a.description_text
+    assert "Support test campaigns." in a.description_text and "U.S. citizenship is required" in a.description_text
+    assert b.url.endswith("/apply") and b.workplace_type == "remote" and b.seniority == "senior"
+    assert (b.salary_min, b.salary_max) == (94640, 124800)
+    assert b.description_text.count("citizen") == 1  # already says it: no duplicate note
+
+
+def test_parse_usajobs_empty():
+    assert usajobs.parse_usajobs({}) == [] and usajobs.parse_usajobs({"SearchResult": None}) == []
+
+
+async def test_fetch_noop_without_key(monkeypatch):
+    monkeypatch.setattr(get_settings(), "usajobs_api_key", "")
+
+    def boom(request):
+        raise AssertionError("no request expected")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(boom)) as c:
+        assert await usajobs.fetch_usajobs(c) == []
+
+
+async def test_fetch_headers_paging_and_failure_isolation(monkeypatch):
+    s = get_settings()
+    monkeypatch.setattr(s, "usajobs_api_key", "KEY")
+    monkeypatch.setattr(s, "usajobs_email", "me@example.com")
+    monkeypatch.setattr(usajobs, "RESULTS_PER_PAGE", 2)
+    seen = []
+
+    def handler(request):
+        p = request.url.params
+        seen.append((p.get("LocationName"), p["Page"]))
+        assert request.headers["Authorization-Key"] == "KEY" and request.headers["User-Agent"] == "me@example.com"
+        assert request.headers["Host"] == "data.usajobs.gov" and "0861" in p["JobCategoryCode"]
+        if p.get("LocationName") == "Bad":
+            return httpx.Response(403)
+        items = FIX["SearchResult"]["SearchResultItems"]
+        page = int(p["Page"])
+        chunk = [items[0], items[1]] if page == 1 else [{**items[0], "MatchedObjectId": "790000009"}]
+        return httpx.Response(200, json={"SearchResult": {"SearchResultCountAll": 3, "SearchResultItems": chunk}})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as c:
+        out = await usajobs.fetch_usajobs(c, [None, "Bad", "Boston"])
+    assert [p.external_id for p in out] == ["790000001", "790000002", "790000009"] * 2
+    assert seen == [(None, "1"), (None, "2"), ("Bad", "1"), ("Boston", "1"), ("Boston", "2")]
+
+
+async def test_fetch_retries_rate_limit(monkeypatch):
+    monkeypatch.setattr(get_settings(), "usajobs_api_key", "KEY")
+    calls = []
+
+    def handler(request):
+        calls.append(1)
+        return httpx.Response(429) if len(calls) == 1 else httpx.Response(200, json=FIX)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as c:
+        assert len(await usajobs.fetch_usajobs(c)) == 2 and len(calls) == 2
+
+
+async def test_fetch_raises_when_every_query_fails(monkeypatch):
+    monkeypatch.setattr(get_settings(), "usajobs_api_key", "BAD")
+    async with httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(401))) as c:
+        with pytest.raises(httpx.HTTPStatusError):
+            await usajobs.fetch_usajobs(c, [None, "Boston"])
+
+
+async def test_build_locations(maker):
+    async with maker() as db:
+        for i, st in enumerate([{"target_locations": ["Boston", "Remote", "Seattle"]}, {"target_locations": ["Boston"]}, {}]):
+            u = User(email=f"u{i}@x.com", password_hash="x", activated_at=datetime.now(UTC))
+            db.add(u)
+            await db.flush()
+            db.add(Profile(user_id=u.id, status=st, background={}))
+        ghost = User(email="ghost@x.com", password_hash="x")  # never activated: ignored
+        db.add(ghost)
+        await db.flush()
+        db.add(Profile(user_id=ghost.id, status={"target_locations": ["Denver", "boston"]}, background={}))
+        await db.commit()
+        assert await usajobs.build_locations(db) == [None, "Boston", "Seattle"]
+        assert await usajobs.build_locations(db, limit=1) == [None, "Boston"]
+
+
+async def test_ingest_usajobs_upserts_and_expires(maker, monkeypatch):
+    monkeypatch.setattr(get_settings(), "usajobs_api_key", "KEY")
+    state = {"payload": FIX}
+    transport = httpx.MockTransport(lambda request: httpx.Response(200, json=state["payload"]))
+    async with maker() as db:  # a stale job from an earlier run, never seen again
+        old = JobPosting(source="usajobs", external_id="old", company_name="X", title="Old", url="https://x/o")
+        await service.upsert_postings(db, [old], None)
+        await db.execute(sa.update(Job).where(Job.external_id == "old").values(last_seen_at=datetime.now(UTC) - timedelta(days=30)))
+        await db.commit()
+
+    st = await runner.ingest_usajobs(maker, transport)
+    assert (st.fetched, st.new, st.updated, st.deactivated, st.error) == (2, 2, 0, 1, None)
+    st = await runner.ingest_usajobs(maker, transport)
+    assert (st.new, st.updated, st.deactivated) == (0, 2, 0)
+    async with maker() as db:
+        active = set((await db.scalars(sa.select(Job.external_id).where(Job.is_active.is_(True), Job.source == "usajobs"))).all())
+        assert active == {"790000001", "790000002"}
+        job = await db.scalar(sa.select(Job).where(Job.external_id == "790000001"))
+        assert job.salary_min == 99172 and "citizenship" in job.description_text
+
+    state["payload"] = {"SearchResult": {"SearchResultItems": []}}  # empty answer must not expire anything
+    st = await runner.ingest_usajobs(maker, transport)
+    assert st.fetched == 0 and st.deactivated == 0 and st.error is None
+
+
+async def test_run_ingest_skips_usajobs_without_key(maker, monkeypatch):
+    monkeypatch.setattr(get_settings(), "usajobs_api_key", "")
+
+    async def boom(*a, **k):
+        raise AssertionError("must not run")
+
+    monkeypatch.setattr(runner, "ingest_usajobs", boom)
+    out = await runner.run_ingest(maker, ats="usajobs", jobspy=False)
+    assert out["companies"] == 0

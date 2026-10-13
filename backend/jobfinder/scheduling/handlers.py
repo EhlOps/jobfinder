@@ -57,7 +57,7 @@ async def audit_profile(db: AsyncSession, ai: AITasks, task: Task) -> dict:
 
 
 async def ingest_jobs(db: AsyncSession, ai: AITasks, task: Task) -> dict:
-    """Poll all ATS boards (and jobspy when enabled). Scheduling this is milestone 7."""
+    """Poll all ATS boards (and jobspy/usajobs when enabled). Scheduling this is milestone 7."""
     from jobfinder.db import SessionLocal
     from jobfinder.ingest.runner import run_ingest
 

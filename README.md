@@ -81,6 +81,12 @@ seed files; duplicates by `(ats, slug)` are skipped, first file wins) into the `
 opt-in and against those sites' terms: set `ENABLE_JOBSPY=true` in `backend/.env`, build the worker with
 `WITH_JOBSPY=true` (root `.env`), then `ingest --jobspy`. The worker also runs it on a schedule (see Daily email below).
 
+US federal jobs (engineering, computer science, IT and program-management series) come from the official
+USAJobs API. Request a free key at <https://developer.usajobs.gov/APIRequest>, then set `USAJOBS_API_KEY` and
+`USAJOBS_EMAIL` in `backend/.env`; the source turns on automatically with the key and runs with every ingest
+(nationwide plus users' target locations; postings not seen for 14 days expire). Postings state that U.S.
+citizenship is required, so they are filtered out for users who need sponsorship.
+
 ## Matches
 
 Finishing onboarding (or clicking **Find new matches**) queues a matching run in the worker. For each

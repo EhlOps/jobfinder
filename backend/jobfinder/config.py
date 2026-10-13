@@ -38,6 +38,11 @@ class Settings(BaseSettings):
 
     github_token: str = ""
     enable_jobspy: bool = False
+    usajobs_api_key: str = ""  # setting this enables the USAJobs source (free key at developer.usajobs.gov)
+    usajobs_email: str = ""  # sent as the User-Agent, as USAJobs requires
+    usajobs_max_locations: int = 10
+    usajobs_max_pages: int = 4  # x500 results per query
+    usajobs_days_posted: int = 30
     scheduler_enabled: bool = True  # worker runs ingestion and the daily emails on a schedule
     ingest_interval_hours: int = 6
     digest_min_score: int = 65  # only matches at least this good are included in the daily email
