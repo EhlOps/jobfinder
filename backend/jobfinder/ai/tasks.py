@@ -79,7 +79,8 @@ class AITasks:
         return result.questions[:10]
 
     async def audit_profile(
-        self, status: dict, background: dict, facts: list[tuple[str, str]], demand: list[dict], skipped: list[str]
+        self, status: dict, background: dict, facts: list[tuple[str, str]], demand: list[dict], skipped: list[str],
+        queued: list[str] | None = None,
     ) -> ProfileAudit:
         """Screen the candidate like a recruiter: build the dossier, rate readiness, pick the next questions.
         demand: [{requirement, jobs, importance}] that scored jobs asked for and the profile left open."""
@@ -89,6 +90,7 @@ class AITasks:
             "answers_given": [{"question": q, "answer": a} for q, a in facts],
             "requirements_target_jobs_ask_for_that_are_unconfirmed": demand,
             "questions_the_candidate_skipped": skipped,
+            "questions_already_queued": queued or [],
         }
         return await self.claude.run(
             "Audit this candidate.\n\n" + data_block("data", json.dumps(known, indent=1)),

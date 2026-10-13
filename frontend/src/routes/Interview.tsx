@@ -48,13 +48,14 @@ export default function Interview({ onFinish }: { onFinish?: () => void }) {
   const qc = useQueryClient();
   const [taskId, setTaskId] = useState<number | null>(null);
   const [text, setText] = useState("");
+  const [current, setCurrent] = useState<string | null>(null);
   const view = useQuery({ queryKey: ["interview"], queryFn: () => api<I>("/api/profile/interview") });
   const task = useTask<unknown>(taskId);
   const refresh = useMutation({ mutationFn: () => api<{ task_id: number }>("/api/profile/interview/refresh", { method: "POST" }), onSuccess: (r) => setTaskId(r.task_id) });
   const send = useMutation({
     mutationFn: (a: { question: string; answer: string; skip: boolean }) =>
       api("/api/profile/interview/answers", { json: { answers: [a] } }),
-    onSuccess: () => { setText(""); qc.invalidateQueries({ queryKey: ["interview"] }); qc.invalidateQueries({ queryKey: ["facts"] }); qc.invalidateQueries({ queryKey: ["profile"] }); },
+    onSuccess: () => { setText(""); setCurrent(null); qc.invalidateQueries({ queryKey: ["interview"] }); qc.invalidateQueries({ queryKey: ["facts"] }); qc.invalidateQueries({ queryKey: ["profile"] }); },
   });
 
   // First visit (or the profile changed since the last audit): run one.
@@ -68,6 +69,12 @@ export default function Interview({ onFinish }: { onFinish?: () => void }) {
     return () => clearInterval(t);
   }, [view.data?.stale, qc]);
 
+  // The question being answered left the queue (answered or skipped elsewhere): drop the draft so it
+  // can't be saved against whichever question is first now.
+  useEffect(() => {
+    if (current && view.data && !view.data.questions.some((x) => x.question === current)) { setCurrent(null); setText(""); }
+  }, [view.data, current]);
+
   if (!view.data) return <p className="muted">Loading…</p>;
   const d = view.data;
   if (task.data?.status === "failed")
@@ -75,7 +82,8 @@ export default function Interview({ onFinish }: { onFinish?: () => void }) {
   if (!d.audited)
     return <div className="card"><h2>Reading your profile like a recruiter…</h2><p className="muted">This takes a minute. We look for what a hiring manager would still want to know.</p><ErrorText error={refresh.error} /></div>;
 
-  const q = d.questions[0];
+  // Once the user starts typing, stay on that question even if a background audit refetch reorders the queue.
+  const q = d.questions.find((x) => x.question === current) ?? d.questions[0];
   return (
     <>
       {!onFinish && <h2>Strengthen my profile</h2>}
@@ -100,7 +108,7 @@ export default function Interview({ onFinish }: { onFinish?: () => void }) {
           <label className="field">
             <span className="field-label">{q.question}</span>
             {q.why && <span className="hint">{q.why}</span>}
-            <textarea rows={4} value={text} onChange={(e) => setText(e.target.value)} placeholder="Specifics help most: numbers, tools, your part in it" />
+            <textarea rows={4} value={text} onChange={(e) => { setText(e.target.value); setCurrent(q.question); }} placeholder="Specifics help most: numbers, tools, your part in it" />
           </label>
           <ErrorText error={send.error} />
           <div className="actions">
