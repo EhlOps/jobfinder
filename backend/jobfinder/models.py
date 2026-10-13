@@ -175,7 +175,7 @@ class Job(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    source: Mapped[str] = mapped_column(String(32))  # an ATS_FETCHERS key, or jobspy
+    source: Mapped[str] = mapped_column(String(32))  # an ATS_FETCHERS key, jobspy, or usajobs
     external_id: Mapped[str] = mapped_column(String(200))
     company_id: Mapped[int | None] = mapped_column(
         ForeignKey("companies.id", ondelete="SET NULL"), nullable=True, index=True

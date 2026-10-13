@@ -34,6 +34,7 @@ EMPTY_GUARD_MIN_ACTIVE = 5
 EMPTY_CONFIRM_RUNS = 3
 EMPTY_ERROR_PREFIX = "empty response"
 JOBSPY_EXPIRE_AFTER = timedelta(days=14)
+USAJOBS_EXPIRE_AFTER = timedelta(days=14)
 
 SessionFactory = Callable[[], AsyncSession]
 
@@ -161,7 +162,7 @@ async def deactivate_missing(db: AsyncSession, source: str, company_id: int, see
 
 
 async def expire_stale(db: AsyncSession, source: str, older_than: timedelta) -> int:
-    """For sources without per-company boards (jobspy): expire jobs not seen recently."""
+    """For sources without per-company boards (jobspy, usajobs): expire jobs not seen recently."""
     res = await db.execute(
         sa.update(Job)
         .where(Job.source == source, Job.is_active.is_(True), Job.last_seen_at < datetime.now(UTC) - older_than)

@@ -29,6 +29,29 @@ async def ingest_jobspy(session_factory: SessionFactory) -> IngestStats:
     return stats
 
 
+async def ingest_usajobs(session_factory: SessionFactory, transport=None) -> IngestStats:
+    import httpx
+
+    from jobfinder.ingest.sources.usajobs import SOURCE, build_locations, fetch_usajobs
+
+    stats = IngestStats(source=SOURCE, company="(usajobs.gov)")
+    try:
+        async with session_factory() as db:
+            locations = await build_locations(db)
+        async with httpx.AsyncClient(timeout=60, transport=transport) as client:  # no DB session held while crawling
+            postings = await fetch_usajobs(client, locations)
+        stats.fetched = len(postings)
+        async with session_factory() as db:
+            if postings:
+                stats.new, stats.updated = await service.upsert_postings(db, postings, None)
+                # only a successful non-empty fetch may expire jobs, so an API outage never wipes them
+                stats.deactivated = await service.expire_stale(db, SOURCE, service.USAJOBS_EXPIRE_AFTER)
+    except Exception as e:
+        log.exception("usajobs ingest failed")
+        stats.error = f"{type(e).__name__}: {e}"[:300]
+    return stats
+
+
 async def run_ingest(
     session_factory: SessionFactory, *, ats: str | None = None, slug: str | None = None, jobspy: bool | None = None
 ) -> dict:
@@ -36,6 +59,8 @@ async def run_ingest(
     use_jobspy = get_settings().enable_jobspy if jobspy is None else jobspy
     if use_jobspy and not slug and ats in (None, "jobspy"):
         results.append(await ingest_jobspy(session_factory))
+    if get_settings().usajobs_enabled and not slug and ats in (None, "usajobs"):
+        results.append(await ingest_usajobs(session_factory))
     return {
         "companies": len(results),
         "fetched": sum(r.fetched for r in results),
