@@ -298,7 +298,7 @@ async def test_run_ingest_summary(maker, monkeypatch):
     monkeypatch.setitem(service.ATS_FETCHERS, "lever", bad)
     monkeypatch.setitem(service.ATS_FETCHERS, "ashby", ok)
     out = await runner.run_ingest(maker, jobspy=False)
-    assert out["companies"] == len(service.load_seed()) and out["new"] > 0 and set(out["errors"]) == {"Palantir", "Spotify"}
+    assert out["companies"] == len(service.load_seed()) and out["new"] > 0 and set(out["errors"]) == {e["name"] for e in service.load_seed() if e["ats"] == "lever"}
 
 
 async def test_expire_stale_for_jobspy(maker):

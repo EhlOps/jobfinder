@@ -80,12 +80,13 @@ def seed_files() -> list[Path]:
 async def sync_companies(db: AsyncSession, entries: list[dict] | None = None) -> int:
     """Upsert the seed list by (ats, slug). Returns the number of rows touched."""
     entries = load_seed() if entries is None else entries
-    for e in entries:
-        stmt = insert(Company).values(
-            name=e["name"], ats=e["ats"], slug=e["slug"], prestige_tier=e.get("prestige", 3),
-            size=e.get("size", "mid"), industry=e.get("industry", ""),
-            sponsors_visas=e.get("sponsors_visas"),
-        )
+    for i in range(0, len(entries), 200):
+        stmt = insert(Company).values([
+            {"name": e["name"], "ats": e["ats"], "slug": e["slug"], "prestige_tier": e.get("prestige", 3),
+             "size": e.get("size", "mid"), "industry": e.get("industry", ""),
+             "sponsors_visas": e.get("sponsors_visas")}
+            for e in entries[i:i + 200]
+        ])
         await db.execute(
             stmt.on_conflict_do_update(
                 constraint="uq_company_ats_slug",
