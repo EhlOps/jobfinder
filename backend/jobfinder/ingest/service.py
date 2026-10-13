@@ -134,7 +134,8 @@ async def upsert_postings(db: AsyncSession, postings: list[JobPosting], company_
         # A failed detail fetch yields an empty description (and nothing derived from it); keep the stored values.
         no_desc = stmt.excluded.description_text == ""
         for c in _DETAIL_COLUMNS:
-            keep[c] = sa.case((no_desc, Job.__table__.c[c]), else_=stmt.excluded[c])
+            new_val = sa.func.coalesce(stmt.excluded[c], Job.__table__.c[c]) if c == "posted_at" else stmt.excluded[c]
+            keep[c] = sa.case((no_desc, Job.__table__.c[c]), else_=new_val)  # a missing date never erases a known one
         res = await db.execute(
             stmt.on_conflict_do_update(constraint="uq_job_source_external", set_=keep)
             .returning(sa.literal_column("(xmax = 0)").label("inserted"))

@@ -63,3 +63,12 @@ class PoliteFetcher:
         r = await self.client.get(url, headers=headers, **kwargs)
         r.raise_for_status()
         return r
+
+    async def post(self, url: str, **kwargs) -> httpx.Response:
+        """POST for list endpoints that need a JSON body (Workday); same robots check as get."""
+        if not await self.allowed(url):
+            raise RobotsDisallowed(f"robots.txt disallows {url}")
+        headers = {"User-Agent": USER_AGENT, **(kwargs.pop("headers", None) or {})}
+        r = await self.client.post(url, headers=headers, **kwargs)
+        r.raise_for_status()
+        return r

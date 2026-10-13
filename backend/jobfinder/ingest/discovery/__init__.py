@@ -34,6 +34,23 @@ _PATH_HOSTS = {
 _SUBDOMAIN_SUFFIXES = {".recruitee.com": "recruitee", ".bamboohr.com": "bamboohr"}
 
 
+_WD_LOCALE_RE = re.compile(r"^[a-z]{2}(-[A-Za-z]{2,4})?$")
+
+
+def _workday_board(sub: str, path: str) -> tuple[str, str] | None:
+    """{tenant}.{wdN}.myworkdayjobs.com/[locale/]{site}/... -> ("workday", "tenant.wdN.site")."""
+    bits = sub.split(".")
+    if len(bits) != 2 or not re.fullmatch(r"wd\d{1,3}", bits[1]):
+        return None
+    segs = [s for s in path.split("/") if s]
+    if segs and _WD_LOCALE_RE.match(segs[0]):
+        segs = segs[1:]
+    if not segs or segs[0] in ("wday", "job", "details"):
+        return None
+    slug = f"{bits[0]}.{bits[1]}.{segs[0]}"
+    return ("workday", slug) if SLUG_RE.match(slug) else None
+
+
 def board_from_url(url: str) -> tuple[str, str] | None:
     """Map an apply URL to (ats, slug), or None when it is not a recognised public board."""
     try:
@@ -52,6 +69,8 @@ def board_from_url(url: str) -> tuple[str, str] | None:
         if slug in _RESERVED or not SLUG_RE.match(slug):
             return None
         return ats, slug
+    if host.endswith(".myworkdayjobs.com"):
+        return _workday_board(host[: -len(".myworkdayjobs.com")], parts.path)
     for suffix, ats in _SUBDOMAIN_SUFFIXES.items():
         if host.endswith(suffix):
             slug = host[: -len(suffix)]
@@ -88,6 +107,12 @@ class _PoliteClient:
     async def get(self, url: str, **kwargs) -> httpx.Response:
         try:
             return await self._fetcher.get(url, **kwargs)
+        except RobotsDisallowed as e:
+            raise RobotsBlocked(str(e)) from e
+
+    async def post(self, url: str, **kwargs) -> httpx.Response:
+        try:
+            return await self._fetcher.post(url, **kwargs)
         except RobotsDisallowed as e:
             raise RobotsBlocked(str(e)) from e
 
