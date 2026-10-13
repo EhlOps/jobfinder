@@ -1,5 +1,16 @@
 # History
 
+## 2026-10-13: broader board discovery, on by default
+
+- `DISCOVERY_ENABLED` now defaults to true (weekly, Sundays 04:30 UTC); `DISCOVERY_MAX_CANDIDATES` and
+  `INGEST_MAX_DISCOVERED_BOARDS_PER_RUN` default to 300 (were 50 and 100). Set `DISCOVERY_ENABLED=false` to opt out.
+- `discovery/github_lists.py` reads 13 public lists instead of one: SimplifyJobs New-Grad, Summer internships,
+  off-season and their `listings.json` (categories include Hardware for mechanical/electrical/aerospace, Quant,
+  Product, AI/ML/Data), plus vanshb03 and speedyapply SWE/AI lists. All still go through `PoliteFetcher` (robots.txt).
+  A dead list is skipped; only all lists failing marks the source as errored.
+- Candidates beyond the per-run cap are now picked in random order, since rejected boards are not remembered and a
+  fixed order would re-probe the same dead boards every week. Every candidate still passes `validate_board`.
+
 ## 2026-10-13: seed list split across companies.d/
 
 - `load_seed()` now reads `companies.yaml` plus every `ingest/companies.d/*.yaml` (sorted), de-duplicating on

@@ -99,6 +99,62 @@ async def test_github_list_source():
         assert await github_lists.fetch(PoliteFetcher(c)) == [("lever", "acme")]
 
 
+async def test_github_lists_cover_many_lists_and_survive_a_dead_one():
+    listing = '[{"category": "Hardware", "url": "https://job-boards.greenhouse.io/spacey/jobs/9"}]'
+    routes = {
+        "/SimplifyJobs/New-Grad-Positions/dev/.github": httpx.Response(200, text=listing),
+        "/SimplifyJobs/Summer2026-Internships": httpx.Response(500),
+        "/speedyapply": httpx.Response(200, text="[Apply](https://jobs.ashbyhq.com/Quant-Co?x=1)"),
+    }
+    async with httpx.AsyncClient(transport=httpx.MockTransport(robots_site(None, routes))) as c:
+        boards = await github_lists.fetch(PoliteFetcher(c))
+    assert boards == [("greenhouse", "spacey"), ("ashby", "Quant-Co")]
+    assert len(github_lists.URLS) == len(set(github_lists.URLS)) > 10
+
+
+async def test_github_lists_all_failing_raises():
+    async with httpx.AsyncClient(transport=httpx.MockTransport(robots_site(None))) as c:
+        with pytest.raises(httpx.HTTPStatusError):
+            await github_lists.fetch(PoliteFetcher(c))
+
+
+async def test_github_lists_partial_failure_is_reported_not_just_logged(maker):
+    class Boom(Exception):
+        pass
+
+    calls = {"n": 0}
+
+    async def flaky(url, **kw):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise Boom("weird")
+        return httpx.Response(200, text="https://jobs.lever.co/acme/1", request=httpx.Request("GET", url))
+
+    class F:
+        get = staticmethod(flaky)
+
+    boards = await github_lists.fetch(F())
+    assert list(boards) == [("lever", "acme")] and len(boards.warnings) == 1 and "Boom" in boards.warnings[0]
+
+    async def fetch_partial(_f):
+        return boards
+
+    src = discovery.Source("github_lists", "n/a", True, fetch_partial)
+    async with maker() as db, router({"acme": httpx.Response(404)}, "") as c:
+        res = await discovery.discover_boards(db, c, sources=[src])
+    assert res.sources[0].status == "partial" and res.sources[0].warnings == boards.warnings
+    assert res.as_dict()["sources"][0]["warnings"] == boards.warnings
+
+
+async def test_over_cap_candidates_are_shuffled(maker, monkeypatch):
+    md = " ".join(f"https://boards.greenhouse.io/b{i}" for i in range(5))
+    boards = {f"b{i}": httpx.Response(200, json=GH_GOOD) for i in range(5)}
+    monkeypatch.setattr(discovery.random, "shuffle", lambda xs: xs.reverse())
+    async with maker() as db, router(boards, md) as c:
+        res = await discovery.discover_boards(db, c, max_candidates=2, sources=[github_lists.SOURCE])
+    assert sorted(res.added) == ["greenhouse/b3", "greenhouse/b4"]
+
+
 async def test_hn_source_picks_latest_thread_and_unescapes():
     search = {"hits": [
         {"objectID": "2", "title": "Ask HN: Who wants to be hired? (May 2026)"},

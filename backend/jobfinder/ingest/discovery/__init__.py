@@ -1,6 +1,7 @@
 """Board discovery (REQ-26 a, e): find apply links on public directories, validate and add the boards."""
 import asyncio
 import logging
+import random
 import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -143,10 +144,19 @@ class Source:
 @dataclass
 class SourceReport:
     name: str
-    status: str  # ok | skipped | error
+    status: str  # ok | partial (some inputs failed, see warnings) | skipped | error
     reason: str = ""
     found: int = 0
     terms: str = ""
+    warnings: list[str] = field(default_factory=list)
+
+
+class FoundBoards(list):
+    """A source's boards plus a warning for each input it had to skip."""
+
+    def __init__(self, boards=(), warnings: list[str] | None = None):
+        super().__init__(boards)
+        self.warnings = warnings or []
 
 
 @dataclass
@@ -205,6 +215,9 @@ async def discover_boards(
                 rep.status, rep.reason = "error", f"{type(e).__name__}: {e}"[:300]
                 continue
             rep.found = len(boards)
+            rep.warnings = list(getattr(boards, "warnings", []))
+            if rep.warnings:
+                rep.status = "partial"
             for ats, slug in boards:
                 found.setdefault((ats, slug.lower()), (ats, slug))
         result.candidates = len(found)
@@ -212,6 +225,9 @@ async def discover_boards(
         known = {(a, s.lower()) for a, s in rows}
         fresh = [b for k, b in found.items() if k not in known]
         result.already_known = len(found) - len(fresh)
+        if len(fresh) > cap:
+            # rejected boards are not remembered, so a fixed order would re-probe the same dead ones every week
+            random.shuffle(fresh)
         batch = fresh[: max(cap, 0)]
         validations = await validate_candidates(fetcher, batch)
         for (ats, slug), validation in zip(batch, validations, strict=True):
