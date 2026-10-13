@@ -1,10 +1,10 @@
 # Robotics, autonomy, AVs, drones/defense hardware, 3D printing/advanced manufacturing, and consumer/industrial hardware.
 # Every board was checked live via validate_board (list_only). Merged by load_seed() with companies.yaml (dedupe by ats+slug).
-# sponsors_visas only where the company is a well-known H-1B sponsor; omitted otherwise.
+# sponsors_visas is omitted: no per-company evidence has been checked.
 companies:
   - {name: Figure AI, ats: greenhouse, slug: figureai, prestige: 5, size: mid, industry: robotics}
   - {name: Agility Robotics, ats: greenhouse, slug: agilityrobotics, prestige: 4, size: mid, industry: robotics}
-  - {name: Waymo, ats: greenhouse, slug: waymo, prestige: 5, size: large, industry: mobility, sponsors_visas: true}
+  - {name: Waymo, ats: greenhouse, slug: waymo, prestige: 5, size: large, industry: mobility}
   - {name: Nuro, ats: greenhouse, slug: nuro, prestige: 4, size: mid, industry: mobility}
   - {name: Apptronik, ats: greenhouse, slug: apptronik, prestige: 4, size: mid, industry: robotics}
   - {name: Formlabs, ats: greenhouse, slug: formlabs, prestige: 4, size: mid, industry: manufacturing}
@@ -14,10 +14,10 @@ companies:
   - {name: Path Robotics, ats: greenhouse, slug: pathrobotics, prestige: 3, size: mid, industry: robotics}
   - {name: Divergent, ats: greenhouse, slug: divergent, prestige: 4, size: mid, industry: manufacturing}
   - {name: Carbon, ats: greenhouse, slug: carbon, prestige: 3, size: mid, industry: manufacturing}
-  - {name: Peloton, ats: greenhouse, slug: peloton, prestige: 3, size: large, industry: hardware, sponsors_visas: true}
-  - {name: Anduril, ats: greenhouse, slug: andurilindustries, prestige: 5, size: large, industry: robotics, sponsors_visas: true}
-  - {name: Shield AI, ats: lever, slug: shieldai, prestige: 4, size: mid, industry: robotics, sponsors_visas: true}
-  - {name: Lucid Motors, ats: greenhouse, slug: lucidmotors, prestige: 4, size: large, industry: automotive, sponsors_visas: true}
+  - {name: Peloton, ats: greenhouse, slug: peloton, prestige: 3, size: large, industry: hardware}
+  - {name: Anduril, ats: greenhouse, slug: andurilindustries, prestige: 5, size: large, industry: robotics}
+  - {name: Shield AI, ats: lever, slug: shieldai, prestige: 4, size: mid, industry: robotics}
+  - {name: Lucid Motors, ats: greenhouse, slug: lucidmotors, prestige: 4, size: large, industry: automotive}
   - {name: Torc Robotics, ats: greenhouse, slug: torcrobotics, prestige: 3, size: mid, industry: mobility}
   - {name: Motional, ats: greenhouse, slug: motional, prestige: 4, size: mid, industry: mobility}
   - {name: May Mobility, ats: greenhouse, slug: maymobility, prestige: 3, size: mid, industry: mobility}
@@ -30,7 +30,7 @@ companies:
   - {name: Ambi Robotics, ats: lever, slug: ambirobotics, prestige: 3, size: startup, industry: robotics}
   - {name: OSARO, ats: lever, slug: osaro, prestige: 3, size: mid, industry: robotics}
   - {name: Diligent Robotics, ats: greenhouse, slug: diligentrobotics, prestige: 3, size: mid, industry: robotics}
-  - {name: Neuralink, ats: greenhouse, slug: neuralink, prestige: 5, size: mid, industry: hardware, sponsors_visas: true}
+  - {name: Neuralink, ats: greenhouse, slug: neuralink, prestige: 5, size: mid, industry: hardware}
   - {name: Carbon Robotics, ats: greenhouse, slug: carbonrobotics, prestige: 3, size: mid, industry: robotics}
   - {name: Physical Intelligence, ats: ashby, slug: physicalintelligence, prestige: 5, size: mid, industry: robotics}
   - {name: The Bot Company, ats: ashby, slug: thebotcompany, prestige: 3, size: startup, industry: robotics}
@@ -42,10 +42,10 @@ companies:
   - {name: Seurat Technologies, ats: greenhouse, slug: seurat, prestige: 3, size: mid, industry: manufacturing}
   - {name: Eight Sleep, ats: ashby, slug: eightsleep, prestige: 4, size: mid, industry: hardware}
   - {name: SimpliSafe, ats: greenhouse, slug: simplisafe, prestige: 3, size: mid, industry: hardware}
-  - {name: Roku, ats: greenhouse, slug: roku, prestige: 3, size: large, industry: hardware, sponsors_visas: true}
+  - {name: Roku, ats: greenhouse, slug: roku, prestige: 3, size: large, industry: hardware}
   - {name: Matic, ats: greenhouse, slug: matic, prestige: 3, size: startup, industry: robotics}
-  - {name: Samsara, ats: greenhouse, slug: samsara, prestige: 4, size: large, industry: hardware, sponsors_visas: true}
-  - {name: Verkada, ats: greenhouse, slug: verkada, prestige: 4, size: large, industry: hardware, sponsors_visas: true}
+  - {name: Samsara, ats: greenhouse, slug: samsara, prestige: 4, size: large, industry: hardware}
+  - {name: Verkada, ats: greenhouse, slug: verkada, prestige: 4, size: large, industry: hardware}
   - {name: Scout Motors, ats: greenhouse, slug: scoutmotors, prestige: 3, size: mid, industry: automotive}
   - {name: Wing, ats: greenhouse, slug: wing, prestige: 4, size: mid, industry: robotics}
   - {name: Brinc, ats: ashby, slug: brinc, prestige: 3, size: startup, industry: robotics}
@@ -57,7 +57,7 @@ companies:
   - {name: Reflex Robotics, ats: ashby, slug: reflexrobotics, prestige: 3, size: startup, industry: robotics}
   - {name: Agtonomy, ats: lever, slug: agtonomy, prestige: 3, size: startup, industry: robotics}
   - {name: Sunday Robotics, ats: ashby, slug: sunday, prestige: 3, size: startup, industry: robotics}
-  - {name: Rocket Lab, ats: greenhouse, slug: rocketlab, prestige: 4, size: large, industry: manufacturing, sponsors_visas: true}
-  - {name: Zoox, ats: lever, slug: zoox, prestige: 5, size: large, industry: mobility, sponsors_visas: true}
+  - {name: Rocket Lab, ats: greenhouse, slug: rocketlab, prestige: 4, size: large, industry: manufacturing}
+  - {name: Zoox, ats: lever, slug: zoox, prestige: 5, size: large, industry: mobility}
   - {name: Saronic, ats: ashby, slug: saronic, prestige: 4, size: mid, industry: robotics}
   - {name: Skydio, ats: ashby, slug: skydio, prestige: 4, size: mid, industry: robotics}
