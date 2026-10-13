@@ -83,7 +83,7 @@ opt-in and against those sites' terms: set `ENABLE_JOBSPY=true` in `backend/.env
 
 US federal jobs (engineering, computer science, IT and program-management series) come from the official
 USAJobs API. Request a free key at <https://developer.usajobs.gov/APIRequest>, then set `USAJOBS_API_KEY` and
-`USAJOBS_EMAIL` in `backend/.env`; the source turns on automatically with the key and runs with every ingest
+`USAJOBS_EMAIL` in `backend/.env`; the source turns on automatically once both are set and runs with every ingest
 (nationwide plus users' target locations; postings not seen for 14 days expire). Postings state that U.S.
 citizenship is required, so they are filtered out for users who need sponsorship.
 

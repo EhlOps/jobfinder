@@ -59,7 +59,7 @@ async def run_ingest(
     use_jobspy = get_settings().enable_jobspy if jobspy is None else jobspy
     if use_jobspy and not slug and ats in (None, "jobspy"):
         results.append(await ingest_jobspy(session_factory))
-    if get_settings().usajobs_api_key and not slug and ats in (None, "usajobs"):
+    if get_settings().usajobs_enabled and not slug and ats in (None, "usajobs"):
         results.append(await ingest_usajobs(session_factory))
     return {
         "companies": len(results),

@@ -80,6 +80,7 @@ async def test_fetch_headers_paging_and_failure_isolation(monkeypatch):
 
 async def test_fetch_retries_rate_limit(monkeypatch):
     monkeypatch.setattr(get_settings(), "usajobs_api_key", "KEY")
+    monkeypatch.setattr(get_settings(), "usajobs_email", "me@example.com")
     calls = []
 
     def handler(request):
@@ -92,6 +93,7 @@ async def test_fetch_retries_rate_limit(monkeypatch):
 
 async def test_fetch_raises_when_every_query_fails(monkeypatch):
     monkeypatch.setattr(get_settings(), "usajobs_api_key", "BAD")
+    monkeypatch.setattr(get_settings(), "usajobs_email", "me@example.com")
     async with httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(401))) as c:
         with pytest.raises(httpx.HTTPStatusError):
             await usajobs.fetch_usajobs(c, [None, "Boston"])
@@ -115,6 +117,7 @@ async def test_build_locations(maker):
 
 async def test_ingest_usajobs_upserts_and_expires(maker, monkeypatch):
     monkeypatch.setattr(get_settings(), "usajobs_api_key", "KEY")
+    monkeypatch.setattr(get_settings(), "usajobs_email", "me@example.com")
     state = {"payload": FIX}
     transport = httpx.MockTransport(lambda request: httpx.Response(200, json=state["payload"]))
     async with maker() as db:  # a stale job from an earlier run, never seen again
@@ -147,3 +150,16 @@ async def test_run_ingest_skips_usajobs_without_key(maker, monkeypatch):
     monkeypatch.setattr(runner, "ingest_usajobs", boom)
     out = await runner.run_ingest(maker, ats="usajobs", jobspy=False)
     assert out["companies"] == 0
+
+
+async def test_key_without_email_is_disabled(monkeypatch):
+    s = get_settings()
+    monkeypatch.setattr(s, "usajobs_api_key", "KEY")
+    monkeypatch.setattr(s, "usajobs_email", "")
+    assert not s.usajobs_enabled
+
+    def boom(request):
+        raise AssertionError("no request expected")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(boom)) as c:
+        assert await usajobs.fetch_usajobs(c) == []

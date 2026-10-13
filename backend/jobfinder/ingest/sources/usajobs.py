@@ -148,11 +148,13 @@ async def _search(
 
 
 async def fetch_usajobs(client: httpx.AsyncClient, locations: list[str | None] | None = None) -> list[JobPosting]:
-    """No-op without an API key. One failing location never loses the others; if every query fails, the first error is raised."""
+    """No-op unless both the API key and contact email are set. One failing location never loses the others; if every query fails, the first error is raised."""
     s = get_settings()
-    if not s.usajobs_api_key:
+    if not s.usajobs_enabled:
+        if s.usajobs_api_key or s.usajobs_email:
+            log.warning("usajobs needs both USAJOBS_API_KEY and USAJOBS_EMAIL; source disabled")
         return []
-    headers = {"Host": HOST, "User-Agent": s.usajobs_email or "jobfinder", "Authorization-Key": s.usajobs_api_key}
+    headers = {"Host": HOST, "User-Agent": s.usajobs_email, "Authorization-Key": s.usajobs_api_key}
     postings: list[JobPosting] = []
     errors: list[Exception] = []
     for i, loc in enumerate(locations or [None]):
