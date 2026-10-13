@@ -221,3 +221,27 @@ async def test_cli_add_list_and_reset_link(engine, monkeypatch, capsys):
     assert await cli.reset_link_cmd(ns) == 0
     assert "/reset-password#token=" in capsys.readouterr().out
     assert await cli.reset_link_cmd(argparse.Namespace(email="no@x.com")) == 1
+
+
+def test_database_url_is_built_from_parts_with_an_encoded_password(monkeypatch):
+    from urllib.parse import quote, urlsplit
+
+    for k in ("DATABASE_URL", "POSTGRES_HOST", "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_DB", "POSTGRES_PORT"):
+        monkeypatch.delenv(k, raising=False)
+    pw = "p@ss/w%rd:#?"
+    monkeypatch.setenv("POSTGRES_HOST", "db")
+    monkeypatch.setenv("POSTGRES_USER", "jobfinder")
+    monkeypatch.setenv("POSTGRES_PASSWORD", pw)
+    monkeypatch.setenv("POSTGRES_DB", "jobs")
+    url = Settings(secret_key="k" * 40, _env_file=None).database_url
+    assert url == f"postgresql+asyncpg://jobfinder:{quote(pw, safe='')}@db:5432/jobs"
+    parts = urlsplit(url)
+    assert parts.hostname == "db" and parts.port == 5432 and parts.path == "/jobs"
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://x:y@h:1/z")  # an explicit URL wins
+    assert Settings(secret_key="k" * 40, _env_file=None).database_url == "postgresql+asyncpg://x:y@h:1/z"
+
+
+def test_database_url_default_without_postgres_host(monkeypatch):
+    for k in ("DATABASE_URL", "POSTGRES_HOST"):
+        monkeypatch.delenv(k, raising=False)
+    assert "localhost:5432" in Settings(secret_key="k" * 40, _env_file=None).database_url

@@ -7,7 +7,7 @@ ENV PYTHONUNBUFFERED=1 \
     UV_LINK_MODE=copy \
     UV_PROJECT_ENVIRONMENT=/usr/local
 
-COPY --from=ghcr.io/astral-sh/uv:0.5 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.12.23 /uv /uvx /bin/
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libpq5 \
@@ -17,12 +17,12 @@ RUN useradd -m -u 10001 jobfinder
 WORKDIR /app
 
 COPY pyproject.toml uv.lock* ./
-RUN uv sync --no-dev --no-install-project
+RUN uv sync --locked --no-dev --no-install-project
 
 COPY jobfinder ./jobfinder
 COPY alembic.ini ./
 COPY alembic ./alembic
-RUN uv sync --no-dev
+RUN uv sync --locked --no-dev
 
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN mkdir -p /data/store /data/claude \

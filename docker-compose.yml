@@ -26,7 +26,11 @@ services:
       - path: ./backend/.env
         required: false
     environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      # Parts, not a URL: the app percent-encodes the password (a URL built here would break on @ / %).
+      POSTGRES_HOST: db
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
       STORE_DIR: /data/store
       CLAUDE_AUTH_DIR: /data/claude
       FORWARDED_ALLOW_IPS: "*"  # trust Caddy's X-Forwarded-For (only the web container and localhost can reach the api)
@@ -52,7 +56,11 @@ services:
       - path: ./backend/.env
         required: false
     environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      # Parts, not a URL: the app percent-encodes the password (a URL built here would break on @ / %).
+      POSTGRES_HOST: db
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
       STORE_DIR: /data/store
       CLAUDE_AUTH_DIR: /data/claude
     volumes:
@@ -92,7 +100,7 @@ services:
     volumes:
       - dkim:/etc/opendkim/keys
 
-  # Dev-only SMTP sink: `docker compose --profile dev up`, UI at http://localhost:8025
+  # Dev-only SMTP sink, on by default via docker-compose.dev.yml (profile "dev" otherwise). UI at http://localhost:8025
   mailpit:
     image: axllent/mailpit
     profiles: ["dev"]

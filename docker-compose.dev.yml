@@ -1,0 +1,34 @@
+# Development override: plain HTTP on localhost, a dev mail inbox, no domain or certificates.
+# Enabled by COMPOSE_FILE=docker-compose.yml:docker-compose.dev.yml in the root .env (see .env.example),
+# so a plain `docker compose up --build` works. Production uses docker-compose.prod.yml instead.
+services:
+  web:
+    environment:
+      SITE_ADDRESS: ":80"   # plain HTTP, whatever SITE_ADDRESS says in .env
+
+  api:
+    environment:
+      PUBLIC_BASE_URL: http://localhost:${WEB_PORT:-8180}   # http, so the session cookie is not Secure
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+      SMTP_STARTTLS: "false"
+      SMTP_USER: ""
+      SMTP_PASSWORD: ""
+
+  worker:
+    environment:
+      PUBLIC_BASE_URL: http://localhost:${WEB_PORT:-8180}
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+      SMTP_STARTTLS: "false"
+      SMTP_USER: ""
+      SMTP_PASSWORD: ""
+
+  # Mail goes to Mailpit in dev, so the real relay (postfix) stays off.
+  smtp:
+    profiles: ["prod"]
+
+  # Dev SMTP sink, always on in dev. UI at http://localhost:8025
+  mailpit:
+    profiles: !reset []
+    depends_on: !reset []

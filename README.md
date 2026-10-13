@@ -22,18 +22,23 @@ Two ways to run the same compose stack: this one on your own machine (plain HTTP
 
 | | Development | Production |
 |---|---|---|
-| Command | `docker compose --profile dev up --build` | `docker compose up -d --build` |
+| Command | `docker compose up --build` | `docker compose up -d --build` |
 | URL | http://localhost:8180 | `https://<SITE_ADDRESS>` (ports 80/443) |
 | TLS | none | Caddy gets and renews a Let's Encrypt certificate |
 | Mail | Mailpit inbox at http://localhost:8025 | `smtp` postfix service relaying through Gmail/Outlook |
-| Config | root `.env` + `backend/.env` | the same, plus `SITE_ADDRESS` and `COMPOSE_FILE` |
+| Config | root `.env` + `backend/.env`, `COMPOSE_FILE=docker-compose.yml:docker-compose.dev.yml` | the same, plus `SITE_ADDRESS` and the prod `COMPOSE_FILE` |
 | Restarts, backups | no | `restart: unless-stopped`, `deploy/backup.sh` |
 
 ```sh
 cp .env.example .env              # set POSTGRES_PASSWORD
 cp backend/.env.example backend/.env   # set SECRET_KEY (required) and ADMIN_EMAILS
-docker compose --profile dev up --build
+docker compose up --build
 ```
+
+`.env.example` already selects development (`COMPOSE_FILE=docker-compose.yml:docker-compose.dev.yml`): plain
+HTTP, Mailpit instead of the postfix relay, and no domain or certificate, whatever `SITE_ADDRESS` is set to.
+Ports are bound to `127.0.0.1`. On a remote machine, tunnel them to browse from your laptop:
+`ssh -L 8180:localhost:8180 -L 8025:localhost:8025 user@server`, then open http://localhost:8180.
 
 - Web app: http://localhost:8180
 - API: http://localhost:8100 (`/healthz`, `/docs`)
@@ -86,8 +91,7 @@ their matches. Question links are signed and need no login; every email has a on
 is sent when there's nothing to say. Try it without real email:
 
 ```sh
-docker compose --profile dev up -d mailpit        # inbox at http://localhost:8025
-# put SMTP_HOST=mailpit SMTP_PORT=1025 in backend/.env, restart api + worker
+docker compose up -d                              # development mode already sends mail to Mailpit: http://localhost:8025
 docker compose exec worker python -m jobfinder.cli daily --email you@example.com --preview
 ```
 
@@ -132,7 +136,7 @@ gets its own Let's Encrypt certificate. `docker-compose.prod.yml` adds the publi
    production override), and the mail relay settings (`ALLOWED_SENDER_DOMAINS`, `RELAYHOST*`).
 4. `backend/.env`: `SECRET_KEY`, `ADMIN_EMAILS`, `PUBLIC_BASE_URL=https://jobs.example.com`,
    `SMTP_HOST=smtp`, `SMTP_PORT=587`, a real `EMAIL_FROM`.
-5. `docker compose up -d --build` (no `--profile dev`, so no Mailpit). Every service restarts after a reboot.
+5. `docker compose up -d --build` (the prod `COMPOSE_FILE` leaves out the dev override, so no Mailpit). Every service restarts after a reboot.
 6. Sign in as an admin, connect the AI on **AI setup**, then add users with `cli add-user` (see Access).
 7. Set up the nightly backup below.
 

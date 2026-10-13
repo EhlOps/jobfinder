@@ -1,4 +1,6 @@
 from functools import lru_cache
+from typing import Any
+from urllib.parse import quote
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -8,6 +10,13 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     database_url: str = "postgresql+asyncpg://jobfinder:change-me@localhost:5432/jobfinder"
+    # Docker passes the parts instead of a URL: a password with @, / or % must be percent-encoded in a
+    # URL, which compose interpolation cannot do. An explicit DATABASE_URL always wins.
+    postgres_host: str = ""
+    postgres_port: int = 5432
+    postgres_user: str = ""
+    postgres_password: str = ""
+    postgres_db: str = ""
     secret_key: str = ""  # required: signs email links; see _check_secret_key
     public_base_url: str = "http://localhost:8180"
     store_dir: str = "./store"  # document file store (docker volume in compose)
@@ -61,6 +70,19 @@ class Settings(BaseSettings):
     login_failures_per_ip: int = 30
     login_failure_window_minutes: int = 15
     preview_emails_per_hour: int = 5
+
+    @model_validator(mode="before")
+    @classmethod
+    def _database_url_from_parts(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        keys = {str(k).lower(): k for k in data}
+        if "database_url" in keys or not data.get(keys.get("postgres_host", ""), ""):
+            return data
+        get = lambda name, default="": data.get(keys.get(name, ""), default)
+        auth = quote(str(get("postgres_user")), safe="") + ":" + quote(str(get("postgres_password")), safe="")
+        host, port, db = get("postgres_host"), get("postgres_port", 5432), get("postgres_db")
+        return {**data, "database_url": f"postgresql+asyncpg://{auth}@{host}:{port}/{db}"}
 
     @model_validator(mode="after")
     def _check_secret_key(self) -> "Settings":
