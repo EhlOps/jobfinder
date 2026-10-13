@@ -1,11 +1,11 @@
 import os
 
+import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from jobfinder.ai import credentials
 from jobfinder.ai.claude_code import AIError
-from jobfinder.config import get_settings
-from jobfinder.models import AICall
+from jobfinder.models import AICall, User
 from jobfinder.worker import run_task
 
 TOKEN = "sk-ant-oat01-" + "z" * 40
@@ -21,21 +21,25 @@ class FakeAI:
         return True
 
 
-async def test_admin_only_via_admin_emails(client, make_account, monkeypatch):
+async def _set_admin(engine, email, value):
+    async with async_sessionmaker(engine)() as db:
+        await db.execute(sa.update(User).where(User.email == email).values(is_admin=value))
+        await db.commit()
+
+
+async def test_admin_only_via_db_flag(client, make_account, engine):
     await make_account("first@x.com")
-    assert (await client.get("/api/auth/me")).json()["is_admin"] is False  # being first no longer matters
+    assert (await client.get("/api/auth/me")).json()["is_admin"] is False  # being first or logging in never grants it
     assert (await client.get("/api/ai/status")).status_code == 200
     assert (await client.put("/api/admin/ai/token", json={"token": TOKEN})).status_code == 403
-    await client.post("/api/auth/logout")
-    monkeypatch.setattr(get_settings(), "admin_emails", "Helper@X.com, other@x.com")
-    await make_account("helper@x.com")
+    await _set_admin(engine, "first@x.com", True)  # what grant-admin does; no re-login needed
     assert (await client.get("/api/auth/me")).json()["is_admin"] is True
 
 
-async def test_admin_revoked_when_removed_from_admin_emails(client, make_account, monkeypatch):
+async def test_admin_revoked_when_flag_cleared(client, make_account, engine):
     await make_account("owner@x.com", admin=True)
     assert (await client.get("/api/auth/me")).json()["is_admin"] is True
-    monkeypatch.setattr(get_settings(), "admin_emails", "")
+    await _set_admin(engine, "owner@x.com", False)
     assert (await client.get("/api/auth/me")).json()["is_admin"] is False
     assert (await client.post("/api/admin/ai/check")).status_code == 403
 

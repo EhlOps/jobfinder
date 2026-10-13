@@ -217,7 +217,9 @@ async def test_last_seen_is_written_at_most_every_ten_minutes(authed, engine):
 
 async def test_admin_schedule_endpoint(authed, engine, maker, monkeypatch):
     assert (await authed.get("/api/admin/schedule")).status_code == 403
-    monkeypatch.setattr(get_settings(), "admin_emails", "sam@example.com")
+    async with maker() as db:
+        await db.execute(sa.update(User).where(User.email == "sam@example.com").values(is_admin=True))
+        await db.commit()
     r = await authed.get("/api/admin/schedule")
     assert r.status_code == 200
     body = r.json()

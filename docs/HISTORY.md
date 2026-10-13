@@ -1,5 +1,13 @@
 # History
 
+## 2026-10-13: admin managed from the CLI
+
+- `users.is_admin` is now the only source of admin; `ADMIN_EMAILS` is retired. New CLI commands `grant-admin` and
+  `revoke-admin` (`--email`) take effect on the user's next request. Migration 0018 copies any emails still in
+  `ADMIN_EMAILS` into the flag once and makes the column NOT NULL, default false.
+- Backend tests pass (622). `conftest.py` pins `PUBLIC_BASE_URL=http://test`, because an https value in
+  `backend/.env` makes the test session cookie `Secure` and about 78 tests fail with 401.
+
 ## 2026-10-13: production on jobs.ehlops.com, Mailpit removed
 
 ### Goal

@@ -27,7 +27,6 @@ class Settings(BaseSettings):
     claude_scratch_dir: str = "/tmp"
     claude_code_oauth_token: str = ""  # fallback; the admin page stores a token under claude_auth_dir
     claude_auth_dir: str = "./claude-auth"  # credentials volume (compose: /data/claude), shared by api + worker
-    admin_emails: str = ""  # comma-separated; the only way to be admin
     ai_max_concurrency: int = 2
 
     smtp_host: str = "localhost"

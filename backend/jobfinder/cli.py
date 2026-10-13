@@ -139,19 +139,46 @@ async def reset_link_cmd(args: argparse.Namespace) -> int:
     return 0
 
 
+async def set_admin(args: argparse.Namespace, value: bool) -> int:
+    import sqlalchemy as sa
+
+    from jobfinder.db import SessionLocal
+    from jobfinder.models import User
+
+    verb = "grant-admin" if value else "revoke-admin"
+    if not args.email:
+        print(f"Usage: {verb} --email x@y.com")
+        return 2
+    email = args.email.strip().lower()
+    async with SessionLocal() as db:
+        user = (await db.scalars(sa.select(User).where(User.email == email))).first()
+        if not user:
+            print(f"No user {email}")
+            return 1
+        if user.is_admin == value:
+            print(f"{email} is already {'' if value else 'not '}an admin")
+            return 0
+        user.is_admin = value
+        await db.commit()
+        remaining = await db.scalar(sa.select(sa.func.count()).select_from(User).where(User.is_admin.is_(True)))
+    print(f"{'Granted' if value else 'Revoked'} admin for {email} (takes effect on their next page load)")
+    if not remaining:
+        print("Warning: there are no admins left. Re-grant with: grant-admin --email ...")
+    return 0
+
+
 async def list_users() -> int:
     import sqlalchemy as sa
 
-    from jobfinder.auth.security import is_admin_email
     from jobfinder.db import SessionLocal
     from jobfinder.models import User
 
     async with SessionLocal() as db:
         for u in (await db.scalars(sa.select(User).order_by(User.id))).all():
             state = "active" if u.password_hash else "pending"
-            print(f"{u.id:<4} {u.email:<40} {state:<8} {'admin' if is_admin_email(u.email) else '':<6} "
+            print(f"{u.id:<4} {u.email:<40} {state:<8} {'admin' if u.is_admin else '':<6} "
                   f"created={u.created_at:%Y-%m-%d} activated={u.activated_at:%Y-%m-%d}" if u.activated_at else
-                  f"{u.id:<4} {u.email:<40} {state:<8} {'admin' if is_admin_email(u.email) else '':<6} created={u.created_at:%Y-%m-%d}")
+                  f"{u.id:<4} {u.email:<40} {state:<8} {'admin' if u.is_admin else '':<6} created={u.created_at:%Y-%m-%d}")
     return 0
 
 
@@ -176,11 +203,11 @@ async def add_board_cmd(args: argparse.Namespace) -> int:
 
 def main() -> None:
     parser = argparse.ArgumentParser(prog="jobfinder.cli")
-    parser.add_argument("command", choices=["ai-check", "ingest", "daily", "questions", "test-email", "add-user", "reset-link", "list-users", "add-board"])
+    parser.add_argument("command", choices=["ai-check", "ingest", "daily", "questions", "test-email", "add-user", "reset-link", "list-users", "add-board", "grant-admin", "revoke-admin"])
     parser.add_argument("--ats", choices=["greenhouse", "lever", "ashby", "smartrecruiters", "workable", "recruitee", "bamboohr", "jobspy"], help="ingest/add-board: ATS")
     parser.add_argument("--company", help="ingest: only this company slug")
     parser.add_argument("--jobspy", action="store_true", help="ingest: also scrape LinkedIn/Indeed (needs the jobspy extra)")
-    parser.add_argument("--email", help="daily/questions: only this user's email address")
+    parser.add_argument("--email", help="daily/questions: only this user; add-user/reset-link/grant-admin/revoke-admin: the user")
     parser.add_argument("--preview", action="store_true", help="daily --email: send without marking anything as sent")
     parser.add_argument("--to", help="test-email: recipient")
     parser.add_argument("--slug", help="add-board: board slug")
@@ -191,6 +218,7 @@ def main() -> None:
         "ai-check": lambda: ai_check(), "ingest": lambda: ingest(args), "daily": lambda: daily(args),
         "questions": lambda: collect(args), "test-email": lambda: test_email(args),
         "add-user": lambda: add_user(args), "reset-link": lambda: reset_link_cmd(args), "list-users": lambda: list_users(), "add-board": lambda: add_board_cmd(args),
+        "grant-admin": lambda: set_admin(args, True), "revoke-admin": lambda: set_admin(args, False),
     }
     raise SystemExit(asyncio.run(handlers[args.command]()))
 
