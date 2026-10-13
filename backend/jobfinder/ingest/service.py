@@ -24,6 +24,7 @@ from jobfinder.models import Company, Job, Profile, User
 log = logging.getLogger("jobfinder.ingest")
 
 COMPANIES_YAML = Path(__file__).parent / "companies.yaml"
+COMPANIES_DIR = Path(__file__).parent / "companies.d"
 VALID_SIZES = {"startup", "mid", "large"}
 UPSERT_CHUNK = 200
 # An empty response from a board that had more than this many active jobs is treated as an
@@ -49,19 +50,43 @@ class IngestStats:
 
 
 # ── companies ─────────────────────────────────────────────────────────────
-def load_seed() -> list[dict]:
-    return yaml.safe_load(COMPANIES_YAML.read_text())["companies"]
+def load_seed(files: list[Path] | None = None) -> list[dict]:
+    """Seed rows from companies.yaml plus companies.d/*.yaml (sorted). First (ats, slug) wins."""
+    files = seed_files() if files is None else files
+    out: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+    for f in files:
+        for e in (yaml.safe_load(f.read_text()) or {}).get("companies") or []:
+            if not isinstance(e, dict) or not all(e.get(k) for k in ("name", "ats", "slug")):
+                log.warning("malformed seed company in %s: %r; skipping", f.name, e)
+                continue
+            if e["ats"] not in ATS_FETCHERS:
+                log.warning("unknown ATS in seed row in %s: %r; skipping", f.name, e)
+                continue
+            e["slug"] = str(e["slug"])
+            key = (e["ats"], e["slug"])
+            if key in seen:
+                log.warning("duplicate seed company %s/%s in %s; skipping", *key, f.name)
+                continue
+            seen.add(key)
+            out.append(e)
+    return out
+
+
+def seed_files() -> list[Path]:
+    return [COMPANIES_YAML, *sorted(COMPANIES_DIR.glob("*.yaml"))]
 
 
 async def sync_companies(db: AsyncSession, entries: list[dict] | None = None) -> int:
     """Upsert the seed list by (ats, slug). Returns the number of rows touched."""
     entries = load_seed() if entries is None else entries
-    for e in entries:
-        stmt = insert(Company).values(
-            name=e["name"], ats=e["ats"], slug=e["slug"], prestige_tier=e.get("prestige", 3),
-            size=e.get("size", "mid"), industry=e.get("industry", ""),
-            sponsors_visas=e.get("sponsors_visas"),
-        )
+    for i in range(0, len(entries), 200):
+        stmt = insert(Company).values([
+            {"name": e["name"], "ats": e["ats"], "slug": e["slug"], "prestige_tier": e.get("prestige", 3),
+             "size": e.get("size", "mid"), "industry": e.get("industry", ""),
+             "sponsors_visas": e.get("sponsors_visas")}
+            for e in entries[i:i + 200]
+        ])
         await db.execute(
             stmt.on_conflict_do_update(
                 constraint="uq_company_ats_slug",

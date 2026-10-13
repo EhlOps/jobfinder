@@ -1,6 +1,10 @@
 # Companies whose public ATS boards we poll. Every slug below was checked against the live API.
 # prestige: 1 (unknown) .. 5 (top-tier / hardest to get into). size: startup (<200) | mid | large.
 # sponsors_visas: true when the company is known to sponsor work visas; omit when unknown.
+# More rows live in companies.d/*.yaml (one file per sector); same row format, de-duplicated on (ats, slug).
+# industry tags: aerospace, space, defense, semiconductors, hardware, robotics, automotive, energy, climate,
+# chemicals, materials, biotech, medtech, manufacturing, construction, consulting, ai, consumer, data, dev,
+# fintech, infrastructure, media, mobility, productivity, travel.
 # To add a company: find its board URL (boards.greenhouse.io/<slug>, jobs.lever.co/<slug>,
 # jobs.ashbyhq.com/<slug>) and add a row; `python -m jobfinder.cli ingest` picks it up.
 companies:

@@ -4,11 +4,14 @@ from pathlib import Path
 import httpx
 import pytest
 import sqlalchemy as sa
+import yaml
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from jobfinder.ingest import runner, service
 from jobfinder.ingest.base import JobPosting
+from jobfinder.ingest.sources import ATS_FETCHERS
 from jobfinder.ingest.sources.ashby import parse_ashby
+from jobfinder.ingest.validate import SLUG_RE
 from jobfinder.models import Company, Job, Profile, User
 
 FIX = Path(__file__).parent / "fixtures"
@@ -36,15 +39,37 @@ async def active_ids(db):
 
 
 # ── seed list ────────────────────────────────────────────────────────────
-def test_seed_yaml_is_valid():
-    entries = service.load_seed()
-    assert len(entries) >= 20
-    seen = set()
-    for e in entries:
-        assert e["ats"] in ("greenhouse", "lever", "ashby"), e
-        assert 1 <= e["prestige"] <= 5 and e["size"] in service.VALID_SIZES, e
-        assert e["slug"] and e["name"] and (e["ats"], e["slug"]) not in seen
-        seen.add((e["ats"], e["slug"]))
+def test_every_seed_row_is_valid():
+    files = service.seed_files()
+    assert files[0] == service.COMPANIES_YAML
+    total = 0
+    for f in files:
+        seen = set()
+        for e in (yaml.safe_load(f.read_text()) or {}).get("companies") or []:
+            assert e.get("name") and e.get("ats") and e.get("slug"), (f.name, e)
+            assert e["ats"] in ATS_FETCHERS, (f.name, e)
+            assert isinstance(e["slug"], str) and SLUG_RE.match(e["slug"]), (f.name, e)
+            if "prestige" in e:
+                assert 1 <= e["prestige"] <= 5, (f.name, e)
+            if "size" in e:
+                assert e["size"] in service.VALID_SIZES, (f.name, e)
+            assert (e["ats"], e["slug"]) not in seen, (f.name, e)
+            seen.add((e["ats"], e["slug"]))
+            total += 1
+    assert total >= 20
+    assert len(service.load_seed()) <= total  # cross-file dupes are skipped, never errors
+
+
+def test_load_seed_merges_files_and_dedupes(tmp_path, caplog):
+    a, b, c = tmp_path / "a.yaml", tmp_path / "b.yaml", tmp_path / "c.yaml"
+    a.write_text("companies:\n  - {name: A, ats: greenhouse, slug: a}\n  - {name: B, ats: lever, slug: b}\n")
+    b.write_text("companies:\n  - {name: A2, ats: greenhouse, slug: a}\n  - {name: C, ats: ashby, slug: a}\n")
+    c.write_text("companies:\n  - {name: X, ats: nope, slug: x}\n  - {name: Y, ats: lever}\n")
+    with caplog.at_level("WARNING", logger="jobfinder.ingest"):
+        rows = service.load_seed([a, b, c])
+    assert [(r["name"], r["ats"], r["slug"]) for r in rows] == [
+        ("A", "greenhouse", "a"), ("B", "lever", "b"), ("C", "ashby", "a")]
+    assert "duplicate seed company greenhouse/a" in caplog.text
 
 
 async def test_sync_companies_is_idempotent_and_updates(maker):
@@ -273,7 +298,7 @@ async def test_run_ingest_summary(maker, monkeypatch):
     monkeypatch.setitem(service.ATS_FETCHERS, "lever", bad)
     monkeypatch.setitem(service.ATS_FETCHERS, "ashby", ok)
     out = await runner.run_ingest(maker, jobspy=False)
-    assert out["companies"] == len(service.load_seed()) and out["new"] > 0 and set(out["errors"]) == {"Palantir", "Spotify"}
+    assert out["companies"] == len(service.load_seed()) and out["new"] > 0 and set(out["errors"]) == {e["name"] for e in service.load_seed() if e["ats"] == "lever"}
 
 
 async def test_expire_stale_for_jobspy(maker):

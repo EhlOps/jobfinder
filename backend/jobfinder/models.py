@@ -149,7 +149,7 @@ class Company(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(200))
-    ats: Mapped[str] = mapped_column(String(32))  # greenhouse|lever|ashby
+    ats: Mapped[str] = mapped_column(String(32))  # see ingest.sources.ATS_FETCHERS
     slug: Mapped[str] = mapped_column(String(200))
     prestige_tier: Mapped[int] = mapped_column(Integer, default=3)  # 1..5
     size: Mapped[str] = mapped_column(String(16), default="mid")  # startup|mid|large
@@ -175,7 +175,7 @@ class Job(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    source: Mapped[str] = mapped_column(String(32))  # greenhouse|lever|ashby|jobspy
+    source: Mapped[str] = mapped_column(String(32))  # an ATS_FETCHERS key, or jobspy
     external_id: Mapped[str] = mapped_column(String(200))
     company_id: Mapped[int | None] = mapped_column(
         ForeignKey("companies.id", ondelete="SET NULL"), nullable=True, index=True

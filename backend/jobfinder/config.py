@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     digest_max_matches: int = 10
     questions_per_email: int = 6
     max_open_questions: int = 15  # stop collecting new questions while this many are unanswered
-    ingest_concurrency: int = 5
+    ingest_concurrency: int = 10
     ingest_max_consecutive_failures: int = 5  # a board failing this many runs in a row is disabled
     ingest_max_discovered_boards_per_run: int = 100  # cap on discovered boards fetched per run; seed boards always run; 0 = no cap
     match_daily_llm_budget: int = 25  # LLM-scored jobs per user per rolling 24h
