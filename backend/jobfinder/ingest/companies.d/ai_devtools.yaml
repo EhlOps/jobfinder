@@ -1,0 +1,87 @@
+# AI/ML, dev tools, cloud/infrastructure, data and security employers (plus a few robotics/defense/autonomy).
+# Every (ats, slug) was verified against the live API with validate_board; row format as in ../companies.yaml.
+# sponsors_visas is omitted throughout: no per-company evidence was collected for this batch.
+companies:
+  - {name: Scale AI, ats: greenhouse, slug: scaleai, prestige: 4, size: large, industry: ai}
+  - {name: Vercel, ats: greenhouse, slug: vercel, prestige: 4, size: mid, industry: dev tools}
+  - {name: Elastic, ats: greenhouse, slug: elastic, prestige: 3, size: large, industry: data}
+  - {name: Samsara, ats: greenhouse, slug: samsara, prestige: 4, size: large, industry: infrastructure}
+  - {name: Cockroach Labs, ats: greenhouse, slug: cockroachlabs, prestige: 3, size: mid, industry: data}
+  - {name: Fivetran, ats: greenhouse, slug: fivetran, prestige: 3, size: mid, industry: data}
+  - {name: PagerDuty, ats: greenhouse, slug: pagerduty, prestige: 3, size: mid, industry: dev tools}
+  - {name: New Relic, ats: greenhouse, slug: newrelic, prestige: 3, size: large, industry: infrastructure}
+  - {name: Okta, ats: greenhouse, slug: okta, prestige: 3, size: large, industry: security}
+  - {name: Tailscale, ats: greenhouse, slug: tailscale, prestige: 3, size: mid, industry: infrastructure}
+  - {name: Grafana Labs, ats: greenhouse, slug: grafanalabs, prestige: 4, size: mid, industry: infrastructure}
+  - {name: Honeycomb, ats: greenhouse, slug: honeycomb, prestige: 3, size: startup, industry: infrastructure}
+  - {name: LaunchDarkly, ats: greenhouse, slug: launchdarkly, prestige: 3, size: mid, industry: dev tools}
+  - {name: Mixpanel, ats: greenhouse, slug: mixpanel, prestige: 3, size: mid, industry: data}
+  - {name: Sourcegraph, ats: greenhouse, slug: sourcegraph91, prestige: 3, size: startup, industry: dev tools}
+  - {name: CircleCI, ats: greenhouse, slug: circleci, prestige: 3, size: mid, industry: dev tools}
+  - {name: JFrog, ats: greenhouse, slug: jfrog, prestige: 3, size: large, industry: dev tools}
+  - {name: CoreWeave, ats: greenhouse, slug: coreweave, prestige: 4, size: large, industry: infrastructure}
+  - {name: Together AI, ats: greenhouse, slug: togetherai, prestige: 3, size: startup, industry: ai}
+  - {name: Airtable, ats: greenhouse, slug: airtable, prestige: 3, size: mid, industry: productivity}
+  - {name: Algolia, ats: greenhouse, slug: algolia, prestige: 3, size: mid, industry: dev tools}
+  - {name: PlanetScale, ats: greenhouse, slug: planetscale, prestige: 3, size: startup, industry: data}
+  - {name: Fastly, ats: greenhouse, slug: fastly, prestige: 3, size: mid, industry: infrastructure}
+  - {name: DigitalOcean, ats: greenhouse, slug: digitalocean98, prestige: 3, size: large, industry: infrastructure}
+  - {name: Zscaler, ats: greenhouse, slug: zscaler, prestige: 3, size: large, industry: security}
+  - {name: Rubrik, ats: greenhouse, slug: rubrik, prestige: 3, size: large, industry: security}
+  - {name: Wiz, ats: greenhouse, slug: wizinc, prestige: 4, size: mid, industry: security}
+  - {name: Tanium, ats: greenhouse, slug: tanium, prestige: 3, size: mid, industry: security}
+  - {name: Abnormal Security, ats: greenhouse, slug: abnormalsecurity, prestige: 3, size: mid, industry: security}
+  - {name: Sumo Logic, ats: greenhouse, slug: sumologic, prestige: 3, size: mid, industry: infrastructure}
+  - {name: Nuro, ats: greenhouse, slug: nuro, prestige: 4, size: mid, industry: robotics}
+  - {name: Glean, ats: greenhouse, slug: gleanwork, prestige: 4, size: mid, industry: ai}
+  - {name: xAI, ats: greenhouse, slug: xai, prestige: 4, size: mid, industry: ai}
+  - {name: Waymo, ats: greenhouse, slug: waymo, prestige: 5, size: large, industry: robotics}
+  - {name: Stability AI, ats: greenhouse, slug: stabilityai, prestige: 3, size: mid, industry: ai}
+  - {name: SambaNova, ats: greenhouse, slug: sambanovasystems, prestige: 3, size: mid, industry: semiconductors}
+  - {name: Lambda, ats: ashby, slug: lambda, prestige: 3, size: mid, industry: ai}
+  - {name: Cohere, ats: ashby, slug: cohere, prestige: 4, size: mid, industry: ai}
+  - {name: Replit, ats: ashby, slug: replit, prestige: 3, size: mid, industry: dev tools}
+  - {name: Modal, ats: ashby, slug: modal, prestige: 3, size: startup, industry: ai}
+  - {name: Harvey, ats: ashby, slug: harvey, prestige: 3, size: mid, industry: ai}
+  - {name: Sierra, ats: ashby, slug: sierra, prestige: 4, size: mid, industry: ai}
+  - {name: Decagon, ats: ashby, slug: decagon, prestige: 3, size: startup, industry: ai}
+  - {name: ElevenLabs, ats: ashby, slug: elevenlabs, prestige: 4, size: mid, industry: ai}
+  - {name: Runway, ats: ashby, slug: runway, prestige: 3, size: mid, industry: ai}
+  - {name: Hugging Face, ats: workable, slug: huggingface, prestige: 4, size: mid, industry: ai}
+  - {name: Neon, ats: ashby, slug: neon, prestige: 3, size: startup, industry: data}
+  - {name: Render, ats: ashby, slug: render, prestige: 3, size: startup, industry: infrastructure}
+  - {name: Clerk, ats: ashby, slug: clerk, prestige: 3, size: startup, industry: dev tools}
+  - {name: Resend, ats: ashby, slug: resend, prestige: 3, size: startup, industry: dev tools}
+  - {name: PostHog, ats: ashby, slug: posthog, prestige: 3, size: startup, industry: dev tools}
+  - {name: Warp, ats: ashby, slug: warp, prestige: 3, size: startup, industry: dev tools}
+  - {name: Mercor, ats: ashby, slug: mercor, prestige: 3, size: startup, industry: ai}
+  - {name: Writer, ats: ashby, slug: writer, prestige: 3, size: mid, industry: ai}
+  - {name: Cognition, ats: ashby, slug: cognition, prestige: 4, size: startup, industry: ai}
+  - {name: Vanta, ats: ashby, slug: vanta, prestige: 3, size: mid, industry: security}
+  - {name: Drata, ats: ashby, slug: drata, prestige: 3, size: mid, industry: security}
+  - {name: Socket, ats: ashby, slug: socket, prestige: 3, size: startup, industry: security}
+  - {name: Semgrep, ats: ashby, slug: semgrep, prestige: 3, size: startup, industry: security}
+  - {name: Crusoe, ats: ashby, slug: crusoe, prestige: 3, size: mid, industry: infrastructure}
+  - {name: Hex, ats: ashby, slug: hex, prestige: 3, size: startup, industry: data}
+  - {name: Mintlify, ats: ashby, slug: mintlify, prestige: 2, size: startup, industry: dev tools}
+  - {name: Pinecone, ats: ashby, slug: pinecone, prestige: 3, size: startup, industry: data}
+  - {name: Weaviate, ats: ashby, slug: weaviate, prestige: 3, size: startup, industry: data}
+  - {name: LangChain, ats: ashby, slug: langchain, prestige: 3, size: startup, industry: ai}
+  - {name: Cribl, ats: greenhouse, slug: cribl, prestige: 3, size: mid, industry: data}
+  - {name: Netlify, ats: greenhouse, slug: netlify, prestige: 3, size: mid, industry: dev tools}
+  - {name: Zapier, ats: ashby, slug: zapier, prestige: 3, size: mid, industry: productivity}
+  - {name: Pure Storage, ats: greenhouse, slug: purestorage, prestige: 3, size: large, industry: infrastructure}
+  - {name: Torq, ats: greenhouse, slug: torq, prestige: 3, size: mid, industry: security}
+  - {name: Poolside, ats: ashby, slug: poolside, prestige: 3, size: mid, industry: ai}
+  - {name: Thinking Machines, ats: ashby, slug: thinkingmachines, prestige: 4, size: mid, industry: ai}
+  - {name: Physical Intelligence, ats: ashby, slug: physicalintelligence, prestige: 4, size: startup, industry: robotics}
+  - {name: Anduril, ats: greenhouse, slug: andurilindustries, prestige: 5, size: large, industry: defense}
+  - {name: Zoox, ats: lever, slug: zoox, prestige: 4, size: large, industry: robotics}
+  - {name: Veracode, ats: greenhouse, slug: veracode, prestige: 2, size: mid, industry: security}
+  - {name: Contentful, ats: greenhouse, slug: contentful, prestige: 3, size: mid, industry: dev tools}
+  - {name: Starburst, ats: greenhouse, slug: starburst, prestige: 3, size: mid, industry: data}
+  - {name: Dremio, ats: greenhouse, slug: dremio, prestige: 3, size: mid, industry: data}
+  - {name: Imply, ats: greenhouse, slug: imply, prestige: 2, size: mid, industry: data}
+  - {name: SingleStore, ats: greenhouse, slug: singlestore, prestige: 3, size: mid, industry: data}
+  - {name: Harness, ats: greenhouse, slug: harnessinc, prestige: 3, size: mid, industry: dev tools}
+  - {name: Shield AI, ats: lever, slug: shieldai, prestige: 4, size: large, industry: defense}
