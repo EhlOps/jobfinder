@@ -1,0 +1,100 @@
+# Seed boards: EV / automotive, autonomy, energy, climate, nuclear & fusion, batteries, grid, mobility, advanced manufacturing.
+# Every (ats, slug) below was checked against the live ATS API and returned at least one posting.
+# Row format matches ../companies.yaml. sponsors_visas is omitted unless there is evidence.
+companies:
+  # ── EV / automotive / autonomy ──────────────────────────────
+  - {name: Lucid Motors,      ats: greenhouse, slug: lucidmotors,     prestige: 4, size: large,   industry: automotive}
+  - {name: Waymo,             ats: greenhouse, slug: waymo,           prestige: 5, size: large,   industry: automotive}
+  - {name: Zoox,              ats: lever,      slug: zoox,            prestige: 4, size: large,   industry: automotive}
+  - {name: Nuro,              ats: greenhouse, slug: nuro,            prestige: 4, size: mid,     industry: automotive}
+  - {name: Motional,          ats: greenhouse, slug: motional,        prestige: 3, size: mid,     industry: automotive}
+  - {name: May Mobility,      ats: greenhouse, slug: maymobility,     prestige: 3, size: mid,     industry: automotive}
+  - {name: Wayve,             ats: ashby,      slug: wayve,           prestige: 4, size: mid,     industry: automotive}
+  - {name: Torc Robotics,     ats: greenhouse, slug: torcrobotics,    prestige: 3, size: mid,     industry: automotive}
+  - {name: Kodiak Robotics,   ats: greenhouse, slug: kodiak,          prestige: 3, size: mid,     industry: automotive}
+  - {name: Stack AV,          ats: greenhouse, slug: stackav,         prestige: 3, size: startup, industry: automotive}
+  - {name: Bot Auto,          ats: greenhouse, slug: botauto,         prestige: 2, size: startup, industry: automotive}
+  - {name: Aeva,              ats: lever,      slug: aeva,            prestige: 3, size: mid,     industry: automotive}
+  - {name: Harbinger Motors,  ats: greenhouse, slug: harbingermotors, prestige: 3, size: mid,     industry: automotive}
+  - {name: Faraday Future,    ats: greenhouse, slug: faradayfuture,   prestige: 2, size: mid,     industry: automotive}
+  - {name: Hyliion,           ats: greenhouse, slug: hyliion,         prestige: 2, size: mid,     industry: automotive}
+  - {name: Verkor,            ats: lever,      slug: verkor,          prestige: 3, size: mid,     industry: automotive}
+  # ── Mobility ────────────────────────────────────────────────
+  - {name: Bird,              ats: greenhouse, slug: bird,            prestige: 2, size: mid,     industry: mobility}
+  - {name: Spin,              ats: greenhouse, slug: spin,            prestige: 2, size: mid,     industry: mobility}
+  - {name: Via,               ats: greenhouse, slug: via,             prestige: 3, size: large,   industry: mobility}
+  - {name: Revel,             ats: ashby,      slug: revel,           prestige: 3, size: mid,     industry: mobility}
+  - {name: Wing,              ats: greenhouse, slug: wing,            prestige: 4, size: mid,     industry: mobility}
+  - {name: ChargePoint,       ats: greenhouse, slug: chargepoint,     prestige: 3, size: large,   industry: mobility}
+  - {name: Wallbox,           ats: bamboohr,   slug: wallbox,         prestige: 2, size: mid,     industry: mobility}
+  # ── Batteries & materials ───────────────────────────────────
+  - {name: Redwood Materials, ats: greenhouse, slug: redwoodmaterials, prestige: 4, size: large,  industry: materials}
+  - {name: Sila,              ats: lever,      slug: sila,            prestige: 4, size: mid,     industry: materials}
+  - {name: Group14,           ats: greenhouse, slug: group14,         prestige: 3, size: mid,     industry: materials}
+  - {name: Factorial Energy,  ats: greenhouse, slug: factorialenergy, prestige: 3, size: mid,     industry: materials}
+  - {name: Solid Power,       ats: greenhouse, slug: solidpower,      prestige: 3, size: mid,     industry: materials}
+  - {name: SES AI,            ats: greenhouse, slug: sesai,           prestige: 3, size: mid,     industry: materials}
+  - {name: Our Next Energy,   ats: greenhouse, slug: onenergy,        prestige: 3, size: mid,     industry: materials}
+  - {name: Peak Energy,       ats: greenhouse, slug: peakenergy,      prestige: 3, size: startup, industry: energy}
+  - {name: Noon Energy,       ats: greenhouse, slug: noonenergy,      prestige: 3, size: startup, industry: energy}
+  - {name: Form Energy,       ats: ashby,      slug: formenergy,      prestige: 4, size: mid,     industry: energy}
+  - {name: Invinity,          ats: lever,      slug: invinity,        prestige: 2, size: mid,     industry: energy}
+  # ── Nuclear & fusion ────────────────────────────────────────
+  - {name: Helion,            ats: ashby,      slug: helion,          prestige: 5, size: mid,     industry: energy}
+  - {name: Pacific Fusion,    ats: greenhouse, slug: pacificfusion,   prestige: 4, size: mid,     industry: energy}
+  - {name: Oklo,              ats: greenhouse, slug: oklo,            prestige: 4, size: mid,     industry: energy}
+  - {name: Kairos Power,      ats: greenhouse, slug: kairospower,     prestige: 4, size: mid,     industry: energy}
+  - {name: Radiant Industries, ats: ashby,     slug: radiant,         prestige: 4, size: mid,     industry: energy}
+  - {name: Valar Atomics,     ats: greenhouse, slug: valaratomics,    prestige: 4, size: mid,     industry: energy}
+  - {name: General Matter,    ats: greenhouse, slug: generalmatter,   prestige: 4, size: mid,     industry: energy}
+  - {name: Terrestrial Energy, ats: bamboohr,  slug: terrestrialenergy, prestige: 3, size: mid,   industry: energy}
+  # ── Geothermal, storage, thermal, hydrogen ──────────────────
+  - {name: Fervo Energy,      ats: greenhouse, slug: fervoenergy,     prestige: 4, size: mid,     industry: energy}
+  - {name: Quaise Energy,     ats: greenhouse, slug: quaise,          prestige: 3, size: startup, industry: energy}
+  - {name: Ormat,             ats: smartrecruiters, slug: ormat,      prestige: 2, size: large,   industry: energy}
+  - {name: Antora Energy,     ats: greenhouse, slug: antora,          prestige: 4, size: mid,     industry: energy}
+  - {name: Rondo Energy,      ats: greenhouse, slug: rondoenergy,     prestige: 3, size: mid,     industry: energy}
+  - {name: Mainspring Energy, ats: lever,      slug: mainspringenergy, prestige: 3, size: mid,    industry: energy}
+  - {name: Brimstone,         ats: ashby,      slug: brimstone,       prestige: 3, size: startup, industry: climate}
+  # ── Grid, solar, home energy ────────────────────────────────
+  - {name: Base Power,        ats: ashby,      slug: base-power,      prestige: 4, size: mid,     industry: energy}
+  - {name: Span,              ats: ashby,      slug: span,            prestige: 3, size: mid,     industry: energy}
+  - {name: Lunar Energy,      ats: greenhouse, slug: lunarenergy,     prestige: 3, size: mid,     industry: energy}
+  - {name: Quilt,             ats: greenhouse, slug: quilt,           prestige: 3, size: startup, industry: energy}
+  - {name: Voltus,            ats: lever,      slug: voltus,          prestige: 3, size: mid,     industry: energy}
+  - {name: EnergyHub,         ats: greenhouse, slug: energyhub,       prestige: 2, size: mid,     industry: energy}
+  - {name: Aurora Solar,      ats: ashby,      slug: aurorasolar,     prestige: 3, size: mid,     industry: energy}
+  - {name: Swift Solar,       ats: greenhouse, slug: swiftsolar,      prestige: 3, size: startup, industry: energy}
+  - {name: Tandem PV,         ats: ashby,      slug: tandempv,        prestige: 3, size: startup, industry: energy}
+  - {name: Silicon Ranch,     ats: greenhouse, slug: siliconranch,    prestige: 2, size: mid,     industry: energy}
+  - {name: Sunnova,           ats: greenhouse, slug: sunnova,         prestige: 2, size: large,   industry: energy}
+  - {name: Apex Clean Energy, ats: smartrecruiters, slug: apexcleanenergy, prestige: 3, size: mid, industry: energy}
+  - {name: Avangrid,          ats: smartrecruiters, slug: avangrid,   prestige: 3, size: large,   industry: energy}
+  - {name: Arcadia,           ats: lever,      slug: arcadia,         prestige: 3, size: mid,     industry: energy}
+  # ── Climate / carbon removal ────────────────────────────────
+  - {name: Charm Industrial,  ats: lever,      slug: charmindustrial, prestige: 3, size: startup, industry: climate}
+  - {name: Heirloom,          ats: ashby,      slug: heirloomcarbon,  prestige: 3, size: mid,     industry: climate}
+  - {name: Twelve,            ats: ashby,      slug: twelve,          prestige: 3, size: mid,     industry: climate}
+  - {name: Watershed,         ats: ashby,      slug: watershed,       prestige: 4, size: mid,     industry: climate}
+  # ── Advanced manufacturing / hardware ───────────────────────
+  - {name: Formlabs,          ats: greenhouse, slug: formlabs,        prestige: 4, size: mid,     industry: manufacturing}
+  - {name: Divergent,         ats: greenhouse, slug: divergent,       prestige: 4, size: mid,     industry: manufacturing}
+  - {name: Carbon,            ats: greenhouse, slug: carbon,          prestige: 3, size: mid,     industry: manufacturing}
+  - {name: Velo3D,            ats: lever,      slug: velo3d,          prestige: 2, size: mid,     industry: manufacturing}
+  - {name: Markforged,        ats: greenhouse, slug: markforged,      prestige: 2, size: mid,     industry: manufacturing}
+  - {name: Seurat Technologies, ats: greenhouse, slug: seurat,        prestige: 3, size: mid,     industry: manufacturing}
+  - {name: Bright Machines,   ats: lever,      slug: brightmachines,  prestige: 3, size: mid,     industry: manufacturing}
+  - {name: Xometry,           ats: greenhouse, slug: xometry,         prestige: 3, size: large,   industry: manufacturing}
+  - {name: Fictiv,            ats: greenhouse, slug: fictiv,          prestige: 3, size: mid,     industry: manufacturing}
+  - {name: Protolabs,         ats: lever,      slug: protolabs,       prestige: 2, size: large,   industry: manufacturing}
+  - {name: Tulip,             ats: greenhouse, slug: tulip,           prestige: 3, size: mid,     industry: manufacturing}
+  - {name: Path Robotics,     ats: greenhouse, slug: pathrobotics,    prestige: 3, size: mid,     industry: manufacturing}
+  - {name: Agility Robotics,  ats: greenhouse, slug: agilityrobotics, prestige: 4, size: mid,     industry: manufacturing}
+  - {name: Apptronik,         ats: greenhouse, slug: apptronik,       prestige: 4, size: mid,     industry: manufacturing}
+  - {name: Figure AI,         ats: greenhouse, slug: figureai,        prestige: 4, size: mid,     industry: manufacturing}
+  - {name: 1X,                ats: ashby,      slug: 1x,              prestige: 4, size: mid,     industry: manufacturing}
+  - {name: Anybotics,         ats: lever,      slug: anybotics,       prestige: 3, size: mid,     industry: manufacturing}
+  - {name: Carbon Robotics,   ats: greenhouse, slug: carbonrobotics,  prestige: 3, size: mid,     industry: manufacturing}
+  - {name: Nimble Robotics,   ats: greenhouse, slug: nimblerobotics,  prestige: 3, size: mid,     industry: manufacturing}
+  - {name: Dexterity,         ats: lever,      slug: dexterity,       prestige: 3, size: mid,     industry: manufacturing}
+  - {name: Locus Robotics,    ats: greenhouse, slug: locusrobotics,   prestige: 3, size: mid,     industry: manufacturing}
