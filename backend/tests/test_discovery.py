@@ -99,6 +99,34 @@ async def test_github_list_source():
         assert await github_lists.fetch(PoliteFetcher(c)) == [("lever", "acme")]
 
 
+async def test_github_lists_cover_many_lists_and_survive_a_dead_one():
+    listing = '[{"category": "Hardware", "url": "https://job-boards.greenhouse.io/spacey/jobs/9"}]'
+    routes = {
+        "/SimplifyJobs/New-Grad-Positions/dev/.github": httpx.Response(200, text=listing),
+        "/SimplifyJobs/Summer2026-Internships": httpx.Response(500),
+        "/speedyapply": httpx.Response(200, text="[Apply](https://jobs.ashbyhq.com/Quant-Co?x=1)"),
+    }
+    async with httpx.AsyncClient(transport=httpx.MockTransport(robots_site(None, routes))) as c:
+        boards = await github_lists.fetch(PoliteFetcher(c))
+    assert boards == [("greenhouse", "spacey"), ("ashby", "Quant-Co")]
+    assert len(github_lists.URLS) == len(set(github_lists.URLS)) > 10
+
+
+async def test_github_lists_all_failing_raises():
+    async with httpx.AsyncClient(transport=httpx.MockTransport(robots_site(None))) as c:
+        with pytest.raises(httpx.HTTPStatusError):
+            await github_lists.fetch(PoliteFetcher(c))
+
+
+def test_discovery_defaults_on_with_wide_caps(monkeypatch):
+    from jobfinder.config import Settings
+
+    for k in ("DISCOVERY_ENABLED", "INGEST_MAX_DISCOVERED_BOARDS_PER_RUN"):
+        monkeypatch.delenv(k, raising=False)
+    s =Settings(_env_file=None, secret_key="x" * 40)
+    assert s.discovery_enabled and s.ingest_max_discovered_boards_per_run == 300
+
+
 async def test_hn_source_picks_latest_thread_and_unescapes():
     search = {"hits": [
         {"objectID": "2", "title": "Ask HN: Who wants to be hired? (May 2026)"},

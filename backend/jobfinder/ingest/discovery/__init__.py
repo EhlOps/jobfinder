@@ -1,6 +1,7 @@
 """Board discovery (REQ-26 a, e): find apply links on public directories, validate and add the boards."""
 import asyncio
 import logging
+import random
 import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -187,6 +188,9 @@ async def discover_boards(
         known = {(a, s.lower()) for a, s in rows}
         fresh = [b for k, b in found.items() if k not in known]
         result.already_known = len(found) - len(fresh)
+        if len(fresh) > cap:
+            # rejected boards are not remembered, so a fixed order would re-probe the same dead ones every week
+            random.shuffle(fresh)
         batch = fresh[: max(cap, 0)]
         validations = await validate_candidates(fetcher, batch)
         for (ats, slug), validation in zip(batch, validations, strict=True):
