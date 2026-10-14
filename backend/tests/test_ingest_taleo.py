@@ -7,6 +7,7 @@ import httpx
 import pytest
 from security_payloads import PRIVATE_URLS, SCRIPT_URLS, SQLI, XSS_TEXT
 
+from jobfinder.ingest import http_safety
 from jobfinder.ingest.discovery import board_from_url
 from jobfinder.ingest.sources import ATS_FETCHERS, PROBE_FETCHERS, taleo
 from jobfinder.ingest.sources.taleo import (
@@ -27,6 +28,15 @@ LIST = json.loads((FIX / "taleo_list.json").read_text())
 SEARCH_HTML = (FIX / "taleo_search.html").read_text()
 JOB_HTML = (FIX / "taleo_job.html").read_text()
 DEAD_HTML = (FIX / "taleo_unavailable.html").read_text()
+
+
+@pytest.fixture(autouse=True)
+def public_dns(monkeypatch):
+    """robots.txt is fetched through safe_fetch (IP-pinned): no real DNS in unit tests."""
+    async def fake(url):
+        return httpx.URL(url).host, "93.184.216.34"
+
+    monkeypatch.setattr(http_safety, "resolve_public", fake)
 
 
 def req(job_id, contest, title="Engineer", loc='["Aurora"]', date="Oct 13, 2026"):
@@ -211,7 +221,7 @@ async def test_fetch_with_details():
     assert sum(p.endswith("/jobdetail.ftl") for p in paths) == 3
     post = next(r for r in calls if r.method == "POST")
     assert post.headers["content-type"] == "application/json" and post.headers["accept"] == "application/json"
-    assert all(r.url.host == HOST for r in calls)
+    assert all(r.headers["host"] == HOST for r in calls)
     # Taleo's redirects mislabel plain bodies as gzip, so HTML pages are requested uncompressed
     assert all(r.headers["accept-encoding"] == "identity" for r in calls if r.url.path.endswith(".ftl"))
 
@@ -336,7 +346,7 @@ async def test_redirect_off_tenant_is_refused():
     async with httpx.AsyncClient(transport=httpx.MockTransport(logged), follow_redirects=True) as c:
         with pytest.raises(CareerSectionUnavailable, match="redirects"):
             await fetch_taleo(c, SLUG, "CU")
-    assert all(r.url.host == HOST for r in calls)  # the off-host target is never contacted
+    assert all(r.headers["host"] == HOST for r in calls)  # the off-host target is never contacted
 
 
 async def test_redirect_within_tenant_is_followed():

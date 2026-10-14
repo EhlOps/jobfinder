@@ -7,11 +7,21 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from jobfinder import worker
 from jobfinder.config import get_settings
-from jobfinder.ingest import discovery
+from jobfinder.ingest import discovery, http_safety
 from jobfinder.ingest.discovery import board_from_url, boards_from_text, github_lists, hn_hiring, yc
 from jobfinder.ingest.discovery.robots import USER_AGENT, PoliteFetcher, RobotsDisallowed
 from jobfinder.models import Company
 from jobfinder.scheduling.handlers import HANDLERS
+
+
+@pytest.fixture(autouse=True)
+def public_dns(monkeypatch):
+    """robots.txt is fetched through safe_fetch (IP-pinned): no real DNS in unit tests."""
+    async def fake(url):
+        return httpx.URL(url).host, "93.184.216.34"
+
+    monkeypatch.setattr(http_safety, "resolve_public", fake)
+
 
 GH_GOOD = {"jobs": [{"id": 1, "title": "Engineer", "absolute_url": "https://x/1", "location": {"name": "Remote"}}]}
 
@@ -273,8 +283,8 @@ def probe_handler(robots: dict[str, str], stats: dict, delay: float = 0.0, md: s
     async def handler(request: httpx.Request) -> httpx.Response:
         host, path = request.url.host, request.url.path
         stats["urls"].append(str(request.url))
-        if path == "/robots.txt":
-            return httpx.Response(200, text=robots.get(host, ""))
+        if path == "/robots.txt":  # fetched by validated IP; the site is in the Host header
+            return httpx.Response(200, text=robots.get(request.headers["host"], ""))
         if host == "raw.githubusercontent.com":
             return httpx.Response(200, text=md)
         stats["inflight"] += 1

@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Careers | Acme Robotics</title>
+  <link rel="stylesheet" href="https://acmerobotics.com/assets/site.css">
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXX"></script>
+</head>
+<body class="careers">
+  <nav><a href="/">Home</a> <a href="/about">About</a> <a href="javascript:void(0)" onclick="openMenu()">Menu</a></nav>
+  <section class="hero">
+    <h1>Build robots with us</h1>
+    <p>We're hiring across engineering, operations and sales. Read our
+      <a href="https://medium.com/acme-robotics/why-we-built-our-arm">blog post</a>.</p>
+    <p>Friends of ours are hiring too: <a href="https://jobs.lever.co/partnerco">PartnerCo</a>
+      and <a href="https://jobs.lever.co/partnerco/1">their lead role</a>.</p>
+  </section>
+  <section id="openings">
+    <h2>Open roles</h2>
+    <div id="grnhse_app"></div>
+    <script src="//boards.greenhouse.io/embed/job_board/js?for=acmerobotics"></script>
+    <script>
+      var Grnhse = Grnhse || {};
+      Grnhse.Settings = { boardToken: 'acmerobotics', scrollOnLoad: true };
+      Grnhse.Iframe.load();
+    </script>
+    <noscript>
+      <iframe id="grnhse_iframe" src="https://boards.greenhouse.io/embed/job_board?for=acmerobotics&amp;b=https%3A%2F%2Facmerobotics.com%2Fcareers" width="100%" frameborder="0"></iframe>
+    </noscript>
+  </section>
+  <footer>
+    <a href="https://twitter.com/acmerobotics">Twitter</a>
+    <a href="https://www.linkedin.com/company/acme-robotics">LinkedIn</a>
+  </footer>
+</body>
+</html>
