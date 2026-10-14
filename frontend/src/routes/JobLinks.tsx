@@ -118,7 +118,7 @@ export default function JobLinks() {
           </article>
         );
       })}
-      {list.data?.length === 0 && <p className="hint">No links yet. Links from Greenhouse, Lever, Ashby, Workable, SmartRecruiters, Recruitee, BambooHR and Workday work today.</p>}
+      {list.data?.length === 0 && <p className="hint">No links yet. Links from most company career sites work, including Greenhouse, Lever, Ashby, Workday, iCIMS, Oracle, SuccessFactors, Eightfold, Phenom and Taleo boards.</p>}
     </>
   );
 }
