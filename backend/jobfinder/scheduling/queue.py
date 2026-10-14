@@ -14,6 +14,7 @@ log = logging.getLogger("jobfinder.queue")
 MAX_ATTEMPTS = 3
 STUCK_AFTER = timedelta(minutes=5)  # the worker heartbeats every minute while a task runs
 ACTIVE = ("queued", "running")
+RENDER_PREFIX = "render_"  # tasks for the opt-in browser container (jobfinder.renderer), never the worker
 
 
 def _now() -> datetime:
@@ -60,11 +61,18 @@ async def enqueue(
     raise RuntimeError("enqueue dedupe could not settle")
 
 
-async def claim(db: AsyncSession) -> Task | None:
+async def claim(db: AsyncSession, *, kind_prefix: str | None = None, exclude_prefix: str | None = None
+                ) -> Task | None:
+    """The next due task. `kind_prefix` claims only kinds starting with it; `exclude_prefix` skips them."""
+    where = [Task.status == "queued", Task.run_after <= _now()]
+    if kind_prefix:
+        where.append(Task.kind.startswith(kind_prefix, autoescape=True))
+    if exclude_prefix:
+        where.append(~Task.kind.startswith(exclude_prefix, autoescape=True))
     task = (
         await db.execute(
             select(Task)
-            .where(Task.status == "queued", Task.run_after <= _now())
+            .where(*where)
             .order_by(Task.run_after, Task.id)
             .limit(1)
             .with_for_update(skip_locked=True)

@@ -1,0 +1,16 @@
+{
+ "final_url": "https://www.widgetco.io/careers/",
+ "json_responses": [
+  {
+   "url": "https://www.widgetco.io/api/session",
+   "method": "GET",
+   "status": 200,
+   "content_type": "application/json",
+   "body_preview": "{\"user\": null}",
+   "truncated": false,
+   "size": 14,
+   "request_body": null
+  }
+ ],
+ "html": "<html><head><title>Careers at Widgetco</title></head><body><main>\n<a class=\"nav\" href=\"/careers/\">Careers home</a>\n<ul class=\"results\">\n<li><a class=\"job-link\" href=\"/careers/positions/5501\">Platform Engineer</a><span class=\"loc\">Denver, CO</span></li>\n<li><a class=\"job-link\" href=\"/careers/positions/5502\">Data Engineer</a><span class=\"loc\">Remote</span></li>\n<li><a class=\"job-link\" href=\"https://www.widgetco.io/careers/positions/5503\">Product Designer</a></li>\n</ul><a href=\"https://other.example.com/careers/positions/9\">elsewhere</a></main></body></html>"
+}

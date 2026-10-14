@@ -1,0 +1,36 @@
+{
+ "final_url": "https://careers.acme.com/us/en/search-results",
+ "json_responses": [
+  {
+   "url": "https://careers.acme.com/widgets/config",
+   "method": "GET",
+   "status": 200,
+   "content_type": "application/json",
+   "body_preview": "{\"locale\": \"en_us\", \"widgets\": [{\"id\": \"w1\", \"name\": \"Search\"}, {\"id\": \"w2\", \"name\": \"Footer\"}]}",
+   "truncated": false,
+   "size": 96,
+   "request_body": null
+  },
+  {
+   "url": "https://careers.acme.com/widgets",
+   "method": "POST",
+   "status": 200,
+   "content_type": "application/json",
+   "body_preview": "{\"status\": 200, \"hits\": 3, \"data\": {\"jobs\": [{\"jobId\": \"R-10234\", \"title\": \"Senior Robotics Engineer\", \"city\": \"Boston\", \"location\": \"Boston, MA, USA\", \"postedDate\": \"2026-10-01T12:00:00Z\", \"descriptionTeaser\": \"Build robots that build robots.\", \"applyUrl\": \"https://careers.acme.com/us/en/job/R-10234/senior-robotics-engineer\"}, {\"jobId\": \"R-10235\", \"title\": \"Controls Engineer\", \"city\": \"Remote\", \"location\": \"Remote, USA\", \"postedDate\": \"2026-09-28T09:00:00Z\", \"descriptionTeaser\": \"Tune the loops.\", \"applyUrl\": \"https://careers.acme.com/us/en/job/R-10235/controls-engineer\"}, {\"jobId\": \"R-10236\", \"title\": \"Test Engineer\", \"city\": \"Austin\", \"location\": \"Austin, TX, USA\", \"postedDate\": \"2026-09-20T09:00:00Z\", \"descriptionTeaser\": \"Break things.\", \"applyUrl\": \"https://careers.acme.com/us/en/job/R-10236/test-engineer\"}]}, \"aggregations\": [{\"field\": \"category\", \"value\": [{\"name\": \"Engineering\", \"count\": 3}]}]}",
+   "truncated": false,
+   "size": 916,
+   "request_body": "{\"lang\": \"en_us\", \"ddoKey\": \"refineSearch\", \"from\": 0, \"size\": 3, \"jobs\": true}"
+  },
+  {
+   "url": "https://stats.tracker.example/collect",
+   "method": "POST",
+   "status": 200,
+   "content_type": "application/json",
+   "body_preview": "{\"ok\": true, \"events\": [{\"id\": 1, \"type\": \"pageview\"}]}",
+   "truncated": false,
+   "size": 55,
+   "request_body": "e=pageview"
+  }
+ ],
+ "html": "<html><body><div id='app'>loading</div></body></html>"
+}

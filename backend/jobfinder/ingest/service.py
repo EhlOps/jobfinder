@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from jobfinder.config import get_settings
 from jobfinder.ingest import schedule
 from jobfinder.ingest.base import JobPosting, safe_http_url
+from jobfinder.ingest.recipes import RecipeUnavailable
 from jobfinder.ingest.selection import Target, select_boards
 from jobfinder.ingest.sources import ATS_FETCHERS, Fetcher
 from jobfinder.models import Company, Job, Profile, User
@@ -255,6 +256,9 @@ async def ingest_company(db: AsyncSession, client: httpx.AsyncClient, company: C
         return stats
     try:
         postings = await _fetch_with_retry(fetcher, client, company.slug, company.name)
+    except RecipeUnavailable as e:  # e.g. the renderer is off: not the board's fault, so not a failure
+        stats.error = f"skipped: {e}"
+        return stats
     except Exception as e:
         stats.error = _describe(e)
         heal = _recipe_run(company, 0, stats.error)

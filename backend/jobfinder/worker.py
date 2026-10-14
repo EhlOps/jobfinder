@@ -150,7 +150,7 @@ async def main() -> None:
         claimed = None
         if len(running) < limit:
             async with SessionLocal() as db:
-                claimed = await queue.claim(db)
+                claimed = await queue.claim(db, exclude_prefix=queue.RENDER_PREFIX)
         if claimed:
             t = asyncio.create_task(run_task(claimed.id, ai))
             t.add_done_callback(_log_task_exception)

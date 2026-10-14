@@ -29,6 +29,11 @@ class RecipeError(ValueError):
     """The recipe is malformed or its output can't be used. Message is safe to log and show admins."""
 
 
+class RecipeUnavailable(RecipeError):
+    """The recipe can't run right now for a reason outside the board (the renderer is off or not answering).
+    Ingest skips the board without counting a failure."""
+
+
 class RecipeRequest(BaseModel):
     method: Literal["GET", "POST"] = "GET"
     url: str = Field(max_length=2048)
@@ -147,4 +152,7 @@ from jobfinder.ingest.recipes import (
 )
 from jobfinder.ingest.recipes import (
     json_api as _json_api,  # noqa: F401  (registers the runner)
+)
+from jobfinder.ingest.recipes import (
+    rendered as _rendered,  # noqa: F401  (registers the rendered_html runner)
 )
