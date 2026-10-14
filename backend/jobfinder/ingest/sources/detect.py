@@ -6,6 +6,7 @@ platform and returns the (ats, slug) to fetch, or None. Register new detectors i
 """
 from collections.abc import Callable
 
+from jobfinder.ingest.sources.icims import detect_icims
 from jobfinder.ingest.sources.oracle_hcm import detect_ce_page
 from jobfinder.ingest.sources.phenom import detect_phenom
 from jobfinder.ingest.sources.successfactors import detect_successfactors
@@ -16,6 +17,7 @@ HTML_DETECTORS: list[Detector] = [
     detect_phenom,
     detect_ce_page,  # Oracle Recruiting Cloud
     detect_successfactors,
+    detect_icims,
 ]
 
 

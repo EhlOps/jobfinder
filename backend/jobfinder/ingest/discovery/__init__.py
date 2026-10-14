@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from jobfinder.config import get_settings
 from jobfinder.ingest.discovery.robots import PoliteFetcher, RobotsDisallowed, make_client
+from jobfinder.ingest.sources.icims import slug_from_host as icims_slug_from_host
 from jobfinder.ingest.sources.oracle_hcm import board_from_ce_url
 from jobfinder.ingest.validate import SLUG_RE, ValidationResult, add_board, validate_board
 from jobfinder.models import Company
@@ -75,6 +76,9 @@ def board_from_url(url: str) -> tuple[str, str] | None:
         return _workday_board(host[: -len(".myworkdayjobs.com")], parts.path)
     if host.endswith(".oraclecloud.com"):
         return board_from_ce_url(host, parts.path)
+    if host.endswith(".icims.com"):  # {prefix}-{tenant}.icims.com: the whole portal is the board
+        slug = icims_slug_from_host(host)
+        return ("icims", slug) if slug else None
     for suffix, ats in _SUBDOMAIN_SUFFIXES.items():
         if host.endswith(suffix):
             slug = host[: -len(suffix)]
