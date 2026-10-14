@@ -148,6 +148,16 @@ async def discover_boards(db: AsyncSession, ai: AITasks, task: Task) -> dict:
     return (await discovery.discover_boards(db)).as_dict()
 
 
+async def resolve_job_link(db: AsyncSession, ai: AITasks, task: Task) -> dict:
+    """A pasted job link whose board is new: add it, fetch it now, then let the planner match the new jobs."""
+    from jobfinder.ingest.resolve import resolve_link
+
+    out = await resolve_link(db, int(task.payload["link_id"]))
+    if out.get("new"):
+        await queue.enqueue(db, "plan_work", dedupe=True)
+    return out
+
+
 HANDLERS: dict[str, Handler] = {
     "extract_profile": extract_profile,
     "followup_questions": followup_questions,
@@ -161,4 +171,5 @@ HANDLERS: dict[str, Handler] = {
     "daily_emails": daily_emails,
     "resume_tailor": resume_tailor,
     "discover_boards": discover_boards,
+    "resolve_job_link": resolve_job_link,
 }

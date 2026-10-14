@@ -16,6 +16,7 @@ import Questions from "./routes/Questions";
 import QuestionsByLink from "./routes/QuestionsByLink";
 import Settings from "./routes/Settings";
 import Profile from "./routes/Profile";
+import JobLinks from "./routes/JobLinks";
 
 function Shell() {
   const { user, loading, logout } = useAuth();
@@ -33,6 +34,7 @@ function Shell() {
         <Link to="/" className="brand">JobFinder</Link>
         <nav className="nav">
           <NavLink to="/" end>Matches</NavLink>
+          <NavLink to="/add-job">Add a job</NavLink>
           <NavLink to="/questions">Questions{open > 0 && <span className="badge">{open}</span>}</NavLink>
           <NavLink to="/strengthen">Strengthen</NavLink>
           <NavLink to="/profile">Profile</NavLink>
@@ -61,6 +63,7 @@ export default function App() {
         <Route path="/" element={<Home />} />
         <Route path="/matches/:id" element={<MatchDetail />} />
         <Route path="/onboarding" element={<Onboarding />} />
+        <Route path="/add-job" element={<JobLinks />} />
         <Route path="/questions" element={<Questions />} />
         <Route path="/strengthen" element={<Interview />} />
         <Route path="/profile" element={<Profile />} />

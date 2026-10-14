@@ -12,7 +12,7 @@ from jobfinder.ingest.sources import ATS_FETCHERS, PROBE_FETCHERS
 from jobfinder.models import Company
 
 SLUG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$")
-ORIGINS = ("seed", "discovered")
+ORIGINS = ("seed", "discovered", "user")
 
 
 @dataclass

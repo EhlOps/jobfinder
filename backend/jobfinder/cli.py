@@ -214,7 +214,7 @@ def main() -> None:
     parser.add_argument("--to", help="test-email: recipient")
     parser.add_argument("--slug", help="add-board: board slug")
     parser.add_argument("--name", help="add-board: company display name")
-    parser.add_argument("--origin", choices=["seed", "discovered"], help="add-board: origin (default seed)")
+    parser.add_argument("--origin", choices=["seed", "discovered", "user"], help="add-board: origin (default seed)")
     args = parser.parse_args()
     handlers = {
         "ai-check": lambda: ai_check(), "ingest": lambda: ingest(args), "daily": lambda: daily(args),
