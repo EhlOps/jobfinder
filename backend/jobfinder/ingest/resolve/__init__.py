@@ -68,6 +68,8 @@ def name_from_slug(ats: str, slug: str) -> str:
     if ats == "successfactors":  # "careers.acme.com__brand" -> the brand, else the domain's name
         host, _, brand = slug.partition("__")
         base = brand or registrable_domain(f"https://{host}/").split(".")[0]
+    if ats == "icims":  # "careers-acme-corp" -> "acme-corp" (the label's prefix is the portal kind)
+        base = slug.split("-", 1)[-1]
     words = [w for w in re.split(r"[-_.\s]+", base) if w]
     return (" ".join(w if w.isupper() else w.capitalize() for w in words) or slug)[:200]
 

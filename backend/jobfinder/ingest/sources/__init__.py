@@ -7,6 +7,7 @@ from jobfinder.ingest.base import JobPosting
 from jobfinder.ingest.sources.ashby import fetch_ashby
 from jobfinder.ingest.sources.bamboohr import fetch_bamboohr
 from jobfinder.ingest.sources.greenhouse import fetch_greenhouse
+from jobfinder.ingest.sources.icims import fetch_icims
 from jobfinder.ingest.sources.lever import fetch_lever
 from jobfinder.ingest.sources.oracle_hcm import fetch_oracle_hcm
 from jobfinder.ingest.sources.phenom import fetch_phenom
@@ -31,6 +32,7 @@ ATS_FETCHERS: dict[str, Fetcher] = {
     "phenom": fetch_phenom,
     "oracle_hcm": fetch_oracle_hcm,
     "successfactors": fetch_successfactors,
+    "icims": fetch_icims,
 }
 
 # Cheap existence probes (no per-posting detail requests) for the ATSes whose full fetch fans out; others reuse the full fetcher.
@@ -42,4 +44,5 @@ PROBE_FETCHERS: dict[str, Fetcher] = {
     "phenom": partial(fetch_phenom, list_only=True),
     "oracle_hcm": partial(fetch_oracle_hcm, list_only=True),
     "successfactors": partial(fetch_successfactors, list_only=True),
+    "icims": partial(fetch_icims, list_only=True),
 }
