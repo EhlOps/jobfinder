@@ -45,6 +45,12 @@ class Settings(BaseSettings):
     usajobs_days_posted: int = 30
     scheduler_enabled: bool = True  # worker runs ingestion and the daily emails on a schedule
     ingest_interval_hours: int = 6
+    # adaptive cadence (ingest.schedule): the worker ticks often and fetches only due boards
+    adaptive_schedule_enabled: bool = True  # False = every board every ingest_interval_hours
+    ingest_tick_minutes: int = 15
+    ingest_min_interval_minutes: int = 60  # busiest top-tier boards
+    ingest_max_interval_minutes: int = 10080  # quiet boards and the failure backoff cap (a week)
+    ingest_base_interval_minutes: int = 360  # a board with about one new posting a day
     digest_min_score: int = 65  # only matches at least this good are included in the daily email
     digest_max_matches: int = 10
     questions_per_email: int = 6

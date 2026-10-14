@@ -6,13 +6,14 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from jobfinder import worker
 from jobfinder.config import get_settings
-from jobfinder.models import AICall, Job, PlannerState, Profile, Task, User
+from jobfinder.models import AICall, Company, Job, PlannerState, Profile, Task, User
 from jobfinder.scheduling import planner, queue
 from jobfinder.scheduling.handlers import HANDLERS
 from tests.factories import make_match, make_user
 
 
 def test_scheduler_has_ingest_and_daily_email_jobs(monkeypatch):
+    monkeypatch.setattr(get_settings(), "adaptive_schedule_enabled", False)
     monkeypatch.setattr(get_settings(), "ingest_interval_hours", 3)
     monkeypatch.setattr(get_settings(), "discovery_enabled", False)
     monkeypatch.setattr(get_settings(), "coverage_enabled", False)
@@ -22,6 +23,14 @@ def test_scheduler_has_ingest_and_daily_email_jobs(monkeypatch):
     assert jobs["ingest_jobs"].args == ("ingest_jobs",) and jobs["daily_emails"].args == ("daily_emails",)
     assert "interval[3:00:00]" in str(jobs["ingest_jobs"].trigger)
     assert "minute='5'" in str(jobs["daily_emails"].trigger) and "hour" not in str(jobs["daily_emails"].trigger).replace("minute", "")
+
+
+def test_adaptive_schedule_ingests_on_a_short_tick(monkeypatch):
+    monkeypatch.setattr(get_settings(), "adaptive_schedule_enabled", True)
+    monkeypatch.setattr(get_settings(), "ingest_tick_minutes", 15)
+    jobs = {j.id: j for j in worker.make_scheduler().get_jobs()}
+    assert "interval[0:15:00]" in str(jobs["ingest_jobs"].trigger)
+    assert jobs["ingest_jobs"].args == ("ingest_jobs",)
 
 
 def test_scheduler_adds_weekly_discovery_when_enabled(monkeypatch):
@@ -207,7 +216,7 @@ async def test_ingest_queues_one_planner_run_instead_of_one_per_user(maker, monk
     from jobfinder.ingest import runner
 
     async def fake_ingest(_):
-        return {"new": 0}
+        return {"new": 2}
 
     monkeypatch.setattr(runner, "run_ingest", fake_ingest)
     async with maker() as db:
@@ -217,6 +226,20 @@ async def test_ingest_queues_one_planner_run_instead_of_one_per_user(maker, monk
         await HANDLERS["ingest_jobs"](db, None, task)
         kinds = sorted(t.kind for t in await _tasks(db))
     assert kinds == ["ingest_jobs", "plan_work"]
+
+
+async def test_adaptive_tick_that_changed_nothing_does_not_queue_the_planner(maker, monkeypatch):
+    from jobfinder.ingest import runner
+
+    async def fake_ingest(_):
+        return {"new": 0, "deactivated": 0}
+
+    monkeypatch.setattr(runner, "run_ingest", fake_ingest)
+    monkeypatch.setattr(get_settings(), "adaptive_schedule_enabled", True)
+    async with maker() as db:
+        task = await queue.enqueue(db, "ingest_jobs")
+        await HANDLERS["ingest_jobs"](db, None, task)
+        assert [t.kind for t in await _tasks(db)] == ["ingest_jobs"]
 
 
 async def test_last_seen_is_written_at_most_every_ten_minutes(authed, engine):
@@ -244,6 +267,22 @@ async def test_admin_schedule_endpoint(authed, engine, maker, monkeypatch):
     assert body["max_per_tick"] == 3 and body["backoff_until"] is None
     assert [u["email"] for u in body["users"]] == ["sam@example.com"]
     assert {"last_run_at", "next_due_at", "budget_left", "reason", "skip", "active"} <= set(body["users"][0])
+    assert body["ingest"]["adaptive"] is True and body["ingest"]["tick_minutes"] == 15
+
+
+async def test_admin_schedule_counts_boards_per_tier(authed, maker):
+    async with maker() as db:
+        await db.execute(sa.update(User).where(User.email == "sam@example.com").values(is_admin=True))
+        later = datetime.now(UTC) + timedelta(hours=2)
+        db.add_all([
+            Company(name="A", ats="greenhouse", slug="a", coveted_tier=1),
+            Company(name="B", ats="greenhouse", slug="b", coveted_tier=1, next_fetch_at=later),
+            Company(name="C", ats="greenhouse", slug="c"),
+            Company(name="D", ats="greenhouse", slug="d", enabled=False),
+        ])
+        await db.commit()
+    tiers = (await authed.get("/api/admin/schedule")).json()["ingest"]["tiers"]
+    assert tiers == [{"tier": 1, "boards": 2, "due": 1}, {"tier": None, "boards": 1, "due": 1}]
 
 
 async def test_a_passed_graduation_date_gets_the_user_planned_again(maker):

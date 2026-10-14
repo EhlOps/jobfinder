@@ -210,6 +210,13 @@ export interface Schedule {
   max_per_tick: number;
   next_tick: string | null;
   users: ScheduleRow[];
+  ingest: IngestCadence;
+}
+export interface IngestCadence {
+  adaptive: boolean;
+  tick_minutes: number;
+  interval_hours: number;
+  tiers: { tier: number | null; boards: number; due: number }[];
 }
 
 export interface ResumeContact { name: string; email: string; phone: string; location: string; links: string[] }

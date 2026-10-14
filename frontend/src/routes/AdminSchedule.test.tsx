@@ -12,6 +12,8 @@ const schedule = {
     { user_id: 2, email: "bob@example.com", last_seen_at: null, last_run_at: null, last_scored: null, pending: null,
       budget_left: null, last_planned_at: null, next_due_at: null, reason: "", skip: "budget exhausted", active: [] },
   ],
+  ingest: { adaptive: true, tick_minutes: 15, interval_hours: 6,
+    tiers: [{ tier: 1, boards: 12, due: 3 }, { tier: null, boards: 600, due: 40 }] },
 };
 
 describe("admin schedule", () => {
@@ -24,6 +26,9 @@ describe("admin schedule", () => {
     expect(screen.getByText("budget exhausted")).toBeInTheDocument();
     expect(screen.getByText("no limit")).toBeInTheDocument();
     expect(screen.getByText(/1 of 3 slots in use/)).toBeInTheDocument();
+    expect(screen.getByText(/adaptive, tick every 15 min/)).toBeInTheDocument();
+    expect(screen.getByText(/tier 1: 12 boards \(3 due\)/)).toBeInTheDocument();
+    expect(screen.getByText(/untiered: 600 boards \(40 due\)/)).toBeInTheDocument();
   });
 
   it("says when planning is paused by a rate limit", async () => {

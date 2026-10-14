@@ -90,8 +90,12 @@ async def enqueue_scheduled(kind: str) -> None:
 def make_scheduler() -> AsyncIOScheduler:
     s = get_settings()
     scheduler = AsyncIOScheduler(timezone="UTC")
+    # adaptive cadence: tick often, each run fetches only the boards that are due (ingest.schedule)
+    every = (
+        {"minutes": s.ingest_tick_minutes} if s.adaptive_schedule_enabled else {"hours": s.ingest_interval_hours}
+    )
     scheduler.add_job(
-        enqueue_scheduled, "interval", hours=s.ingest_interval_hours, args=["ingest_jobs"], id="ingest_jobs",
+        enqueue_scheduled, "interval", **every, args=["ingest_jobs"], id="ingest_jobs",
         next_run_time=datetime.now(UTC) + timedelta(minutes=2), coalesce=True, max_instances=1,
     )
     scheduler.add_job(
@@ -121,9 +125,14 @@ async def main() -> None:
         make_scheduler().start()
         if get_settings().discovery_enabled:
             log.info("board discovery scheduled weekly (Sunday 04:30 UTC)")
+        s = get_settings()
+        ingest = (
+            f"adaptive (tick every {s.ingest_tick_minutes}m)" if s.adaptive_schedule_enabled
+            else f"every {s.ingest_interval_hours}h"
+        )
         log.info(
-            "scheduler started: ingest every %dh, planner every %dm, daily emails hourly at :05",
-            get_settings().ingest_interval_hours, get_settings().planner_interval_minutes,
+            "scheduler started: ingest %s, planner every %dm, daily emails hourly at :05",
+            ingest, s.planner_interval_minutes,
         )
     log.info("worker started (concurrency=%d)", limit)
     last_reap = 0.0

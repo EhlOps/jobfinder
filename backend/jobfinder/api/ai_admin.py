@@ -92,12 +92,39 @@ class ScheduleRow(BaseModel):
     active: list[ActiveTask]
 
 
+class TierCount(BaseModel):
+    tier: int | None  # coveted tier; null = untiered
+    boards: int
+    due: int  # fetched on the next tick
+
+
+class IngestCadence(BaseModel):
+    adaptive: bool
+    tick_minutes: int
+    interval_hours: int  # the fixed cadence when not adaptive (and for jobspy/usajobs)
+    tiers: list[TierCount]
+
+
 class Schedule(BaseModel):
     backoff_until: str | None
     in_flight: int
     max_per_tick: int
     next_tick: str | None
     users: list[ScheduleRow]
+    ingest: IngestCadence
+
+
+async def _ingest_cadence(db: AsyncSession, now: datetime) -> IngestCadence:
+    s = get_settings()
+    due = func.count().filter((Company.next_fetch_at.is_(None)) | (Company.next_fetch_at <= now))
+    rows = (await db.execute(
+        select(Company.coveted_tier, func.count(), due).where(Company.enabled.is_(True))
+        .group_by(Company.coveted_tier).order_by(Company.coveted_tier.nulls_last())
+    )).all()
+    return IngestCadence(
+        adaptive=s.adaptive_schedule_enabled, tick_minutes=s.ingest_tick_minutes, interval_hours=s.ingest_interval_hours,
+        tiers=[TierCount(tier=t, boards=n, due=d) for t, n, d in rows],
+    )
 
 
 def _iso(d: datetime | None) -> str | None:
@@ -136,6 +163,7 @@ async def schedule(_: Admin, db: DB):
     return Schedule(
         backoff_until=_iso(await planner.backoff_until(db, now)), in_flight=len(await planner.in_flight_users(db)),
         max_per_tick=get_settings().planner_max_per_tick, next_tick=_iso(next_tick), users=users,
+        ingest=await _ingest_cadence(db, now),
     )
 
 
@@ -185,6 +213,7 @@ async def enable_source(company_id: int, _: Admin, db: DB):
         c.consecutive_failures = 0
         c.disabled_reason = None
         c.last_error = None
+        c.next_fetch_at = None  # due on the next tick, not after the failure backoff
         await db.commit()
     n = await db.scalar(select(func.count()).select_from(Job).where(Job.company_id == c.id, Job.is_active.is_(True)))
     return _source_row(c, n or 0)

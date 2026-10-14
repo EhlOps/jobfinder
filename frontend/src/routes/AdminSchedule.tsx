@@ -37,6 +37,17 @@ export default function AdminSchedule() {
           <p className="muted">
             {s.in_flight} of {s.max_per_tick} slots in use · next planner run about {when(s.next_tick)}
           </p>
+          <p className="muted">
+            Job boards: {s.ingest.adaptive
+              ? `adaptive, tick every ${s.ingest.tick_minutes} min`
+              : `every ${s.ingest.interval_hours} h`}
+            {s.ingest.tiers.map((t) => (
+              <span key={t.tier ?? "none"}>
+                {" · "}{t.tier === null ? "untiered" : `tier ${t.tier}`}: {t.boards} boards
+                {s.ingest.adaptive ? ` (${t.due} due)` : ""}
+              </span>
+            ))}
+          </p>
         </div>
       )}
       {s && (

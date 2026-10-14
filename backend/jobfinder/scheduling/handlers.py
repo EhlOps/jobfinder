@@ -58,12 +58,15 @@ async def audit_profile(db: AsyncSession, ai: AITasks, task: Task) -> dict:
 
 async def ingest_jobs(db: AsyncSession, ai: AITasks, task: Task) -> dict:
     """Poll all ATS boards (and jobspy/usajobs when enabled). Scheduling this is milestone 7."""
+    from jobfinder.config import get_settings
     from jobfinder.db import SessionLocal
     from jobfinder.ingest.runner import run_ingest
 
     summary = await run_ingest(SessionLocal)
     # Matching is planned, not fanned out: the planner picks who needs it most and staggers the runs.
-    await queue.enqueue(db, "plan_work", dedupe=True)
+    # Adaptive ticks come every few minutes and often fetch nothing: plan only when jobs changed.
+    if not get_settings().adaptive_schedule_enabled or summary.get("new") or summary.get("deactivated"):
+        await queue.enqueue(db, "plan_work", dedupe=True)
     return summary
 
 
