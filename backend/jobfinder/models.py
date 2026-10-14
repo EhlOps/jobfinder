@@ -163,6 +163,34 @@ class Company(Base):
     disabled_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
     origin: Mapped[str] = mapped_column(String(16), default="seed", server_default="seed")  # seed|discovered|user
     validated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # ats='recipe' boards: how to read the site (ingest.recipes.Recipe), its lifecycle and yield history
+    recipe: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
+    recipe_state: Mapped[str | None] = mapped_column(String(16), nullable=True)  # induced|validated|active|degraded|disabled
+    recipe_health: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
+    # how sought-after the employer is (ingest.coveted); tier 1 is the most
+    coveted_score: Mapped[float] = mapped_column(Float, default=0, server_default="0")
+    coveted_tier: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    coveted_pinned: Mapped[bool | None] = mapped_column(nullable=True)  # admin override: True pin, False unpin
+    # adaptive cadence: per-board interval and when it's next due (None = due now)
+    fetch_interval_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    next_fetch_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class CovetedTarget(Base):
+    """A sought-after employer we may not have a board for yet (from outside lists or admin pins)."""
+
+    __tablename__ = "coveted_targets"
+    __table_args__ = (UniqueConstraint("domain", name="uq_coveted_target_domain"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(200))
+    domain: Mapped[str] = mapped_column(String(255))  # registrable domain, e.g. acme.com
+    source: Mapped[str] = mapped_column(String(64), default="admin")  # admin|github_lists|...
+    score: Mapped[float] = mapped_column(Float, default=0, server_default="0")
+    company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id", ondelete="SET NULL"), nullable=True)
+    last_resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class JobLink(Base):
@@ -182,6 +210,8 @@ class JobLink(Base):
     slug: Mapped[str | None] = mapped_column(String(200), nullable=True)
     company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id", ondelete="SET NULL"), nullable=True)
     error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    rung: Mapped[str | None] = mapped_column(String(32), nullable=True)  # which resolver rung found the board
+    job_id: Mapped[int | None] = mapped_column(ForeignKey("jobs.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
