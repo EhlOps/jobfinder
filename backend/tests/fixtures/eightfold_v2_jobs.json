@@ -1,0 +1,88 @@
+{
+ "domain": "netflix.com",
+ "branding": {
+  "companyName": "Netflix"
+ },
+ "positions": [
+  {
+   "id": 790318907811,
+   "name": "Demand Partnerships Lead, Sales Solutions (UCAN)",
+   "posting_name": "Demand Partnerships Lead, Sales Solutions (UCAN)",
+   "location": "New York,New York,United States of America",
+   "locations": [
+    "New York,New York,United States of America"
+   ],
+   "hot": 0,
+   "department": "Partnerships",
+   "business_unit": "Streaming",
+   "t_update": 1791763200,
+   "t_create": 1791763200,
+   "ats_job_id": "JR42991",
+   "display_job_id": "JR42991",
+   "type": "ATS",
+   "id_locale": "JR42991-en-US",
+   "job_description": "",
+   "locale": "en-US",
+   "stars": 0,
+   "medallionProgram": null,
+   "location_flexibility": null,
+   "work_location_option": "onsite",
+   "canonicalPositionUrl": "https://explore.jobs.netflix.net/careers/job/790318907811",
+   "isPrivate": false
+  },
+  {
+   "id": 790318883368,
+   "name": "Senior Manager, Strategy and Operations (Games)",
+   "posting_name": "Senior Manager, Strategy and Operations (Games)",
+   "location": "Los Angeles,California,United States of America",
+   "locations": [
+    "Los Angeles,California,United States of America"
+   ],
+   "hot": 0,
+   "department": "Games",
+   "business_unit": "Streaming",
+   "t_update": 1791590400,
+   "t_create": 1791590400,
+   "ats_job_id": "JR42981",
+   "display_job_id": "JR42981",
+   "type": "ATS",
+   "id_locale": "JR42981-en-US",
+   "job_description": "",
+   "locale": "en-US",
+   "stars": 0,
+   "medallionProgram": null,
+   "location_flexibility": null,
+   "work_location_option": "onsite",
+   "canonicalPositionUrl": "https://explore.jobs.netflix.net/careers/job/790318883368",
+   "isPrivate": false
+  },
+  {
+   "id": 790318883356,
+   "name": "Executive Producer - Mainstream, Narrative & New Experiences (Games)",
+   "posting_name": "Executive Producer - Mainstream, Narrative & New Experiences (Games)",
+   "location": "Remote, United States",
+   "locations": [
+    "Remote, United States",
+    "Los Angeles,California,United States of America"
+   ],
+   "hot": 0,
+   "department": "Games",
+   "business_unit": "Streaming",
+   "t_update": 1791590400,
+   "t_create": 1791590400,
+   "ats_job_id": "JR42979",
+   "display_job_id": "JR42979",
+   "type": "ATS",
+   "id_locale": "JR42979-en-US",
+   "job_description": "",
+   "locale": "en-US",
+   "stars": 0,
+   "medallionProgram": null,
+   "location_flexibility": null,
+   "work_location_option": "remote_local",
+   "canonicalPositionUrl": "https://explore.jobs.netflix.net/careers/job/790318883356",
+   "isPrivate": false
+  }
+ ],
+ "count": 442
+}

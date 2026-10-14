@@ -1,7 +1,7 @@
 """Polite fetching for discovery: a descriptive User-Agent, robots.txt checks and low volume."""
 import asyncio
 import logging
-from urllib.parse import urlsplit
+from urllib.parse import quote, unquote, urlparse, urlsplit, urlunparse
 from urllib.robotparser import RobotFileParser
 
 import httpx
@@ -9,6 +9,30 @@ import httpx
 log = logging.getLogger("jobfinder.discovery")
 USER_AGENT = "JobFinderDiscovery/1.0 (+personal job search tool; polite, low volume)"
 ROBOTS_TOKEN = "JobFinderDiscovery"
+
+
+def can_fetch(parser: RobotFileParser, useragent: str, url: str) -> bool:
+    """RobotFileParser.can_fetch with RFC 9309 precedence: the longest matching rule wins, Allow wins a tie.
+    The stdlib applies the first matching rule, so "Disallow: /" listed before "Allow: /api" would block /api
+    (Eightfold career sites publish exactly that)."""
+    if parser.disallow_all:
+        return False
+    if parser.allow_all:
+        return True
+    if not parser.last_checked:
+        return False
+    p = urlparse(unquote(url))
+    path = quote(urlunparse(("", "", p.path, p.params, p.query, p.fragment))) or "/"
+    entry = next((e for e in parser.entries if e.applies_to(useragent)), parser.default_entry)
+    if entry is None:
+        return True
+    best = None
+    for rule in entry.rulelines:
+        if rule.applies_to(path) and (
+            best is None or len(rule.path) > len(best.path) or (len(rule.path) == len(best.path) and rule.allowance)
+        ):
+            best = rule
+    return best.allowance if best else True
 
 
 class RobotsDisallowed(Exception):
@@ -54,7 +78,7 @@ class PoliteFetcher:
         parser = await self._parser(f"{parts.scheme}://{parts.netloc}")
         if parser is None:
             return False
-        return parser.can_fetch(ROBOTS_TOKEN, url)
+        return can_fetch(parser, ROBOTS_TOKEN, url)
 
     async def get(self, url: str, **kwargs) -> httpx.Response:
         if not await self.allowed(url):

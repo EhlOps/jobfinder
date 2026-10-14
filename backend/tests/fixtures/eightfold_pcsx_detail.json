@@ -1,0 +1,33 @@
+{
+ "status": 200,
+ "error": {
+  "message": "",
+  "body": ""
+ },
+ "data": {
+  "id": 1970393557008022,
+  "displayJobId": "200058010",
+  "name": "Retail Partner Marketing Manager",
+  "locations": [
+   "United States, Multiple Locations, Multiple Locations"
+  ],
+  "standardizedLocations": [
+   "US"
+  ],
+  "postedTs": 1791940000,
+  "department": "Partner Marketing",
+  "creationTs": 1790278439,
+  "jobDescription": "<b>Overview</b><br><p>MCAPS-Core accelerates customer outcomes and business growth. By uniting product, engineering, marketing, sales, customer success, and partners around a common customer mission, we help customers realize value faster and turn innovation into measurable business impact. Through deep technical expertise and differentiated go-to-market execution, we win competitively, capture market share, and scale repeatable growth motions. We differentiate through value creation - delivering world-class, AI-powered customer experiences that accelerate adoption, strengthen loyalty, and create sustainable competitive advantage, driving growth that outpaces the market.</p><p>In Consumer Channel Sales, our consumer organization our purpose is to create value with our partners, to market and sell innovative consumer solutions powered by Windows, Office, Surface. We\u2019re positioned right at the intersection of customers, hardware partners, and channel partners. Together, we win by delivering compelling at-home and on-the-go experiences combining intelligent edge devices and services that create Microsoft fans for life.</p><p>We are seeking a\u00a0<strong>Retail Marketing Manager</strong> to manage retail partner across both the US and Canada, building full-funnel partner marketing plans and compelling customer experiences, leveraging worldwide guidance and proven omnichannel strategies across digital and physical environments. With the reach of 80,000 retail locations, 500+ partner w<p>The typical base pay range for this role across the U.S. is USD $106,400 - $203,600 per year.</p>",
+  "location": "United States, Multiple Locations, Multiple Locations",
+  "workLocationOption": "onsite",
+  "atsJobId": "200058010",
+  "positionUrl": "/careers/job/1970393557008022",
+  "publicUrl": "https://apply.careers.microsoft.com/careers/job/1970393557008022",
+  "efcustomTextWorkSite": [
+   "0 days / week in-office \u2013 remote"
+  ],
+  "efcustomTextEmploymentType": [
+   "Full-Time"
+  ]
+ }
+}

@@ -34,6 +34,7 @@ class SafeResponse:
     content_type: str
     body: bytes
     encoding: str
+    headers: httpx.Headers | None = None  # final response's headers (e.g. Set-Cookie for a retry)
 
     @property
     def text(self) -> str:
@@ -90,7 +91,7 @@ async def _fetch(
                 raise FetchError(f"unexpected content type {ctype!r}")
             body = await _read_capped(resp, max_bytes)
             return SafeResponse(url=url, status=resp.status_code, content_type=ctype, body=body,
-                                encoding=resp.encoding or "utf-8")
+                                encoding=resp.encoding or "utf-8", headers=resp.headers)
         finally:
             await resp.aclose()
     raise FetchError("Too many redirects")

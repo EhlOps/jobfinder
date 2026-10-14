@@ -1,0 +1,81 @@
+{
+ "status": 200,
+ "error": {
+  "message": "",
+  "body": ""
+ },
+ "data": {
+  "positions": [
+   {
+    "id": 1970393557008022,
+    "displayJobId": "200058010",
+    "name": "Retail Partner Marketing Manager",
+    "locations": [
+     "United States, Multiple Locations, Multiple Locations"
+    ],
+    "standardizedLocations": [
+     "US"
+    ],
+    "postedTs": 1791940000,
+    "solrScore": null,
+    "stars": 0,
+    "department": "Partner Marketing",
+    "creationTs": 1790278439,
+    "isHot": 0,
+    "workLocationOption": "onsite",
+    "locationFlexibility": null,
+    "atsJobId": "200058010",
+    "positionUrl": "/careers/job/1970393557008022"
+   },
+   {
+    "id": 1970393557040349,
+    "displayJobId": "200061718",
+    "name": "Partner Support Engineer",
+    "locations": [
+     "United States, Washington, Redmond",
+     "United States, Texas, Las Colinas",
+     "United States, North Dakota, Fargo",
+     "United States, North Carolina, Charlotte"
+    ],
+    "standardizedLocations": [
+     "Redmond, WA, US",
+     "Irving, TX, US",
+     "Fargo, ND, US",
+     "Charlotte, NC, US"
+    ],
+    "postedTs": 1791939191,
+    "solrScore": null,
+    "stars": 0,
+    "department": "Technical Support Engineering",
+    "creationTs": 1791917661,
+    "isHot": 0,
+    "workLocationOption": "onsite",
+    "locationFlexibility": null,
+    "atsJobId": "200061718",
+    "positionUrl": "/careers/job/1970393557040349"
+   },
+   {
+    "id": 1970393556957379,
+    "displayJobId": "200047144",
+    "name": "Senior Software Engineer - Windows App",
+    "locations": [
+     "United States, Washington, Redmond"
+    ],
+    "standardizedLocations": [
+     "Redmond, WA, US"
+    ],
+    "postedTs": 1791938292,
+    "solrScore": null,
+    "stars": 0,
+    "department": "Software Engineering",
+    "creationTs": 1785943169,
+    "isHot": 0,
+    "workLocationOption": "onsite",
+    "locationFlexibility": null,
+    "atsJobId": "200047144",
+    "positionUrl": "/careers/job/1970393556957379"
+   }
+  ],
+  "count": 2384
+ }
+}
