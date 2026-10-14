@@ -1,0 +1,67 @@
+{
+ "requisitionList": [
+  {
+   "hotJob": false,
+   "addedToJobCart": false,
+   "draft": false,
+   "alreadyAppliedOn": false,
+   "toReApply": false,
+   "jobId": "496710",
+   "contestNo": "41404",
+   "column": [
+    "Open Rank Clinical Research Coordinator (Entry – Senior)",
+    "[\"Aurora\"]",
+    "Oct 13, 2026"
+   ],
+   "linkedColumn": 0,
+   "locationsColumns": [
+    1
+   ]
+  },
+  {
+   "hotJob": false,
+   "addedToJobCart": false,
+   "draft": false,
+   "alreadyAppliedOn": false,
+   "toReApply": false,
+   "jobId": "496672",
+   "contestNo": "41403",
+   "column": [
+    "Surgery Scheduler or Lead Surgery Scheduler (Open Rank) - Interventional Radiology, Highlands Ranch",
+    "[\"Aurora\"]",
+    "Oct 13, 2026"
+   ],
+   "linkedColumn": 0,
+   "locationsColumns": [
+    1
+   ]
+  },
+  {
+   "hotJob": false,
+   "addedToJobCart": false,
+   "draft": false,
+   "alreadyAppliedOn": false,
+   "toReApply": false,
+   "jobId": "496653",
+   "contestNo": "41401",
+   "column": [
+    "Clinical RN Supervisor - Multi-Specialty Medicine, Highlands Ranch",
+    "[\"Aurora\"]",
+    "Oct 13, 2026"
+   ],
+   "linkedColumn": 0,
+   "locationsColumns": [
+    1
+   ]
+  }
+ ],
+ "facetResults": null,
+ "pagingData": {
+  "currentPageNo": 1,
+  "pageSize": 25,
+  "totalCount": 704
+ },
+ "queryString": "f=null&s=3|D&a=null&multiline=false",
+ "careerSectionUnAvailable": false,
+ "supportedLanguages": []
+}

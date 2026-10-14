@@ -16,6 +16,7 @@ from jobfinder.ingest.discovery.robots import PoliteFetcher, RobotsDisallowed, m
 from jobfinder.ingest.sources.eightfold import board_from_url as eightfold_board
 from jobfinder.ingest.sources.icims import slug_from_host as icims_slug_from_host
 from jobfinder.ingest.sources.oracle_hcm import board_from_ce_url
+from jobfinder.ingest.sources.taleo import taleo_board
 from jobfinder.ingest.validate import SLUG_RE, ValidationResult, add_board, validate_board
 from jobfinder.models import Company
 
@@ -82,6 +83,8 @@ def board_from_url(url: str) -> tuple[str, str] | None:
         return ("icims", slug) if slug else None
     if eightfold := eightfold_board(host, parts.path, parts.query):
         return eightfold
+    if host.endswith(".taleo.net"):
+        return taleo_board(host[: -len(".taleo.net")], parts.path)
     for suffix, ats in _SUBDOMAIN_SUFFIXES.items():
         if host.endswith(suffix):
             slug = host[: -len(suffix)]
