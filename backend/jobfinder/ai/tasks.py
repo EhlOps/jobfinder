@@ -1,4 +1,5 @@
 """Typed AI functions: one per feature, each with its own prompt file and output schema."""
+import html as htmllib
 import json
 import re
 from pathlib import Path
@@ -9,6 +10,7 @@ from jobfinder.ai.schemas import (
     Consolidated,
     FollowupQuestion,
     FollowupQuestions,
+    InducedRecipe,
     MatchScore,
     Ping,
     ProfileAudit,
@@ -19,6 +21,10 @@ from jobfinder.config import get_settings
 PROMPTS = Path(__file__).parent / "prompts"
 MAX_SOURCE_CHARS = 30_000
 MAX_JOB_CHARS = 12_000
+MAX_PAGE_CHARS = 40_000  # recipe induction: the careers page after stripping scripts and styles
+MAX_SAMPLE_CHARS = 8_000
+MAX_SAMPLES = 3
+MAX_INLINE_JSON_CHARS = 2_000  # inline scripts kept when they look like data (window.__STATE__ = {...})
 
 TONES = {
     "professional": "Polished, confident and formal-but-human. About 300 words in 3 or 4 paragraphs.",
@@ -35,7 +41,7 @@ def load_prompt(name: str) -> str:
 
 def data_block(tag: str, text: str, attrs: str = "") -> str:
     """Wrap untrusted text so it can't close its own block and is clearly labelled as data."""
-    safe = text.replace(f"</{tag}>", f"< /{tag}>")
+    safe = re.sub(rf"<\s*/\s*{re.escape(tag)}\b", f"< /{tag}", text, flags=re.IGNORECASE)
     return f"<{tag}{(' ' + attrs) if attrs else ''}>\n{safe}\n</{tag}>"
 
 
@@ -214,6 +220,70 @@ class AITasks:
             "\n\n".join(parts), system=load_prompt("resume_tailor"), output=TailoredResume, model="sonnet",
             task="tailor_resume", timeout_s=180,
         )
+
+    async def induce_recipe(
+        self, page_url: str, html_excerpt: str, json_samples: list[tuple[str, str]], pasted_url: str,
+        previous: dict | None = None, failure: str | None = None,
+    ) -> InducedRecipe:
+        """Propose a recipe for a careers site no deterministic rung could read. Everything from the site
+        (page, samples, URLs, the old recipe and its failure) goes in as data; the caller validates the result.
+        json_samples: (url, response text) pairs from endpoints the page refers to."""
+        parts = [
+            "Propose a recipe that lists every job on this careers site, including the pasted job.",
+            data_block("data", pasted_url[:2048], 'kind="pasted_job_url"'),
+            data_block("data", page_excerpt(html_excerpt), f'kind="page" url="{_attr(page_url)}"'),
+        ]
+        for url, text in json_samples[:MAX_SAMPLES]:
+            parts.append(data_block("data", text[:MAX_SAMPLE_CHARS], f'kind="json_sample" url="{_attr(url)}"'))
+        if previous is not None:
+            prev = {k: v for k, v in previous.items() if k != "provenance"}
+            parts.append(data_block("data", json.dumps(prev, indent=1)[:MAX_SAMPLE_CHARS], 'kind="previous_recipe"'))
+        if failure:
+            parts.append("The previous recipe failed; fix the problem described here.")
+            parts.append(data_block("data", failure[:1000], 'kind="failure"'))
+        return await self.claude.run(
+            "\n\n".join(parts), system=load_prompt("recipe_induce"), output=InducedRecipe,
+            model=get_settings().recipe_model, task="recipe_induce", timeout_s=240,
+        )
+
+
+# (?=[\s/>]) and not \b: <svg-icon> or <template-card> are custom elements, not blocks to drop
+_BLOCK_OPEN = re.compile(r"<(script|style|svg|noscript|template)(?=[\s/>])([^>]{0,500})>|<!--", re.IGNORECASE)
+_LD_TYPE = re.compile(r"type\s*=\s*[\"']?application/ld\+json", re.IGNORECASE)
+_JSONISH = re.compile(r"^\s*(?:[\w.$\[\]\"']{1,80}\s*=\s*)?[\[{]")
+_DROP_ATTRS = re.compile(r"\s(?:style|on[a-z]+|srcset|sizes|d)\s*=\s*(?:\"[^\"]*\"|'[^']*'|[^\s>]+)",
+                         re.IGNORECASE)
+_DATA_URI = re.compile(r"data:[a-z]+/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=]{100,}", re.IGNORECASE)
+
+
+def page_excerpt(page_html: str, limit: int = MAX_PAGE_CHARS) -> str:
+    """The page as the model needs it to write selectors: markup kept, but scripts dropped (except JSON-LD
+    and short inline JSON, which often hold the jobs), styles, SVG, comments and noisy attributes removed,
+    whitespace collapsed, at most `limit` chars. Linear in the page size: an unclosed block ends the scan."""
+    text = page_html[: limit * 40]
+    out, pos = [], 0
+    while (m := _BLOCK_OPEN.search(text, pos)) is not None:
+        out.append(text[pos:m.start()])
+        tag = (m.group(1) or "").lower()
+        close = re.compile(rf"</{tag}\s*>", re.IGNORECASE).search(text, m.end()) if tag else None
+        if not tag:  # comment
+            end = text.find("-->", m.end())
+            pos = end + 3 if end >= 0 else len(text)
+            continue
+        body = text[m.end():close.start()] if close else ""
+        if tag == "script" and _LD_TYPE.search(m.group(2)):
+            out.append(f'<script type="application/ld+json">{body[:MAX_SAMPLE_CHARS]}</script>')
+        elif tag == "script" and body and len(body) <= MAX_INLINE_JSON_CHARS and _JSONISH.match(body):
+            out.append(f"<script>{body}</script>")
+        pos = close.end() if close else len(text)
+    out.append(text[pos:])
+    text = _DATA_URI.sub("data:...", _DROP_ATTRS.sub("", "".join(out)))
+    text = re.sub(r">\s+<", "><", re.sub(r"\s+", " ", text))
+    return text.strip()[:limit]
+
+
+def _attr(value: str) -> str:
+    return htmllib.escape(value[:500], quote=True)
 
 
 def clean_letter(text: str) -> str:

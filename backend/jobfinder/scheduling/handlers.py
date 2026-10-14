@@ -15,6 +15,7 @@ Handler = Callable[[AsyncSession, AITasks, Task], Awaitable[dict]]
 
 log = logging.getLogger("jobfinder.handlers")
 MAX_LINK_CHARS = 8_000
+REINDUCE_RETRIES = 6  # re-induction attempts put off by a rate limit or an unreachable site
 
 
 async def extract_profile(db: AsyncSession, ai: AITasks, task: Task) -> dict:
@@ -155,7 +156,7 @@ async def resolve_job_link(db: AsyncSession, ai: AITasks, task: Task) -> dict:
     """A pasted job link whose board is new: add it, fetch it now, then let the planner match the new jobs."""
     from jobfinder.ingest.resolve import resolve_link
 
-    out = await resolve_link(db, int(task.payload["link_id"]))
+    out = await resolve_link(db, int(task.payload["link_id"]), allow_llm=await _llm_allowed(db), ai=ai)
     if out.get("new"):
         await queue.enqueue(db, "plan_work", dedupe=True)
     return out
@@ -185,6 +186,41 @@ async def audit_coverage(db: AsyncSession, ai: AITasks, task: Task) -> dict:
     return out
 
 
+async def _llm_allowed(db: AsyncSession) -> bool:
+    """The resolver may ask Claude unless it's switched off or the planner is backing off a rate limit."""
+    from datetime import UTC, datetime
+
+    from jobfinder.config import get_settings
+    from jobfinder.scheduling import planner
+
+    return get_settings().resolver_llm_enabled and await planner.backoff_until(db, datetime.now(UTC)) is None
+
+
+async def reinduce_recipe(db: AsyncSession, ai: AITasks, task: Task) -> dict:
+    """Self-heal a degraded recipe board (queued by ingest_company): ask Claude for a new recipe, at most
+    twice a week per domain (ingest.recipes.health)."""
+    from datetime import UTC, datetime, timedelta
+
+    from jobfinder.config import get_settings
+    from jobfinder.ingest.resolve.rungs.llm import reinduce_company
+
+    company_id, attempt = int(task.payload["company_id"]), int(task.payload.get("attempt", 0))
+    if not get_settings().resolver_llm_enabled:
+        return {"skipped": "llm disabled"}
+    if await _llm_allowed(db):
+        out = await reinduce_company(db, ai, company_id)
+    else:
+        out = {"skipped": "AI backing off", "retry": True}
+    # Not now (rate limit, AI down, site unreachable): an auto-disabled board is never fetched again, so no
+    # later run would queue it. Try again after the planner's backoff, a few times.
+    if out.pop("retry", False) and attempt < REINDUCE_RETRIES:
+        later = datetime.now(UTC) + timedelta(minutes=get_settings().planner_backoff_minutes)
+        await queue.enqueue(db, "reinduce_recipe", {"company_id": company_id, "attempt": attempt + 1},
+                            run_after=later, dedupe=True)
+        out["requeued"] = later.isoformat()
+    return out
+
+
 HANDLERS: dict[str, Handler] = {
     "extract_profile": extract_profile,
     "followup_questions": followup_questions,
@@ -201,4 +237,5 @@ HANDLERS: dict[str, Handler] = {
     "resolve_job_link": resolve_job_link,
     "score_coveted": score_coveted,
     "audit_coverage": audit_coverage,
+    "reinduce_recipe": reinduce_recipe,
 }

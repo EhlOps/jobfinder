@@ -226,7 +226,7 @@ async def test_resolve_deleted_link(maker):
 
 
 async def test_handler_queues_matching_when_new_jobs(maker, monkeypatch):
-    async def fake(db, link_id):
+    async def fake(db, link_id, **kw):
         return {"status": "resolved", "new": 3}
 
     monkeypatch.setattr(resolve, "resolve_link", fake)

@@ -222,12 +222,28 @@ def board_fetcher(company: Company) -> Fetcher | None:
     return ATS_FETCHERS.get(company.ats)
 
 
-def _recipe_run(company: Company, n_postings: int, error: str | None = None) -> None:
-    """Recipe boards only: fold the run into the recipe's health (committed with the run's other changes)."""
-    if company.ats == "recipe":
-        from jobfinder.ingest.recipes.health import record_run
+def _recipe_run(company: Company, n_postings: int, error: str | None = None) -> bool:
+    """Recipe boards only: fold the run into the recipe's health (committed with the run's other changes).
+    True when the recipe is now degraded and due a re-induction (see _queue_reinduce)."""
+    if company.ats != "recipe":
+        return False
+    from jobfinder.ingest.recipes.health import needs_reinduce, record_run
 
-        record_run(company, n_postings, error)
+    record_run(company, n_postings, error)
+    return needs_reinduce(company)
+
+
+async def _queue_reinduce(db: AsyncSession, company_id: int) -> None:
+    """Queue the LLM self-heal for a degraded recipe board (after the run is committed: enqueue commits)."""
+    if not get_settings().resolver_llm_enabled:
+        return
+    from jobfinder.scheduling import queue
+
+    try:
+        await queue.enqueue(db, "reinduce_recipe", {"company_id": company_id}, dedupe=True)
+    except Exception:  # the run itself is recorded; the next degraded run queues it again
+        log.exception("could not queue re-induction for board %s", company_id)
+        await db.rollback()
 
 
 async def ingest_company(db: AsyncSession, client: httpx.AsyncClient, company: Company) -> IngestStats:
@@ -241,8 +257,10 @@ async def ingest_company(db: AsyncSession, client: httpx.AsyncClient, company: C
         postings = await _fetch_with_retry(fetcher, client, company.slug, company.name)
     except Exception as e:
         stats.error = _describe(e)
-        _recipe_run(company, 0, stats.error)
+        heal = _recipe_run(company, 0, stats.error)
         await _fail_board(db, company, stats.error, datetime.now(UTC))
+        if heal:
+            await _queue_reinduce(db, company.id)
         return stats
 
     stats.fetched = len(postings)
@@ -262,17 +280,21 @@ async def ingest_company(db: AsyncSession, client: httpx.AsyncClient, company: C
             stats.error = f"{EMPTY_ERROR_PREFIX}; kept {active} active jobs (run {streak}/{EMPTY_CONFIRM_RUNS})"
             company.last_error = stats.error
             company.last_fetched_at = datetime.now(UTC)
-            _recipe_run(company, 0)
+            heal = _recipe_run(company, 0)
             await _schedule_next(db, company)
             await db.commit()
+            if heal:
+                await _queue_reinduce(db, company.id)
             return stats
         stats.deactivated = await deactivate_missing(db, company.ats, company.id, [])
     now = datetime.now(UTC)
     _record_success(company, now)
     company.last_fetched_at = now
-    _recipe_run(company, len(postings))
+    heal = _recipe_run(company, len(postings))
     await _schedule_next(db, company)
     await db.commit()
+    if heal:
+        await _queue_reinduce(db, company.id)
     return stats
 
 

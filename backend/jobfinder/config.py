@@ -72,6 +72,8 @@ class Settings(BaseSettings):
     job_links_per_user_day: int = 20  # pasted links per user per rolling 24h
     coverage_enabled: bool = True  # weekly coveted score + coverage audit (ingest.coveted)
     coverage_resolves_per_run: int = 20  # coveted employers sent through the resolver per audit run
+    resolver_llm_enabled: bool = True  # last resolver rung: Claude proposes a recipe for an unknown site
+    recipe_model: str = "sonnet"  # model that induces recipes: haiku | sonnet | opus
     jobspy_max_queries: int = 10
     jobspy_results_per_query: int = 25
     session_ttl_days: int = 30

@@ -4,6 +4,7 @@ from jobfinder.ingest.resolve.ladder import Rung
 from jobfinder.ingest.resolve.rungs.embedded import EmbeddedRung
 from jobfinder.ingest.resolve.rungs.jsonld import JsonLdRung
 from jobfinder.ingest.resolve.rungs.listing import ListingRung
+from jobfinder.ingest.resolve.rungs.llm import LlmRung
 from jobfinder.ingest.resolve.rungs.url_pattern import UrlPatternRung
 
 _ALL: list[Rung] = [
@@ -11,6 +12,7 @@ _ALL: list[Rung] = [
     EmbeddedRung(),
     JsonLdRung(),
     ListingRung(),
+    LlmRung(),
 ]
 
 RUNGS: list[Rung] = sorted(_ALL, key=lambda r: r.order)
