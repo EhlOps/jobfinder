@@ -1,0 +1,6 @@
+{"meta": {"total": 3, "tags": [{"id": 1, "label": "x"}]},
+ "data": {"results": [
+   {"jobId": "4021", "jobTitle": "Robotics Engineer", "locationName": "Boston, MA",
+    "datePosted": "2026-10-01", "description": "<p>Build robots. $120,000 - $150,000</p>"},
+   {"jobId": "4022", "jobTitle": "Controls Engineer", "locationName": "Remote", "datePosted": "2026-09-30"}
+ ]}}

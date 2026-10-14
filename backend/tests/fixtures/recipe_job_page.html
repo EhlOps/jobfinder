@@ -1,0 +1,18 @@
+<!doctype html>
+<html><head><title>Robotics Engineer - Acme Robotics</title>
+<meta property="og:site_name" content="Acme Robotics">
+<link rel="stylesheet" href="/static/site.css">
+<script src="/static/app.js"></script>
+</head>
+<body>
+<header><a href="/careers">Careers</a> <a href="https://www.linkedin.com/company/acme">LinkedIn</a></header>
+<h1>Robotics Engineer</h1>
+<p>Boston, MA</p>
+<div id="app" data-endpoint="/api/v1/jobs?limit=2&amp;offset=0"></div>
+<script>
+  window.__CONFIG__ = {"jobsApi": "https:\/\/careers.acme.com\/api\/v1\/jobs?limit=2&offset=0",
+                       "graphql": "/graphql", "logo": "/img/logo.png",
+                       "evil": "https://evil.example/api/jobs", "local": "http://127.0.0.1/api/jobs",
+                       "meta": "http://169.254.169.254/latest/meta-data/jobs.json"};
+</script>
+</body></html>
