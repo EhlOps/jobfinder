@@ -1,0 +1,95 @@
+{
+ "refineSearch": {
+  "status": 200,
+  "hits": 6,
+  "totalHits": 3,
+  "data": {
+   "jobs": [
+    {
+     "jobId": "R-288138",
+     "reqId": "R-288138",
+     "jobSeqNo": "MASRUSR288138EXTERNALENUS",
+     "title": "Vice President - Open Finance Sales",
+     "type": "Full time",
+     "location": "Purchase, United States of America, 10577-2509",
+     "multi_location": [
+      "Purchase, United States of America, 10577-2509",
+      "Boston, United States of America, 02210",
+      "Atlanta, United States of America, 30308",
+      "Arlington, United States of America, 22203",
+      "Chicago, United States of America, 60602",
+      "Miami, United States of America, 33131-4945"
+     ],
+     "cityState": "Purchase, New York",
+     "cityStateCountry": "Purchase, New York, United States of America",
+     "country": "United States of America",
+     "postedDate": "2026-08-21T00:00:00.000+0000",
+     "dateCreated": "2026-08-21T16:30:02.412+0000",
+     "applyUrl": "https://mastercard.wd1.myworkdayjobs.com/CorporateCareers/job/Purchase-New-York/Vice-President---Open-Finance-Sales_R-288138/apply",
+     "descriptionTeaser": "Internal alignment and cross-functional execution \u2013 Build strong internal relationships and communication channels across account management, Product, Marketing, architects, Services, Customer Success...",
+     "category": "Sales",
+     "locale": "en_US"
+    },
+    {
+     "jobId": "R-289569",
+     "reqId": "R-289569",
+     "jobSeqNo": "MASRUSR289569EXTERNALENUS",
+     "title": "Director, Mastercard Commerce Media Sales - Publisher Solutions, North America",
+     "type": "Full time",
+     "location": "Purchase, United States of America, 10577-2509",
+     "multi_location": [
+      "Purchase, United States of America, 10577-2509",
+      "Boston, United States of America, 02210",
+      "Atlanta, United States of America, 30308",
+      "Arlington, United States of America, 22203",
+      "Chicago, United States of America, 60602",
+      "Miami, United States of America, 33131-4945",
+      "New York, United States of America, 10016"
+     ],
+     "cityState": "Purchase, New York",
+     "cityStateCountry": "Purchase, New York, United States of America",
+     "country": "United States of America",
+     "postedDate": "2026-09-01T00:00:00.000+0000",
+     "dateCreated": "2026-09-01T16:28:40.895+0000",
+     "applyUrl": "https://mastercard.wd1.myworkdayjobs.com/CorporateCareers/job/Purchase-New-York/Director--Mastercard-Commerce-Media-Sales---Publisher-Solutions--North-America_R-289569/apply",
+     "descriptionTeaser": "Join our team as a Director, Mastercard Commerce Media Sales to drive growth of Mastercard Commerce Media across North America. Lead strategic business development and relationship building with publisher partners, focusing on expanding Mastercard's commerce media platform. Ideal for experienced commercial leaders in digital advertising or media solutions.",
+     "category": "Sales",
+     "locale": "en_US"
+    },
+    {
+     "jobId": "R-290228",
+     "reqId": "R-290228",
+     "jobSeqNo": "MASRUSR290228EXTERNALENUS",
+     "title": "Senior Software Engineer (Remote)",
+     "type": "Full time",
+     "location": "Arlington, United States of America, 22203",
+     "multi_location": [
+      "Arlington, United States of America, 22203"
+     ],
+     "cityState": "Arlington, Virginia",
+     "cityStateCountry": "Arlington, Virginia, United States of America",
+     "country": "United States of America",
+     "postedDate": "2026-09-09T00:00:00.000+0000",
+     "dateCreated": "2026-09-10T00:29:33.312+0000",
+     "applyUrl": "javascript:alert(1)",
+     "descriptionTeaser": "Fully remote. Salary range $150,000 - $190,000.",
+     "category": "Engineering",
+     "locale": "en_US"
+    },
+    {
+     "jobId": "R-1",
+     "title": "  ",
+     "postedDate": "2026-09-01T00:00:00.000+0000"
+    },
+    {
+     "jobId": "../../etc/passwd",
+     "title": "Path trick"
+    },
+    {
+     "title": "No id at all"
+    }
+   ]
+  },
+  "eid": ""
+ }
+}

@@ -6,9 +6,11 @@ platform and returns the (ats, slug) to fetch, or None. Register new detectors i
 """
 from collections.abc import Callable
 
+from jobfinder.ingest.sources.phenom import detect_phenom
+
 Detector = Callable[[str, str], tuple[str, str] | None]  # (page_url, html) -> (ats, slug) | None
 
-HTML_DETECTORS: list[Detector] = []
+HTML_DETECTORS: list[Detector] = [detect_phenom]
 
 
 def detect_board(page_url: str, html: str) -> tuple[str, str] | None:
