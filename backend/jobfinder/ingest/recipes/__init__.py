@@ -4,8 +4,8 @@ A recipe is *data*, never code: a request to make, how to page, where the items 
 lives (a small JSONPath subset for json_api, CSS selectors for html). Recipes are stored on
 companies.recipe for boards with ats='recipe' and run by ingest_company through run_recipe().
 
-Runners register in RECIPE_RUNNERS by kind. json_api lives here; html and rendered_html are added by later
-units (see .plans/2026-10-13-adaptive-job-scraping).
+Runners register in RECIPE_RUNNERS by kind: json_api.py and html.py; rendered_html is added by a later
+unit (see .plans/2026-10-13-adaptive-job-scraping).
 """
 import re
 from collections.abc import Awaitable, Callable
@@ -142,6 +142,9 @@ def validate_recipe(postings: list[JobPosting], pasted_url: str | None) -> tuple
     return True, f"{len(postings)} jobs"
 
 
+from jobfinder.ingest.recipes import (
+    html as _html,  # noqa: F401  (registers the runner)
+)
 from jobfinder.ingest.recipes import (
     json_api as _json_api,  # noqa: F401  (registers the runner)
 )

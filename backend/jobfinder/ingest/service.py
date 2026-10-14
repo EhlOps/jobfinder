@@ -190,6 +190,14 @@ def board_fetcher(company: Company) -> Fetcher | None:
     return ATS_FETCHERS.get(company.ats)
 
 
+def _recipe_run(company: Company, n_postings: int, error: str | None = None) -> None:
+    """Recipe boards only: fold the run into the recipe's health (committed with the run's other changes)."""
+    if company.ats == "recipe":
+        from jobfinder.ingest.recipes.health import record_run
+
+        record_run(company, n_postings, error)
+
+
 async def ingest_company(db: AsyncSession, client: httpx.AsyncClient, company: Company) -> IngestStats:
     stats = IngestStats(source=company.ats, company=company.name)
     fetcher = board_fetcher(company)
@@ -201,6 +209,7 @@ async def ingest_company(db: AsyncSession, client: httpx.AsyncClient, company: C
         postings = await _fetch_with_retry(fetcher, client, company.slug, company.name)
     except Exception as e:
         stats.error = _describe(e)
+        _recipe_run(company, 0, stats.error)
         await _fail_board(db, company, stats.error, datetime.now(UTC))
         return stats
 
@@ -221,12 +230,14 @@ async def ingest_company(db: AsyncSession, client: httpx.AsyncClient, company: C
             stats.error = f"{EMPTY_ERROR_PREFIX}; kept {active} active jobs (run {streak}/{EMPTY_CONFIRM_RUNS})"
             company.last_error = stats.error
             company.last_fetched_at = datetime.now(UTC)
+            _recipe_run(company, 0)
             await db.commit()
             return stats
         stats.deactivated = await deactivate_missing(db, company.ats, company.id, [])
     now = datetime.now(UTC)
     _record_success(company, now)
     company.last_fetched_at = now
+    _recipe_run(company, len(postings))
     await db.commit()
     return stats
 

@@ -111,18 +111,26 @@ def map_item(item, recipe: Recipe, slug: str, company_name: str, base_url: str) 
     if url.startswith("/"):
         p = urlsplit(base_url)
         url = f"{p.scheme}://{p.netloc}{url}"
-    desc_raw = _text(get_one(item, f.description))
-    desc = clip(html_to_text(desc_raw)) if "<" in desc_raw else clip(desc_raw)
+    return make_posting(slug, company_name, eid=eid, title=title, url=url, location=location,
+                        description=_text(get_one(item, f.description)),
+                        posted_at=parse_date(get_one(item, f.posted_at)))
+
+
+def make_posting(slug: str, company_name: str, *, eid: str, title: str, url: str, location: str,
+                 description: str, posted_at: datetime | None) -> JobPosting:
+    """A recipe posting from extracted raw values (shared by every recipe runner)."""
+    desc = clip(html_to_text(description)) if "<" in description else clip(description)
     lo, hi, cur = parse_salary_range(desc) or (None, None, None)
     return JobPosting(
         source="recipe", external_id=f"{slug}:{eid}"[:200], company_name=company_name, title=title[:500],
         url=safe_http_url(url), location=location[:500], workplace_type=infer_workplace(location, title),
         description_text=desc, salary_min=lo, salary_max=hi, salary_currency=cur,
-        seniority=infer_seniority(title), posted_at=parse_date(get_one(item, f.posted_at)),
+        seniority=infer_seniority(title), posted_at=posted_at,
     )
 
 
-def _page_request(recipe: Recipe, page: int) -> tuple[str, dict | None]:
+def page_request(recipe: Recipe, page: int) -> tuple[str, dict | None]:
+    """The (url, json body) for page `page` (0-based): the pagination value goes in the query or body."""
     req, pg = recipe.list, recipe.pagination
     url, body = req.url, dict(req.json_body) if req.json_body is not None else None
     if pg.kind == "none" or not pg.param:
@@ -143,7 +151,7 @@ async def run_json_api(client: httpx.AsyncClient, recipe: Recipe, slug: str, com
     out: list[JobPosting] = []
     seen: set[str] = set()
     for page in range(pages):
-        url, body = _page_request(recipe, page)
+        url, body = page_request(recipe, page)
         r = await safe_fetch(client, url, method=recipe.list.method, headers=recipe.list.headers or None,
                              json=body, accept=JSON_TYPES + ("text/plain",))
         try:

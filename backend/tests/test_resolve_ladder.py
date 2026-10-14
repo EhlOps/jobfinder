@@ -85,7 +85,7 @@ async def test_recipe_hit_becomes_a_recipe_board(maker, monkeypatch):
     assert never.calls == 0 and broken.calls == passes.calls == 1
     assert link.rung == "wins" and link.ats == "recipe" and link.slug == "acme.com"
     assert company.ats == "recipe" and company.origin == "user" and company.name == "Acme Robotics"
-    assert company.recipe["kind"] == "json_api" and company.recipe_state == "validated"
+    assert company.recipe["kind"] == "json_api" and company.recipe_state == "active"  # the first fetch was healthy
     assert {j.external_id for j in jobs} == {"acme.com:4021", "acme.com:4022"} and all(j.source == "recipe" for j in jobs)
 
 
