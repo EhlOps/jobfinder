@@ -55,7 +55,6 @@ backend/
                      prompts/*.md (profile_extract, followups, match, dedupe_question, cover_letter)
     ingest/          base.py (JobPosting dataclass + normalize/dedupe)
                      sources/greenhouse.py lever.py ashby.py jobspy_source.py
-                     companies.yaml (slug, ats, prestige_tier, size, industry)
     profile/         resume_parse.py (pdfplumber + python-docx), github.py (REST API),
                      web_page.py (httpx + trafilatura), extract.py (LLM → structured profile)
     matching/        prefilter.py (hard filters + skill overlap), score.py (LLM), service.py
@@ -80,7 +79,7 @@ Uploaded files and the text snapshot of each fetched link live on the `store` vo
   - `background` JSONB: education, internships/co-ops/jobs (company, role, dates, what you did), projects, skills with proficiency, links.
   - `version` int, bumped on every change.
 - `profile_facts`: user_id, question, answer, source (`onboarding|followup|job_question`), job_id nullable. These are atomic "have you done X?" answers, and every LLM prompt includes them.
-- `companies` (built): name, ats, slug, prestige_tier (1–5), size, industry, enabled, last_fetched_at, last_error. Seeded from `ingest/companies.yaml`.
+- `companies` (built): name, ats, slug, prestige_tier (1–5), size, industry, enabled, last_fetched_at, last_error. Seeded once by migration 0021 (the retired `companies.yaml`); the table is the source of truth.
 - `jobs` (built; the cache). `workplace_type` (remote|hybrid|onsite) replaces a boolean remote flag, and `company_name` is stored on every row because JobSpy jobs have no company row:
   - Columns: source, external_id, company_id, title, location, remote, salary_min/max, seniority, description_text, url, posted_at, first_seen_at, last_seen_at, is_active, dedupe_hash.
   - Unique on (source, external_id). An index on `dedupe_hash` (normalized company+title+location) collapses the same posting seen in several sources.
@@ -330,7 +329,7 @@ Tasks in the same wave run in parallel. Merge a wave fully before starting the n
 
 - Add Company.origin (seed or discovered) and validated_at with migration 0017
 - Add validate_board(ats, slug): a live fetch that requires a valid response and at least one posting
-- Add a CLI add-board command that validates before inserting; companies.yaml stays as the seed list
+- Add a CLI add-board command that validates before inserting; companies.yaml stays as the seed list (since retired: see HISTORY 2026-10-14)
 - *Done when:* Each board is validated before it is added (REQ-26 b).
 
 #### H14.4: Discovery sources (REQ-26) (done)

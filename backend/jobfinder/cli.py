@@ -1,4 +1,5 @@
-"""Admin commands: `python -m jobfinder.cli ai-check`, `add-user`, `reset-link`, `list-users`."""
+"""Admin commands: `python -m jobfinder.cli ai-check`, `add-user`, `reset-link`, `list-users`, `add-board`,
+`list-boards`, `set-board`. The `companies` table is the only list of boards; these edit it."""
 import argparse
 import asyncio
 
@@ -201,25 +202,101 @@ async def add_board_cmd(args: argparse.Namespace) -> int:
     return 0 if reason.startswith("duplicate") else 1
 
 
+async def list_boards(args: argparse.Namespace) -> int:
+    import sqlalchemy as sa
+
+    from jobfinder.db import SessionLocal
+    from jobfinder.models import Company
+
+    q = sa.select(Company).order_by(Company.ats, Company.slug)
+    if args.ats:
+        q = q.where(Company.ats == args.ats)
+    if args.origin:
+        q = q.where(Company.origin == args.origin)
+    async with SessionLocal() as db:
+        boards = (await db.scalars(q)).all()
+    for c in boards:
+        state = "on" if c.enabled else "off"
+        print(f"{c.id:<6} {c.ats:<16} {c.slug:<32} {c.name[:30]:<30} p={c.prestige_tier} {c.size:<7} "
+              f"{c.industry[:20]:<20} {c.origin:<10} {state}")
+    print(f"\n{len(boards)} boards")
+    return 0
+
+
+async def set_board(args: argparse.Namespace) -> int:
+    from jobfinder.db import SessionLocal
+    from jobfinder.models import Company
+
+    name = args.name.strip() if args.name is not None else None
+    if name is not None and not 1 <= len(name) <= 200:
+        print("invalid name (must be 1-200 characters)")
+        return 2
+    if args.industry is not None and len(args.industry) > 100:
+        print("invalid industry (at most 100 characters)")
+        return 2
+    changes = {k: v for k, v in (
+        ("name", name), ("prestige_tier", args.prestige), ("size", args.size),
+        ("industry", args.industry), ("sponsors_visas", args.sponsors_visas),
+    ) if v is not None}
+    if not args.id or not (changes or args.enabled is not None):
+        print("Usage: set-board --id N [--name X] [--prestige 1-5] [--size startup|mid|large] "
+              "[--industry X] [--sponsors-visas yes|no] [--enabled yes|no]")
+        return 2
+    async with SessionLocal() as db:
+        company = await db.get(Company, args.id)
+        if not company:
+            print(f"No board {args.id}")
+            return 1
+        for k, v in changes.items():
+            setattr(company, k, v)
+        if args.enabled is False:
+            company.enabled = False
+        elif args.enabled and not company.enabled:
+            # same as the admin page's re-enable: counters reset; a merely failing board keeps them
+            company.enabled, company.consecutive_failures = True, 0
+            company.disabled_reason = company.last_error = None
+        if args.enabled is not None:
+            changes["enabled"] = args.enabled
+        await db.commit()
+    print(f"Updated {company.ats}/{company.slug}: " + ", ".join(f"{k}={v}" for k, v in changes.items()))
+    return 0
+
+
+def _yes_no(v: str) -> bool:
+    if v.lower() in ("yes", "true", "1"):
+        return True
+    if v.lower() in ("no", "false", "0"):
+        return False
+    raise argparse.ArgumentTypeError("expected yes or no")
+
+
 def main() -> None:
     from jobfinder.ingest.sources import ATS_FETCHERS
 
     parser = argparse.ArgumentParser(prog="jobfinder.cli")
-    parser.add_argument("command", choices=["ai-check", "ingest", "daily", "questions", "test-email", "add-user", "reset-link", "list-users", "add-board", "grant-admin", "revoke-admin"])
-    parser.add_argument("--ats", choices=[*sorted(ATS_FETCHERS), "jobspy", "usajobs"], help="ingest/add-board: ATS")
+    parser.add_argument("command", choices=["ai-check", "ingest", "daily", "questions", "test-email", "add-user", "reset-link", "list-users", "add-board", "list-boards", "set-board", "grant-admin", "revoke-admin"])
+    parser.add_argument("--ats", choices=[*sorted({*ATS_FETCHERS, "recipe"}), "jobspy", "usajobs"], help="ingest/add-board/list-boards: ATS")
     parser.add_argument("--company", help="ingest: only this company slug")
     parser.add_argument("--jobspy", action="store_true", help="ingest: also scrape LinkedIn/Indeed (needs the jobspy extra)")
     parser.add_argument("--email", help="daily/questions: only this user; add-user/reset-link/grant-admin/revoke-admin: the user")
     parser.add_argument("--preview", action="store_true", help="daily --email: send without marking anything as sent")
     parser.add_argument("--to", help="test-email: recipient")
     parser.add_argument("--slug", help="add-board: board slug")
-    parser.add_argument("--name", help="add-board: company display name")
-    parser.add_argument("--origin", choices=["seed", "discovered", "user"], help="add-board: origin (default seed)")
+    parser.add_argument("--name", help="add-board/set-board: company display name")
+    parser.add_argument("--origin", choices=["seed", "discovered", "user"],
+                        help="add-board: origin (default seed); list-boards: only this origin")
+    parser.add_argument("--id", type=int, help="set-board: board id (see list-boards)")
+    parser.add_argument("--prestige", type=int, choices=range(1, 6), help="set-board: prestige tier 1-5")
+    parser.add_argument("--size", choices=["startup", "mid", "large"], help="set-board: company size")
+    parser.add_argument("--industry", help="set-board: industry")
+    parser.add_argument("--sponsors-visas", type=_yes_no, help="set-board: yes|no")
+    parser.add_argument("--enabled", type=_yes_no, help="set-board: yes|no")
     args = parser.parse_args()
     handlers = {
         "ai-check": lambda: ai_check(), "ingest": lambda: ingest(args), "daily": lambda: daily(args),
         "questions": lambda: collect(args), "test-email": lambda: test_email(args),
         "add-user": lambda: add_user(args), "reset-link": lambda: reset_link_cmd(args), "list-users": lambda: list_users(), "add-board": lambda: add_board_cmd(args),
+        "list-boards": lambda: list_boards(args), "set-board": lambda: set_board(args),
         "grant-admin": lambda: set_admin(args, True), "revoke-admin": lambda: set_admin(args, False),
     }
     raise SystemExit(asyncio.run(handlers[args.command]()))

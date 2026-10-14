@@ -21,7 +21,7 @@ from jobfinder.ingest.sources.workday import fetch_workday
 
 Fetcher = Callable[[httpx.AsyncClient, str, str], Awaitable[list[JobPosting]]]
 
-# ATS name (as used in companies.yaml / companies.ats) -> fetcher(client, slug, company_name)
+# ATS name (as stored in companies.ats) -> fetcher(client, slug, company_name)
 ATS_FETCHERS: dict[str, Fetcher] = {
     "greenhouse": fetch_greenhouse,
     "lever": fetch_lever,

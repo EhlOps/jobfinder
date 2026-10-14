@@ -55,11 +55,13 @@ async def test_raising_fetcher_does_not_stop_the_run(maker, monkeypatch):
     monkeypatch.setitem(service.ATS_FETCHERS, "greenhouse", boom)
     monkeypatch.setitem(service.ATS_FETCHERS, "lever", fake_fetcher([posting(1, source="lever")]))
     monkeypatch.setitem(service.ATS_FETCHERS, "ashby", fake_fetcher([posting(2, source="ashby")]))
-    monkeypatch.setattr(service, "load_seed", lambda: [
-        {"name": "A", "ats": "greenhouse", "slug": "a"},
-        {"name": "B", "ats": "lever", "slug": "b"},
-        {"name": "C", "ats": "ashby", "slug": "c"},
-    ])
+    async with maker() as db:
+        db.add_all([
+            Company(name="A", ats="greenhouse", slug="a"),
+            Company(name="B", ats="lever", slug="b"),
+            Company(name="C", ats="ashby", slug="c"),
+        ])
+        await db.commit()
     results = {r.company: r for r in await service.ingest_boards(maker)}
     assert "kaboom" in results["A"].error
     assert results["B"].error is None and results["C"].error is None
@@ -80,10 +82,12 @@ async def test_unexpected_ingest_company_error_isolated(maker, monkeypatch):
 
     monkeypatch.setattr(service, "ingest_company", flaky)
     monkeypatch.setitem(service.ATS_FETCHERS, "lever", fake_fetcher([posting(1, source="lever")]))
-    monkeypatch.setattr(service, "load_seed", lambda: [
-        {"name": "A", "ats": "greenhouse", "slug": "a"},
-        {"name": "B", "ats": "lever", "slug": "b"},
-    ])
+    async with maker() as db:
+        db.add_all([
+            Company(name="A", ats="greenhouse", slug="a"),
+            Company(name="B", ats="lever", slug="b"),
+        ])
+        await db.commit()
     results = {r.company: r for r in await service.ingest_boards(maker)}
     assert "db exploded" in results["A"].error and results["A"].source == "greenhouse"
     assert results["B"].error is None and results["B"].fetched == 1

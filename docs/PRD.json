@@ -1050,7 +1050,7 @@
       "from_legacy": [
         13
       ],
-      "note": ""
+      "note": "companies.yaml was retired on 2026-10-14: boards live only in the companies table (640 seeded by migration 0021, plus discovery, pasted links and cli add-board/set-board)."
     },
     {
       "id": "GAP-13",

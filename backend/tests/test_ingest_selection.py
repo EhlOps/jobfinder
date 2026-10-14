@@ -85,7 +85,6 @@ def test_never_fetched_come_before_stale():
 async def test_ingest_boards_uses_selection(engine, monkeypatch):
     maker = async_sessionmaker(engine, expire_on_commit=False)
     monkeypatch.setattr(get_settings(), "ingest_max_discovered_boards_per_run", 1)
-    monkeypatch.setattr(service, "load_seed", list)
     monkeypatch.setitem(service.ATS_FETCHERS, "greenhouse", fake_fetcher([posting(1)]))
     async with maker() as db:
         u = User(email="a@x.io", activated_at=datetime.now(UTC))

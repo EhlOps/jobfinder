@@ -142,7 +142,7 @@ class AICall(Base):
 
 
 class Company(Base):
-    """A company whose public ATS board we poll. Seeded from ingest/companies.yaml."""
+    """A company whose public ATS board we poll. The table is the only list of boards (seeded by migration 0021)."""
 
     __tablename__ = "companies"
     __table_args__ = (UniqueConstraint("ats", "slug", name="uq_company_ats_slug"),)
