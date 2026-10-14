@@ -13,7 +13,7 @@ from jobfinder.config import get_settings
 from jobfinder.db import get_db
 from jobfinder.ingest.base import safe_http_url
 from jobfinder.ingest.discovery import board_from_url
-from jobfinder.ingest.resolve import UNSUPPORTED, BadLink, clean_url, existing_board
+from jobfinder.ingest.resolve import BadLink, clean_url, existing_board
 from jobfinder.models import Company, Job, JobLink, JobMatch, User
 from jobfinder.scheduling import queue
 
@@ -36,6 +36,7 @@ class LinkOut(BaseModel):
     company_id: int | None
     company: str | None
     ats: str | None
+    rung: str | None
     error: str | None
     job_count: int
     pasted_job_id: int | None
@@ -79,9 +80,10 @@ async def _out(db: AsyncSession, link: JobLink) -> LinkOut:
         active = sa.and_(Job.company_id == company.id, Job.is_active.is_(True))
         count = await db.scalar(sa.select(sa.func.count()).select_from(Job).where(active)) or 0
         pasted = await db.scalar(sa.select(Job.id).where(active, Job.url == link.url).limit(1))
+    pasted = pasted or link.job_id
     return LinkOut(
         id=link.id, url=link.url, status=link.status, company_id=link.company_id,
-        company=company.name if company else None, ats=link.ats, error=link.error, job_count=count,
+        company=company.name if company else None, ats=link.ats, rung=link.rung, error=link.error, job_count=count,
         pasted_job_id=pasted, created_at=link.created_at, resolved_at=link.resolved_at,
     )
 
@@ -113,13 +115,11 @@ async def add_link(body: LinkIn, user: CurrentUser, db: DB, response: Response):
 
     link = JobLink(user_id=user.id, url=url, status="resolving")
     board = board_from_url(url)
-    if board is None:
-        link.status, link.error = "unresolved", UNSUPPORTED
-    else:
+    if board is not None:  # rung 1 is free: answer known boards straight away
         link.ats, link.slug = board
         known = await existing_board(db, *board)
         if known is not None:  # already polled on schedule: nothing to fetch
-            link.status, link.company_id = "resolved", known.id
+            link.status, link.company_id, link.rung = "resolved", known.id, "url_pattern"
             link.resolved_at = sa.func.now()
     db.add(link)
     await db.commit()
@@ -146,11 +146,12 @@ async def get_link(link_id: int, user: CurrentUser, db: DB):
     link = await _own(db, user, link_id)
     out = await _out(db, link)
     jobs: list[LinkJob] = []
-    if link.company_id:
+    which = (Job.company_id == link.company_id) if link.company_id else (Job.id == link.job_id) if link.job_id else None
+    if which is not None:
         rows = (await db.execute(
             sa.select(Job, JobMatch.id, JobMatch.llm_score)
             .outerjoin(JobMatch, sa.and_(JobMatch.job_id == Job.id, JobMatch.user_id == user.id))
-            .where(Job.company_id == link.company_id, Job.is_active.is_(True))
+            .where(which, Job.is_active.is_(True))
             .order_by(JobMatch.llm_score.desc().nulls_last(), Job.posted_at.desc().nulls_last(), Job.id.desc())
             .limit(MAX_JOBS)
         )).all()

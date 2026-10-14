@@ -7,6 +7,7 @@ import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from functools import partial
 from pathlib import Path
 
 import httpx
@@ -18,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from jobfinder.config import get_settings
 from jobfinder.ingest.base import JobPosting, safe_http_url
 from jobfinder.ingest.selection import Target, select_boards
-from jobfinder.ingest.sources import ATS_FETCHERS
+from jobfinder.ingest.sources import ATS_FETCHERS, Fetcher
 from jobfinder.models import Company, Job, Profile, User
 
 log = logging.getLogger("jobfinder.ingest")
@@ -234,9 +235,22 @@ def _record_success(company: Company, now: datetime) -> None:
         company.disabled_reason = None
 
 
+def board_fetcher(company: Company) -> Fetcher | None:
+    """The fetcher for a board: its ATS adapter, or the recipe runner for ats='recipe' boards."""
+    if company.ats == "recipe":
+        from jobfinder.ingest.recipes import run_recipe
+
+        return partial(run_recipe, recipe=company.recipe)
+    return ATS_FETCHERS.get(company.ats)
+
+
 async def ingest_company(db: AsyncSession, client: httpx.AsyncClient, company: Company) -> IngestStats:
     stats = IngestStats(source=company.ats, company=company.name)
-    fetcher = ATS_FETCHERS[company.ats]
+    fetcher = board_fetcher(company)
+    if fetcher is None:  # e.g. an ATS removed from the registry: record it on the board, don't crash the run
+        stats.error = f"unknown ATS '{company.ats}'"
+        await _fail_board(db, company, stats.error, datetime.now(UTC))
+        return stats
     try:
         postings = await _fetch_with_retry(fetcher, client, company.slug, company.name)
     except Exception as e:

@@ -1,11 +1,15 @@
+from urllib.parse import quote
+
 import httpx
 import pytest
 import sqlalchemy as sa
+from security_payloads import SQLI
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from jobfinder.config import get_settings
 from jobfinder.ingest import resolve
 from jobfinder.ingest.resolve import BadLink, clean_url, name_from_slug, resolve_link
+from jobfinder.ingest.resolve.rungs.url_pattern import UrlPatternRung
 from jobfinder.ingest.selection import select_boards
 from jobfinder.models import Company, Job, JobLink, Task
 from jobfinder.scheduling import handlers
@@ -61,13 +65,17 @@ def test_name_from_slug():
 
 # ── API ───────────────────────────────────────────────────────────────────
 
-async def test_unsupported_link_is_recorded_not_queued(authed, maker):
+async def test_unknown_link_goes_through_the_ladder(authed, maker, monkeypatch):
     r = await authed.post("/api/job-links", json={"url": "https://careers.example.com/jobs/42"})
-    assert r.status_code == 201, r.text
-    body = r.json()
-    assert body["status"] == "unresolved" and "can't read" in body["error"] and body["company"] is None
+    assert r.status_code == 202, r.text
+    assert r.json()["status"] == "resolving" and r.json()["company"] is None
+    monkeypatch.setattr(resolve, "RUNGS", [UrlPatternRung()])  # only rung 1: nothing can read this site
     async with maker() as db:
-        assert await tasks(db, "resolve_job_link") == []
+        [task] = await tasks(db, "resolve_job_link")
+        out = await resolve_link(db, task.payload["link_id"], client=board_json({}))
+    assert out["status"] == "unresolved"
+    body = (await authed.get(f"/api/job-links/{r.json()['id']}")).json()
+    assert body["status"] == "unresolved" and "can't read" in body["error"]
 
 
 async def test_known_board_resolves_immediately(authed, maker):
@@ -86,7 +94,7 @@ async def test_known_board_resolves_immediately(authed, maker):
     assert r.status_code == 201, r.text
     body = r.json()
     assert body["status"] == "resolved" and body["company"] == "Acme" and body["job_count"] == 1
-    assert body["pasted_job_id"] is not None
+    assert body["pasted_job_id"] is not None and body["rung"] == "url_pattern"
     detail = (await authed.get(f"/api/job-links/{body['id']}")).json()
     assert [j["title"] for j in detail["jobs"]] == ["Robotics Engineer"]
     async with maker() as db:
@@ -104,7 +112,7 @@ async def test_new_board_is_queued_resolved_and_shared(authed, maker):
         assert task.payload == {"link_id": link_id}
         async with board_json(GOOD) as c:
             out = await resolve_link(db, link_id, client=c)
-    assert out["status"] == "resolved" and out["added"] and out["new"] == 2
+    assert out["status"] == "resolved" and out["added"] and out["new"] == 2 and out["rung"] == "url_pattern"
 
     body = (await authed.get(f"/api/job-links/{link_id}")).json()
     assert body["status"] == "resolved" and body["company"] == "Acme" and body["job_count"] == 2
@@ -119,6 +127,7 @@ async def test_new_board_is_queued_resolved_and_shared(authed, maker):
 async def test_duplicate_paste_returns_same_link(authed):
     first = await authed.post("/api/job-links", json={"url": "https://careers.example.com/x"})
     again = await authed.post("/api/job-links", json={"url": "https://careers.example.com/x#frag"})
+    assert first.status_code == 202
     assert again.status_code == 200 and again.json()["id"] == first.json()["id"]
     assert len((await authed.get("/api/job-links")).json()) == 1
 
@@ -126,7 +135,7 @@ async def test_duplicate_paste_returns_same_link(authed):
 async def test_daily_limit(authed, monkeypatch):
     monkeypatch.setattr(get_settings(), "job_links_per_user_day", 2)
     for i in range(2):
-        assert (await authed.post("/api/job-links", json={"url": f"https://example.com/{i}"})).status_code == 201
+        assert (await authed.post("/api/job-links", json={"url": f"https://example.com/{i}"})).status_code == 202
     r = await authed.post("/api/job-links", json={"url": "https://example.com/3"})
     assert r.status_code == 429 and "2 job links a day" in r.json()["detail"]
 
@@ -137,14 +146,11 @@ async def test_api_rejects_bad_urls(authed, url):
     assert r.status_code == 422
 
 
-@pytest.mark.parametrize("url", [
-    "https://boards.greenhouse.io/acme';DROP%20TABLE%20companies;--/jobs/1",
-    "https://jobs.lever.co/x'%20OR%20'1'='1",
-    "https://example.com/jobs?id=1;DELETE%20FROM%20job_links",
-])
-async def test_sql_injection_payloads_are_inert(authed, maker, url):
+@pytest.mark.parametrize("payload", SQLI)
+async def test_sql_injection_payloads_are_inert(authed, maker, payload):
+    url = f"https://boards.greenhouse.io/{quote(payload, safe='')}/jobs/1"
     r = await authed.post("/api/job-links", json={"url": url})
-    assert r.status_code == 201 and r.json()["status"] == "unresolved"  # SLUG_RE refuses it as a board
+    assert r.status_code == 202 and r.json()["company"] is None  # SLUG_RE refuses it as a board
     assert r.json()["url"] == url  # stored verbatim as data
     async with maker() as db:
         assert await db.scalar(sa.select(sa.func.count()).select_from(Company)) == 0  # table still there, untouched

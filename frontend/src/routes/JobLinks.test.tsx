@@ -5,7 +5,7 @@ import { mockApi, renderApp, USER } from "../test/helpers";
 
 const link = (over: Record<string, unknown>) => ({
   id: 1, url: "https://boards.greenhouse.io/acme/jobs/1", status: "resolved", company_id: 7, company: "Acme",
-  ats: "greenhouse", error: null, job_count: 2, pasted_job_id: 10, created_at: new Date().toISOString(), resolved_at: null,
+  ats: "greenhouse", rung: "url_pattern", error: null, job_count: 2, pasted_job_id: 10, created_at: new Date().toISOString(), resolved_at: null,
   ...over,
 });
 

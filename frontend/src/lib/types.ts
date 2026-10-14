@@ -240,7 +240,7 @@ export interface SourceRow {
 export type JobLinkStatus = "resolving" | "resolved" | "unresolved";
 export interface JobLink {
   id: number; url: string; status: JobLinkStatus; company_id: number | null; company: string | null;
-  ats: string | null; error: string | null; job_count: number; pasted_job_id: number | null;
+  ats: string | null; rung: string | null; error: string | null; job_count: number; pasted_job_id: number | null;
   created_at: string; resolved_at: string | null;
 }
 export interface JobLinkJob {
