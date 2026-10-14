@@ -14,6 +14,7 @@ from urllib.parse import urljoin, urlparse
 import httpx
 
 from jobfinder.ingest.discovery.robots import PoliteFetcher
+from jobfinder.ingest.sources.custom import refusal_for_url
 from jobfinder.profile.web_page import FetchError, resolve_public
 
 USER_AGENT = "JobFinder/0.1 (+personal job search)"
@@ -73,6 +74,9 @@ async def _fetch(
         host, ip = await resolve_public(url)
         if robots is not None and not await robots.allowed(url):
             raise FetchError(f"robots.txt disallows {url}")
+        refused = refusal_for_url(url)  # every hop: a redirect must not land on a terms-refused site
+        if refused is not None:
+            raise FetchError(f"{refused.name}'s terms don't allow automated access ({url})")
         target = httpx.URL(url).copy_with(host=ip)
         hdrs = {"User-Agent": USER_AGENT, **(headers or {}), "Host": urlparse(url).netloc}
         req = client.build_request(method, target, headers=hdrs, json=json, extensions={"sni_hostname": host})

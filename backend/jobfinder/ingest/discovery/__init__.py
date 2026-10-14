@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from jobfinder.config import get_settings
 from jobfinder.ingest.discovery.robots import PoliteFetcher, RobotsDisallowed, make_client
+from jobfinder.ingest.sources.custom import board_for_url as custom_board_for_url
 from jobfinder.ingest.sources.eightfold import board_from_url as eightfold_board
 from jobfinder.ingest.sources.icims import slug_from_host as icims_slug_from_host
 from jobfinder.ingest.sources.oracle_hcm import board_from_ce_url
@@ -91,7 +92,7 @@ def board_from_url(url: str) -> tuple[str, str] | None:
             if "." in slug or slug in _RESERVED or not SLUG_RE.match(slug):
                 return None
             return ats, slug
-    return None
+    return custom_board_for_url(url)  # terms-reviewed custom careers sites (refused ones -> None)
 
 
 def boards_from_text(text: str) -> list[tuple[str, str]]:

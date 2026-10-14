@@ -1,6 +1,7 @@
 """Rung 1: the URL itself names a known ATS board (no page fetch)."""
 from jobfinder.ingest.discovery import board_from_url
 from jobfinder.ingest.resolve.ladder import BoardHit, ResolveContext
+from jobfinder.ingest.sources.custom import site_for_url
 
 
 class UrlPatternRung:
@@ -9,4 +10,7 @@ class UrlPatternRung:
 
     async def run(self, ctx: ResolveContext) -> BoardHit | None:
         board = board_from_url(ctx.url)
-        return BoardHit(*board) if board else None
+        if not board:
+            return None
+        site = site_for_url(ctx.url)  # a reviewed custom site knows its company's real name
+        return BoardHit(*board, name=site.name if site and site.board == board else None)

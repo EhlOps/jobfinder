@@ -21,6 +21,7 @@ from jobfinder.ingest.base import JobPosting
 from jobfinder.ingest.resolve.ladder import BoardHit, RecipeHit, ResolveContext, SingleJob
 from jobfinder.ingest.resolve.rungs import RUNGS
 from jobfinder.ingest.service import ingest_company, upsert_postings
+from jobfinder.ingest.sources.custom import refusal_for_url, refusal_message, site_for_url
 from jobfinder.ingest.validate import SLUG_RE, add_board
 from jobfinder.models import Company, Job, JobLink
 
@@ -177,6 +178,11 @@ async def _keep_single_job(db: AsyncSession, link: JobLink, posting: JobPosting)
 
 
 async def _resolve(db: AsyncSession, link: JobLink, client: httpx.AsyncClient, allow_llm: bool) -> dict:
+    refused = refusal_for_url(link.url)
+    if refused is not None:  # terms/robots review said no: no rung may fetch or scrape this site
+        _finish(link, "unresolved", error=refusal_message(refused), rung="terms_refused")
+        await db.commit()
+        return {"status": "unresolved", "reason": "terms refused", "site": refused.name}
     ctx = ResolveContext(link.url, client, allow_llm=allow_llm)
     board_error = None
     for rung in RUNGS:
@@ -200,6 +206,8 @@ async def _resolve(db: AsyncSession, link: JobLink, client: httpx.AsyncClient, a
         if company is None:
             board_error = f"That board couldn't be read: {reason}"
             ctx.note(f"{rung.name}: {reason}")
+            if isinstance(hit, BoardHit) and site_for_url(link.url) is not None:
+                break  # a reviewed custom site maps to its one board; its own pages are not to be scraped
             continue
         return await _done(db, link, company, added, rung.name, client)
 

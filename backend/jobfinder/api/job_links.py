@@ -14,6 +14,7 @@ from jobfinder.db import get_db
 from jobfinder.ingest.base import safe_http_url
 from jobfinder.ingest.discovery import board_from_url
 from jobfinder.ingest.resolve import BadLink, clean_url, existing_board
+from jobfinder.ingest.sources.custom import refusal_for_url, refusal_message
 from jobfinder.models import Company, Job, JobLink, JobMatch, User
 from jobfinder.scheduling import queue
 
@@ -112,6 +113,16 @@ async def add_link(body: LinkIn, user: CurrentUser, db: DB, response: Response):
     if await ratelimit.count_since(db, RATE_KIND, str(user.id), 86400) >= limit:
         raise HTTPException(429, f"You can add up to {limit} job links a day. Try again tomorrow.")
     await ratelimit.hit(db, RATE_KIND, str(user.id))
+
+    refused = refusal_for_url(url)
+    if refused is not None:  # terms/robots review said no: answer now, nothing is fetched
+        link = JobLink(user_id=user.id, url=url, status="unresolved", rung="terms_refused",
+                       error=refusal_message(refused)[:500], resolved_at=sa.func.now())
+        db.add(link)
+        await db.commit()
+        await db.refresh(link)
+        response.status_code = 201
+        return await _out(db, link)
 
     link = JobLink(user_id=user.id, url=url, status="resolving")
     board = board_from_url(url)
