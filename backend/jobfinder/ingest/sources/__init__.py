@@ -8,6 +8,7 @@ from jobfinder.ingest.sources.ashby import fetch_ashby
 from jobfinder.ingest.sources.bamboohr import fetch_bamboohr
 from jobfinder.ingest.sources.greenhouse import fetch_greenhouse
 from jobfinder.ingest.sources.lever import fetch_lever
+from jobfinder.ingest.sources.oracle_hcm import fetch_oracle_hcm
 from jobfinder.ingest.sources.phenom import fetch_phenom
 from jobfinder.ingest.sources.recruitee import fetch_recruitee
 from jobfinder.ingest.sources.smartrecruiters import fetch_smartrecruiters
@@ -27,6 +28,7 @@ ATS_FETCHERS: dict[str, Fetcher] = {
     "bamboohr": fetch_bamboohr,
     "workday": fetch_workday,
     "phenom": fetch_phenom,
+    "oracle_hcm": fetch_oracle_hcm,
 }
 
 # Cheap existence probes (no per-posting detail requests) for the ATSes whose full fetch fans out; others reuse the full fetcher.
@@ -36,4 +38,5 @@ PROBE_FETCHERS: dict[str, Fetcher] = {
     "bamboohr": partial(fetch_bamboohr, list_only=True),
     "workday": partial(fetch_workday, list_only=True),
     "phenom": partial(fetch_phenom, list_only=True),
+    "oracle_hcm": partial(fetch_oracle_hcm, list_only=True),
 }

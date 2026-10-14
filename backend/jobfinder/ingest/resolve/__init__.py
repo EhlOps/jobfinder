@@ -60,6 +60,8 @@ def clean_url(raw: str) -> str:
 
 def name_from_slug(ats: str, slug: str) -> str:
     """A readable company name from the board slug ('acme-robotics' -> 'Acme Robotics'). Admins can rename."""
+    if ats == "oracle_hcm":  # "eeho.fa.us2__CX_45001": only the pod name says anything about the company
+        return name_from_slug("", slug.split(".")[0])
     if "__" in slug:  # composite custom-domain key "careers.acme.com__us__en" -> name from the domain
         return name_from_domain(registrable_domain("https://" + slug.split("__")[0]))
     base = slug.split(".")[0] if ats == "workday" else slug

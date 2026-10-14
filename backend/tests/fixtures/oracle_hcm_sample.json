@@ -1,0 +1,87 @@
+{
+  "list": {
+    "items": [
+      {
+        "SearchId": 1,
+        "Offset": 0,
+        "Limit": 50,
+        "SortBy": "POSTING_DATES_DESC",
+        "TotalJobsCount": 5,
+        "SiteNumber": "CX_45001",
+        "requisitionList": [
+          {
+            "Id": "347559",
+            "Title": "Senior Support Engineer, Product Data Quality & Resolution",
+            "PostedDate": "2026-10-14",
+            "PrimaryLocation": "Houston, TX, United States",
+            "ShortDescriptionStr": "Resolve critical product data issues and help get hardware onboarded into Oracle data centers.",
+            "WorkplaceType": "",
+            "secondaryLocations": [
+              {"Name": "United States", "CountryCode": "US"},
+              {"Name": "Austin, TX, United States", "CountryCode": "US"}
+            ]
+          },
+          {
+            "Id": "347562",
+            "Title": "Principal Application Software Engineer, Java & Cloud",
+            "PostedDate": "2026-10-14",
+            "PrimaryLocation": "Austin, TX, United States",
+            "ShortDescriptionStr": "Build and evolve mission-critical Java backend software for OCI, using Linux, Spring, middleware, CI/CD, and cloud technologies.",
+            "WorkplaceType": "Remote",
+            "secondaryLocations": []
+          },
+          {
+            "Id": "345147",
+            "Title": "Configuration Analyst -Oncology (Hybrid Kansas City, MO office)",
+            "PostedDate": "2026-10-13",
+            "PrimaryLocation": "Kansas City, MO, United States",
+            "ShortDescriptionStr": "The Oracle Health Configuration Center is looking for an intermediate consultant to help configure the implementation of the Oracle Health Oncology product.",
+            "WorkplaceType": "",
+            "secondaryLocations": [
+              {"Name": "MO, United States", "CountryCode": "US"},
+              {"Name": "KS, United States", "CountryCode": "US"}
+            ]
+          },
+          {"Id": "347600", "Title": "  ", "PostedDate": "2026-10-12"},
+          {"Id": "../../admin", "Title": "Path traversal id", "PostedDate": "2026-10-12"}
+        ]
+      }
+    ]
+  },
+  "details": {
+    "347559": {
+      "items": [
+        {
+          "Id": "347559",
+          "Title": "Senior Support Engineer, Product Data Quality & Resolution",
+          "ExternalPostedStartDate": "2026-10-14T01:03:30+00:00",
+          "ExternalDescriptionStr": "<p style=\"background-color: white;\"><strong>Senior Support Engineer, Product Data Quality &amp; Resolution</strong></p><p><strong>Role Purpose</strong></p><p>The Senior Support Engineer is responsible for investigating and resolving complex product-data issues that prevent hardware from being successfully onboarded into Oracle data centers.</p><script>alert(1)</script>",
+          "ExternalResponsibilitiesStr": "<div class=\"WordSection1\"><ul><li>Triage product data defects</li><li>Partner with manufacturing partners</li></ul></div>",
+          "ExternalQualificationsStr": "Disclaimer:<br><br><b>Pay range:</b> The annual base pay is $96,800 - $151,100 per year.",
+          "PrimaryLocation": "Houston, TX, United States",
+          "WorkplaceType": "",
+          "JobSchedule": "Full time",
+          "secondaryLocations": [
+            {"Name": "United States", "CountryCode": "US"},
+            {"Name": "Austin, TX, United States", "CountryCode": "US"}
+          ]
+        }
+      ]
+    },
+    "347562": {
+      "items": [
+        {
+          "Id": "347562",
+          "Title": "Principal Application Software Engineer, Java & Cloud",
+          "ExternalPostedStartDate": "2026-10-14T02:10:00+00:00",
+          "ExternalDescriptionStr": "<p>Build mission-critical Java backend software for OCI.</p>",
+          "ExternalResponsibilitiesStr": "<p>Build mission-critical Java backend software for OCI.</p>",
+          "ExternalQualificationsStr": null,
+          "PrimaryLocation": "Austin, TX, United States",
+          "WorkplaceType": "Remote",
+          "secondaryLocations": []
+        }
+      ]
+    }
+  }
+}

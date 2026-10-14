@@ -6,11 +6,15 @@ platform and returns the (ats, slug) to fetch, or None. Register new detectors i
 """
 from collections.abc import Callable
 
+from jobfinder.ingest.sources.oracle_hcm import detect_ce_page
 from jobfinder.ingest.sources.phenom import detect_phenom
 
 Detector = Callable[[str, str], tuple[str, str] | None]  # (page_url, html) -> (ats, slug) | None
 
-HTML_DETECTORS: list[Detector] = [detect_phenom]
+HTML_DETECTORS: list[Detector] = [
+    detect_phenom,
+    detect_ce_page,  # Oracle Recruiting Cloud
+]
 
 
 def detect_board(page_url: str, html: str) -> tuple[str, str] | None:
