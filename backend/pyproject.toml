@@ -22,6 +22,7 @@ dependencies = [
   "jinja2>=3.1.6",
   "itsdangerous>=2.2.0",
   "reportlab>=5.0.1",
+  "lxml>=5.0",  # HTML scraping (SuccessFactors RMK); already pulled in by trafilatura
 ]
 
 [project.optional-dependencies]
