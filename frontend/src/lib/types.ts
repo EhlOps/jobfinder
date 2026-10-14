@@ -248,3 +248,16 @@ export interface JobLinkJob {
   match_id: number | null; score: number | null;
 }
 export interface JobLinkDetail extends JobLink { jobs: JobLinkJob[] }
+
+export type BoardStatus = "ok" | "failing" | "disabled" | "none";
+export interface CoverageRow {
+  company_id: number; name: string; ats: string; slug: string; tier: number; score: number; pinned: boolean | null;
+  board_status: BoardStatus; gap: boolean; job_count: number; last_success_at: string | null; recipe_state: string | null;
+  last_error: string | null; resolve_error: string | null; last_resolved_at: string | null; domain: string | null;
+  careers_url: string | null;
+}
+export interface CoverageTarget {
+  id: number; name: string; domain: string; source: string; score: number; last_resolved_at: string | null;
+  last_error: string | null; careers_url: string;
+}
+export interface Coverage { companies: CoverageRow[]; targets: CoverageTarget[] }

@@ -158,6 +158,30 @@ async def resolve_job_link(db: AsyncSession, ai: AITasks, task: Task) -> dict:
     return out
 
 
+async def score_coveted(db: AsyncSession, ai: AITasks, task: Task) -> dict:
+    """Weekly: recompute how sought-after each employer is, then audit coverage of the top tiers."""
+    from jobfinder.ingest import coveted
+
+    out = await coveted.score_all(db)
+    if not task.payload.get("no_audit"):
+        await queue.enqueue(db, "audit_coverage", dedupe=True)
+    return out
+
+
+async def audit_coverage(db: AsyncSession, ai: AITasks, task: Task) -> dict:
+    """Send coveted employers with no working board through the resolver (payload may name just one)."""
+    from jobfinder.ingest import coveted
+
+    p = task.payload
+    out = await coveted.audit_coverage(
+        db, company_id=int(p["company_id"]) if p.get("company_id") is not None else None,
+        target_id=int(p["target_id"]) if p.get("target_id") is not None else None,
+    )
+    if out.get("resolved"):
+        await queue.enqueue(db, "plan_work", dedupe=True)
+    return out
+
+
 HANDLERS: dict[str, Handler] = {
     "extract_profile": extract_profile,
     "followup_questions": followup_questions,
@@ -172,4 +196,6 @@ HANDLERS: dict[str, Handler] = {
     "resume_tailor": resume_tailor,
     "discover_boards": discover_boards,
     "resolve_job_link": resolve_job_link,
+    "score_coveted": score_coveted,
+    "audit_coverage": audit_coverage,
 }

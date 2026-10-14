@@ -8,6 +8,7 @@ import ResetPassword from "./routes/ResetPassword";
 import Home from "./routes/Home";
 import Onboarding from "./routes/Onboarding";
 import AiSettings from "./routes/AiSettings";
+import AdminCoverage from "./routes/AdminCoverage";
 import AdminSchedule from "./routes/AdminSchedule";
 import AdminSources from "./routes/AdminSources";
 import MatchDetail from "./routes/MatchDetail";
@@ -42,6 +43,7 @@ function Shell() {
           {user.is_admin && <NavLink to="/settings/ai">AI setup</NavLink>}
           {user.is_admin && <NavLink to="/settings/schedule">Schedule</NavLink>}
           {user.is_admin && <NavLink to="/settings/sources">Sources</NavLink>}
+          {user.is_admin && <NavLink to="/settings/coverage">Coverage</NavLink>}
         </nav>
         <div className="user">
           <span className="muted">{user.email}</span>
@@ -71,6 +73,7 @@ export default function App() {
         <Route path="/settings/ai" element={<AiSettings />} />
         <Route path="/settings/schedule" element={<AdminSchedule />} />
         <Route path="/settings/sources" element={<AdminSources />} />
+        <Route path="/settings/coverage" element={<AdminCoverage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

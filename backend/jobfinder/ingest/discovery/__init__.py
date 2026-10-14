@@ -153,6 +153,7 @@ class Source:
     terms_ok: bool  # a source is only enabled when its terms allow automated, low-volume access
     fetch: Callable[[PoliteFetcher], Awaitable[list[tuple[str, str]]]] | None = None
     skip_reason: str = ""
+    curated: bool = False  # a hand-curated list: being on it counts towards the coveted score (ingest.coveted)
 
 
 @dataclass
@@ -181,6 +182,7 @@ class DiscoveryResult:
     checked: int = 0
     added: list[str] = field(default_factory=list)
     rejected: dict[str, str] = field(default_factory=dict)
+    listed: set[str] = field(default_factory=set)  # "ats/slug" (lowercase) found on curated sources
 
     def as_dict(self) -> dict:
         return {
@@ -190,6 +192,7 @@ class DiscoveryResult:
             "checked": self.checked,
             "added": self.added,
             "rejected": self.rejected,
+            "listed": sorted(self.listed),
         }
 
 
@@ -234,6 +237,8 @@ async def discover_boards(
                 rep.status = "partial"
             for ats, slug in boards:
                 found.setdefault((ats, slug.lower()), (ats, slug))
+                if src.curated:
+                    result.listed.add(f"{ats}/{slug.lower()}")
         result.candidates = len(found)
         rows = (await session.execute(sa.select(Company.ats, Company.slug))).all()
         known = {(a, s.lower()) for a, s in rows}

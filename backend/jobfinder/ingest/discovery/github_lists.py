@@ -59,4 +59,5 @@ SOURCE = Source(
     "JSON files, each fetched at most weekly, subject to that host's robots.txt.",
     True,
     fetch,
+    curated=True,
 )

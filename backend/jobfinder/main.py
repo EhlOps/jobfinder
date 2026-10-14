@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from jobfinder.api import (
     ai_admin,
     cover_letters,
+    coverage,
     documents,
     interview,
     job_links,
@@ -27,6 +28,7 @@ app.include_router(job_links.router)
 app.include_router(onboarding.router)
 app.include_router(tasks.router)
 app.include_router(ai_admin.router)
+app.include_router(coverage.router)
 app.include_router(matches.router)
 app.include_router(cover_letters.router)
 app.include_router(resumes.router)

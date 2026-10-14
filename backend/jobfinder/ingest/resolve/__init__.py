@@ -18,6 +18,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jobfinder.ingest.base import JobPosting
+from jobfinder.ingest.discovery.robots import PoliteFetcher
+from jobfinder.ingest.http_safety import SafeResponse
 from jobfinder.ingest.resolve.ladder import BoardHit, RecipeHit, ResolveContext, SingleJob
 from jobfinder.ingest.resolve.rungs import RUNGS
 from jobfinder.ingest.service import ingest_company, upsert_postings
@@ -177,19 +179,30 @@ async def _keep_single_job(db: AsyncSession, link: JobLink, posting: JobPosting)
     return job_id
 
 
-async def _resolve(db: AsyncSession, link: JobLink, client: httpx.AsyncClient, allow_llm: bool) -> dict:
-    refused = refusal_for_url(link.url)
-    if refused is not None:  # terms/robots review said no: no rung may fetch or scrape this site
-        _finish(link, "unresolved", error=refusal_message(refused), rung="terms_refused")
-        await db.commit()
-        return {"status": "unresolved", "reason": "terms refused", "site": refused.name}
-    ctx = ResolveContext(link.url, client, allow_llm=allow_llm)
-    board_error = None
+@dataclasses.dataclass
+class _Outcome:
+    """What one pass of the ladder over a URL found."""
+    ctx: ResolveContext
+    company: Company | None = None
+    added: bool = False
+    rung: str | None = None
+    hit: tuple[str, str] | None = None  # (ats, slug) of the last board or recipe hit tried
+    board_error: str | None = None
+
+
+async def _ladder(db: AsyncSession, url: str, client: httpx.AsyncClient, allow_llm: bool, *,
+                  page: SafeResponse | None = None, robots: PoliteFetcher | None = None, label: str = "") -> _Outcome:
+    """Run the rungs over `url`, cheapest first, until one yields a board that can be added or reused.
+    `page` (already fetched, SSRF- and robots-checked) saves the context fetching it again."""
+    ctx = ResolveContext(url, client, allow_llm=allow_llm, robots=robots)
+    if page is not None:  # what ctx.page() would have cached after a successful fetch
+        ctx._page, ctx._fetched = page, True
+    out = _Outcome(ctx)
     for rung in RUNGS:
         try:
             hit = await rung.run(ctx)
         except Exception as e:  # a broken rung passes; the next one gets a go
-            log.warning("rung %s failed on link %s: %s", rung.name, link.id, e)
+            log.warning("rung %s failed on %s: %s", rung.name, label or url, e)
             ctx.note(f"{rung.name}: {type(e).__name__}")
             continue
         if hit is None:
@@ -198,24 +211,60 @@ async def _resolve(db: AsyncSession, link: JobLink, client: httpx.AsyncClient, a
             ctx.single_job = ctx.single_job or hit.posting
             continue
         if isinstance(hit, BoardHit):
-            link.ats, link.slug = hit.ats, hit.slug
+            out.hit = (hit.ats, hit.slug)
             company, added, reason = await _board_company(db, hit, client)
         else:
-            link.ats, link.slug = "recipe", hit.domain
+            out.hit = ("recipe", hit.domain)
             company, added, reason = await _recipe_company(db, hit)
         if company is None:
-            board_error = f"That board couldn't be read: {reason}"
+            out.board_error = f"That board couldn't be read: {reason}"
             ctx.note(f"{rung.name}: {reason}")
-            if isinstance(hit, BoardHit) and site_for_url(link.url) is not None:
+            if isinstance(hit, BoardHit) and site_for_url(url) is not None:
                 break  # a reviewed custom site maps to its one board; its own pages are not to be scraped
             continue
-        return await _done(db, link, company, added, rung.name, client)
+        out.company, out.added, out.rung = company, added, rung.name
+        return out
+    return out
+
+
+async def resolve_url(db: AsyncSession, url: str, client: httpx.AsyncClient, *, allow_llm: bool = False,
+                      page: SafeResponse | None = None, robots: PoliteFetcher | None = None,
+                      ) -> tuple[Company | None, str | None, list[str]]:
+    """Resolve a URL with no JobLink behind it (the coverage audit): (company, rung, notes). A board that
+    is new is added with origin 'user' and fetched right away, as for a pasted link."""
+    refused = refusal_for_url(url)
+    if refused is not None:  # terms/robots review said no: nothing here may fetch or scrape this site
+        return None, None, [refusal_message(refused)]
+    out = await _ladder(db, url, client, allow_llm, page=page, robots=robots)
+    company = out.company
+    if company is not None and out.added:
+        await ingest_company(db, client, company)
+        company = await db.get(Company, company.id)
+    notes = list(out.ctx.notes)
+    if company is None and out.board_error and out.board_error not in notes:
+        notes.append(out.board_error)
+    return company, out.rung, notes
+
+
+async def _resolve(db: AsyncSession, link: JobLink, client: httpx.AsyncClient, allow_llm: bool) -> dict:
+    refused = refusal_for_url(link.url)
+    if refused is not None:  # terms/robots review said no: no rung may fetch or scrape this site
+        _finish(link, "unresolved", error=refusal_message(refused), rung="terms_refused")
+        await db.commit()
+        return {"status": "unresolved", "reason": "terms refused", "site": refused.name}
+    out = await _ladder(db, link.url, client, allow_llm, label=f"link {link.id}")
+    ctx = out.ctx
+    if out.hit is not None:
+        link.ats, link.slug = out.hit
+    if out.company is not None:
+        return await _done(db, link, out.company, out.added, out.rung, client)
 
     if ctx.single_job is not None:
         job_id = await _keep_single_job(db, link, ctx.single_job)
         _finish(link, "unresolved", error=SINGLE_ONLY, rung="single_job")
         await db.commit()
         return {"status": "unresolved", "reason": "single job only", "job_id": job_id, "notes": ctx.notes}
+    board_error = out.board_error
     _finish(link, "unresolved", error=board_error or UNSUPPORTED)
     await db.commit()
     return {"status": "unresolved", "reason": "unsupported" if not board_error else board_error,
