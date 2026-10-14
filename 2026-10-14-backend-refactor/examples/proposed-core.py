@@ -1,28 +1,35 @@
-# Sketch: backend/jobfinder/core/ (D2, D3, D4). Each section is its own module.
+# Sketch (v2): backend/jobfinder/core/ (D2, D3, D4, D5). Each section is its own small module.
 
-# ---------------------------------------------------------------- core/config.py
-# Groups keep today's env var names: each group has its own prefix, and the few odd names get an alias.
+# ---------------------------------------------------------------- core/config.py  (v2: .env files only)
+"""Every setting comes from backend/.env.defaults, overridden by backend/.env, overridden by the process env.
+This file only declares names and types: no default values live in Python. A missing key stops startup with
+the full list of missing keys."""
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-_ENV = dict(env_file=".env", extra="ignore")
+_FILES = dict(env_file=(".env.defaults", ".env"), extra="ignore")   # later file wins
 
 
 class IngestSettings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="INGEST_", **_ENV)
-    tick_minutes: int = 15                      # INGEST_TICK_MINUTES (unchanged)
-    min_interval_minutes: int = 60              # INGEST_MIN_INTERVAL_MINUTES (unchanged)
-    concurrency: int = 10
-    adaptive: bool = Field(True, validation_alias=AliasChoices("ADAPTIVE_SCHEDULE_ENABLED"))  # odd name kept
+    model_config = SettingsConfigDict(env_prefix="INGEST_", **_FILES)
+    tick_minutes: int                       # INGEST_TICK_MINUTES (unchanged name)
+    min_interval_minutes: int
+    churn_pivot: int                        # was a constant in ingest/schedule.py
+    adaptive: bool = Field(validation_alias=AliasChoices("ADAPTIVE_SCHEDULE_ENABLED"))   # odd name kept
+
+
+class WorkerSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="WORKER_", **_FILES)
+    ai_concurrency: int = Field(validation_alias=AliasChoices("WORKER_AI_CONCURRENCY", "AI_MAX_CONCURRENCY"))
+    io_concurrency: int
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(**_ENV)
-    db: DbSettings = Field(default_factory=DbSettings)
-    auth: AuthSettings = Field(default_factory=AuthSettings)
-    ai: AISettings = Field(default_factory=AISettings)
-    ingest: IngestSettings = Field(default_factory=IngestSettings)
-    # ... matching, planner, digest, discovery, renderer, smtp, sources
+    model_config = SettingsConfigDict(**_FILES)
+    db: DbSettings = Field(default_factory=DbSettings)        # default_factory only builds the group;
+    ingest: IngestSettings = Field(default_factory=IngestSettings)   # every value still comes from .env
+    worker: WorkerSettings = Field(default_factory=WorkerSettings)
+    # ... auth, ai, scheduler, valkey, digest, discovery, renderer, smtp, sources
 
 
 # ---------------------------------------------------------------- core/context.py
@@ -89,14 +96,14 @@ def install(app: FastAPI) -> None:
         return JSONResponse({"detail": str(e), "code": e.code}, status_code=e.status)
 
 
-# ---------------------------------------------------------------- core/deps.py  (the only place these aliases live)
+# ---------------------------------------------------------------- api/deps.py  (the only place these aliases live)
 DbSession = Annotated[AsyncSession, Depends(get_db)]
 CurrentUser = Annotated[User, Depends(current_user)]
 AdminUser = Annotated[User, Depends(require_admin)]
 Ctx = Annotated[AppContext, Depends(lambda request: request.app.state.ctx)]
 
 
-# ---------------------------------------------------------------- app.py
+# ---------------------------------------------------------------- api/app.py
 def create_app(settings: Settings | None = None, ctx: AppContext | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -106,6 +113,6 @@ def create_app(settings: Settings | None = None, ctx: AppContext | None = None) 
 
     app = FastAPI(title="JobFinder", lifespan=lifespan)
     errors.install(app)
-    for router in features.routers():  # each features/<name>/router.py, in a fixed list
+    for router in routers.ALL:  # api/routers/__init__.py: the 15 routers in a fixed list
         app.include_router(router)
     return app

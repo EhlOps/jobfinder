@@ -1,4 +1,4 @@
-# Sketch: additions to backend/pyproject.toml (D6, D7).
+# Sketch (v2): additions to backend/pyproject.toml (D6, D7, D8).
 
 [project.scripts]
 jobfinder = "jobfinder.cli:app"          # uv run jobfinder --help
@@ -7,6 +7,8 @@ jobfinder = "jobfinder.cli:app"          # uv run jobfinder --help
 dependencies = [
   # ... existing ...
   "typer>=0.12",
+  "taskiq>=0.11",
+  "taskiq-redis>=1.0",
 ]
 
 [dependency-groups]
@@ -19,25 +21,28 @@ dev = [
 
 [tool.importlinter]
 root_package = "jobfinder"
+include_external_packages = true          # needed for the sqlalchemy.sql contract below
 
 [[tool.importlinter.contracts]]
-name = "Layers: entrypoints > features > tasks/ai > core"
+name = "Layers by kind"
 type = "layers"
 layers = [
-  "jobfinder.app | jobfinder.worker | jobfinder.cli | jobfinder.renderer",
-  "jobfinder.features",
-  "jobfinder.tasks | jobfinder.ai",
+  "jobfinder.api.app : jobfinder.tasks : jobfinder.scheduler : jobfinder.cli : jobfinder.renderer",  # ":" = may import each other
+  "jobfinder.api.routers",
+  "jobfinder.services",
+  "jobfinder.repositories | jobfinder.integrations",   # "|" = independent of each other
+  "jobfinder.models",
   "jobfinder.core",
 ]
 
 [[tool.importlinter.contracts]]
-name = "Features use each other only through service.py"
+name = "SQL only in repositories"
 type = "forbidden"
-source_modules = ["jobfinder.features.*"]
-forbidden_modules = ["jobfinder.features.*.router", "jobfinder.features.*.models"]
-allow_indirect_imports = true
+source_modules = ["jobfinder.api", "jobfinder.services"]
+forbidden_modules = ["sqlalchemy.sql", "sqlalchemy.dialects"]   # sqlalchemy.ext.asyncio (the session type) stays allowed
 
 # tests/test_architecture.py (sketch):
-#   def test_features_never_commit():
-#       hits = [p for p in Path("jobfinder/features").rglob("*.py") if ".commit()" in p.read_text()]
+#   def test_only_boundaries_commit():
+#       allowed = {"core/db.py", "tasks/runtime.py", "cli/__init__.py"}
+#       hits = [p for p in Path("jobfinder").rglob("*.py") if ".commit()" in p.read_text() and rel(p) not in allowed]
 #       assert not hits, hits
