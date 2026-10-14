@@ -1,5 +1,14 @@
 # History
 
+## 2026-10-14: seed YAML retired; `companies` is the only list of boards
+
+- `ingest/companies.yaml` and `ingest/companies.d/` are gone, along with `load_seed()`/`sync_companies()`; ingest
+  no longer re-syncs boards from files on every run. Migration 0021 imports a frozen snapshot of what that sync
+  wrote (640 boards, `alembic/versions/data/0021_seed_companies.json`) with `ON CONFLICT DO NOTHING`, so existing
+  rows and admin edits are kept and fresh installs get the full starting set.
+- Boards are added by discovery, pasted links and `cli add-board`; new `cli list-boards` and `cli set-board`
+  (prestige, size, industry, sponsorship, enabled, name) edit them. `pyyaml` is no longer a dependency.
+
 ## 2026-10-13: broader board discovery, on by default
 
 - `DISCOVERY_ENABLED` now defaults to true (weekly, Sundays 04:30 UTC); `DISCOVERY_MAX_CANDIDATES` and

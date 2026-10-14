@@ -4,14 +4,12 @@ from pathlib import Path
 import httpx
 import pytest
 import sqlalchemy as sa
-import yaml
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from jobfinder.ingest import runner, service
 from jobfinder.ingest.base import JobPosting
 from jobfinder.ingest.sources import ATS_FETCHERS
 from jobfinder.ingest.sources.ashby import parse_ashby
-from jobfinder.ingest.validate import SLUG_RE
 from jobfinder.models import Company, Job, Profile, User
 
 FIX = Path(__file__).parent / "fixtures"
@@ -44,63 +42,18 @@ async def make_company(db, slug="acme", ats="greenhouse"):
     return c
 
 
+BOARDS = [("Stripe", "greenhouse", "stripe"), ("Airbnb", "greenhouse", "airbnb"),
+          ("Spotify", "lever", "spotify"), ("Palantir", "lever", "palantir"), ("Ramp", "ashby", "ramp")]
+
+
+async def add_boards(maker, boards=BOARDS):
+    async with maker() as db:
+        db.add_all([Company(name=n, ats=a, slug=s) for n, a, s in boards])
+        await db.commit()
+
+
 async def active_ids(db):
     return set((await db.scalars(sa.select(Job.external_id).where(Job.is_active.is_(True)))).all())
-
-
-# ── seed list ────────────────────────────────────────────────────────────
-def test_every_seed_row_is_valid():
-    files = service.seed_files()
-    assert files[0] == service.COMPANIES_YAML
-    total = 0
-    for f in files:
-        seen = set()
-        for e in (yaml.safe_load(f.read_text()) or {}).get("companies") or []:
-            assert e.get("name") and e.get("ats") and e.get("slug"), (f.name, e)
-            assert e["ats"] in ATS_FETCHERS, (f.name, e)
-            assert isinstance(e["slug"], str) and SLUG_RE.match(e["slug"]), (f.name, e)
-            if "prestige" in e:
-                assert 1 <= e["prestige"] <= 5, (f.name, e)
-            if "size" in e:
-                assert e["size"] in service.VALID_SIZES, (f.name, e)
-            assert (e["ats"], e["slug"]) not in seen, (f.name, e)
-            seen.add((e["ats"], e["slug"]))
-            total += 1
-    assert total >= 20
-    assert len(service.load_seed()) <= total  # cross-file dupes are skipped, never errors
-
-
-def test_load_seed_merges_files_and_dedupes(tmp_path, caplog):
-    a, b, c = tmp_path / "a.yaml", tmp_path / "b.yaml", tmp_path / "c.yaml"
-    a.write_text("companies:\n  - {name: A, ats: greenhouse, slug: a}\n  - {name: B, ats: lever, slug: b}\n")
-    b.write_text("companies:\n  - {name: A2, ats: greenhouse, slug: a}\n  - {name: C, ats: ashby, slug: a}\n")
-    c.write_text("companies:\n  - {name: X, ats: nope, slug: x}\n  - {name: Y, ats: lever}\n")
-    with caplog.at_level("WARNING", logger="jobfinder.ingest"):
-        rows = service.load_seed([a, b, c])
-    assert [(r["name"], r["ats"], r["slug"]) for r in rows] == [
-        ("A", "greenhouse", "a"), ("B", "lever", "b"), ("C", "ashby", "a")]
-    assert "duplicate seed company greenhouse/a" in caplog.text
-
-
-async def test_sync_companies_is_idempotent_and_updates(maker):
-    async with maker() as db:
-        await service.sync_companies(db)
-        await service.sync_companies(db)
-        n = await db.scalar(sa.select(sa.func.count()).select_from(Company))
-        assert n == len(service.load_seed())
-        await service.sync_companies(db, [{"name": "Stripe Inc", "ats": "greenhouse", "slug": "stripe", "prestige": 5, "size": "large", "industry": "x"}])
-        assert (await db.scalar(sa.select(Company.name).where(Company.slug == "stripe"))) == "Stripe Inc"
-
-
-async def test_sync_companies_stores_sponsorship_flag(maker):
-    async with maker() as db:
-        await service.sync_companies(db, [
-            {"name": "A", "ats": "greenhouse", "slug": "a", "sponsors_visas": True},
-            {"name": "B", "ats": "greenhouse", "slug": "b", "sponsors_visas": False},
-            {"name": "C", "ats": "greenhouse", "slug": "c"},
-        ])
-        flags = dict((await db.execute(sa.select(Company.slug, Company.sponsors_visas))).all())
-        assert flags == {"a": True, "b": False, "c": None}
 
 
 # ── upsert / deactivate ──────────────────────────────────────────────────
@@ -267,12 +220,13 @@ async def test_ingest_boards_isolates_failures(maker, monkeypatch):
     monkeypatch.setitem(service.ATS_FETCHERS, "greenhouse", ok)
     monkeypatch.setitem(service.ATS_FETCHERS, "lever", bad)
     monkeypatch.setitem(service.ATS_FETCHERS, "ashby", ok)
+    await add_boards(maker)
     results = await service.ingest_boards(maker)
     by_ats = {}
     for r in results:
         by_ats.setdefault(r.source, []).append(r)
     assert all(r.error for r in by_ats["lever"]) and all(r.error is None for r in by_ats["greenhouse"] + by_ats["ashby"])
-    assert len(results) == len(service.load_seed())
+    assert len(results) == len(BOARDS)
 
 
 async def test_ingest_boards_filters_by_ats_and_slug(maker, monkeypatch):
@@ -281,6 +235,7 @@ async def test_ingest_boards_filters_by_ats_and_slug(maker, monkeypatch):
 
     for ats in ("greenhouse", "lever", "ashby"):
         monkeypatch.setitem(service.ATS_FETCHERS, ats, ok)
+    await add_boards(maker)
     assert {r.source for r in await service.ingest_boards(maker, ats="lever")} == {"lever"}
     only = await service.ingest_boards(maker, slug="stripe")
     assert [r.company for r in only] == ["Stripe"]
@@ -307,8 +262,10 @@ async def test_run_ingest_summary(maker, monkeypatch):
     monkeypatch.setitem(service.ATS_FETCHERS, "greenhouse", ok)
     monkeypatch.setitem(service.ATS_FETCHERS, "lever", bad)
     monkeypatch.setitem(service.ATS_FETCHERS, "ashby", ok)
+    await add_boards(maker)
     out = await runner.run_ingest(maker, jobspy=False)
-    assert out["companies"] == len(service.load_seed()) and out["new"] > 0 and set(out["errors"]) == {e["name"] for e in service.load_seed() if e["ats"] == "lever"}
+    assert out["companies"] == len(BOARDS) and out["new"] > 0
+    assert set(out["errors"]) == {n for n, a, _ in BOARDS if a == "lever"}
 
 
 async def test_expire_stale_for_jobspy(maker):

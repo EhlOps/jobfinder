@@ -13,7 +13,6 @@ dependencies = [
   "argon2-cffi>=23.1",
   "python-multipart>=0.0.12",
   "apscheduler>=3.10,<4",
-  "pyyaml>=6.0",
   "aiosmtplib>=3.0",
   "pdfplumber>=0.11.10",
   "python-docx>=1.2.0",

@@ -1,0 +1,5762 @@
+[
+ {
+  "name": "Stripe",
+  "ats": "greenhouse",
+  "slug": "stripe",
+  "prestige_tier": 5,
+  "size": "large",
+  "industry": "fintech",
+  "sponsors_visas": true
+ },
+ {
+  "name": "Airbnb",
+  "ats": "greenhouse",
+  "slug": "airbnb",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "travel",
+  "sponsors_visas": true
+ },
+ {
+  "name": "Anthropic",
+  "ats": "greenhouse",
+  "slug": "anthropic",
+  "prestige_tier": 5,
+  "size": "mid",
+  "industry": "ai",
+  "sponsors_visas": true
+ },
+ {
+  "name": "Figma",
+  "ats": "greenhouse",
+  "slug": "figma",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "dev tools",
+  "sponsors_visas": true
+ },
+ {
+  "name": "Databricks",
+  "ats": "greenhouse",
+  "slug": "databricks",
+  "prestige_tier": 5,
+  "size": "large",
+  "industry": "data",
+  "sponsors_visas": true
+ },
+ {
+  "name": "Cloudflare",
+  "ats": "greenhouse",
+  "slug": "cloudflare",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "infrastructure",
+  "sponsors_visas": true
+ },
+ {
+  "name": "Datadog",
+  "ats": "greenhouse",
+  "slug": "datadog",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "infrastructure",
+  "sponsors_visas": true
+ },
+ {
+  "name": "Coinbase",
+  "ats": "greenhouse",
+  "slug": "coinbase",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "fintech",
+  "sponsors_visas": true
+ },
+ {
+  "name": "Robinhood",
+  "ats": "greenhouse",
+  "slug": "robinhood",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "fintech",
+  "sponsors_visas": true
+ },
+ {
+  "name": "Discord",
+  "ats": "greenhouse",
+  "slug": "discord",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "consumer",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Reddit",
+  "ats": "greenhouse",
+  "slug": "reddit",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "consumer",
+  "sponsors_visas": true
+ },
+ {
+  "name": "Pinterest",
+  "ats": "greenhouse",
+  "slug": "pinterest",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "consumer",
+  "sponsors_visas": true
+ },
+ {
+  "name": "Lyft",
+  "ats": "greenhouse",
+  "slug": "lyft",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "mobility",
+  "sponsors_visas": true
+ },
+ {
+  "name": "Instacart",
+  "ats": "greenhouse",
+  "slug": "instacart",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "consumer",
+  "sponsors_visas": true
+ },
+ {
+  "name": "Dropbox",
+  "ats": "greenhouse",
+  "slug": "dropbox",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "dev tools",
+  "sponsors_visas": true
+ },
+ {
+  "name": "Twilio",
+  "ats": "greenhouse",
+  "slug": "twilio",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "infrastructure",
+  "sponsors_visas": true
+ },
+ {
+  "name": "Asana",
+  "ats": "greenhouse",
+  "slug": "asana",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "productivity",
+  "sponsors_visas": null
+ },
+ {
+  "name": "GitLab",
+  "ats": "greenhouse",
+  "slug": "gitlab",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "dev tools",
+  "sponsors_visas": null
+ },
+ {
+  "name": "MongoDB",
+  "ats": "greenhouse",
+  "slug": "mongodb",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "data",
+  "sponsors_visas": true
+ },
+ {
+  "name": "Palantir",
+  "ats": "lever",
+  "slug": "palantir",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "data",
+  "sponsors_visas": true
+ },
+ {
+  "name": "Spotify",
+  "ats": "lever",
+  "slug": "spotify",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "media",
+  "sponsors_visas": true
+ },
+ {
+  "name": "OpenAI",
+  "ats": "ashby",
+  "slug": "openai",
+  "prestige_tier": 5,
+  "size": "mid",
+  "industry": "ai",
+  "sponsors_visas": true
+ },
+ {
+  "name": "Ramp",
+  "ats": "ashby",
+  "slug": "ramp",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "fintech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Notion",
+  "ats": "ashby",
+  "slug": "notion",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "productivity",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Linear",
+  "ats": "ashby",
+  "slug": "linear",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "dev tools",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Supabase",
+  "ats": "ashby",
+  "slug": "supabase",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "dev tools",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Cursor",
+  "ats": "ashby",
+  "slug": "cursor",
+  "prestige_tier": 4,
+  "size": "startup",
+  "industry": "ai",
+  "sponsors_visas": null
+ },
+ {
+  "name": "SpaceX",
+  "ats": "greenhouse",
+  "slug": "spacex",
+  "prestige_tier": 5,
+  "size": "large",
+  "industry": "space",
+  "sponsors_visas": false
+ },
+ {
+  "name": "Relativity Space",
+  "ats": "greenhouse",
+  "slug": "relativity",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "space",
+  "sponsors_visas": false
+ },
+ {
+  "name": "Rocket Lab",
+  "ats": "greenhouse",
+  "slug": "rocketlab",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "space",
+  "sponsors_visas": false
+ },
+ {
+  "name": "Astranis",
+  "ats": "greenhouse",
+  "slug": "astranis",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "space",
+  "sponsors_visas": false
+ },
+ {
+  "name": "Varda Space Industries",
+  "ats": "greenhouse",
+  "slug": "vardaspace",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "space",
+  "sponsors_visas": false
+ },
+ {
+  "name": "Vast",
+  "ats": "greenhouse",
+  "slug": "vast",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "space",
+  "sponsors_visas": false
+ },
+ {
+  "name": "Impulse Space",
+  "ats": "ashby",
+  "slug": "impulse",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "space",
+  "sponsors_visas": false
+ },
+ {
+  "name": "Apex Space",
+  "ats": "ashby",
+  "slug": "apex-technology-inc",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "space",
+  "sponsors_visas": false
+ },
+ {
+  "name": "Ursa Major",
+  "ats": "greenhouse",
+  "slug": "ursamajor",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "space",
+  "sponsors_visas": false
+ },
+ {
+  "name": "Inversion Space",
+  "ats": "greenhouse",
+  "slug": "inversionspace",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "space",
+  "sponsors_visas": false
+ },
+ {
+  "name": "Northwood Space",
+  "ats": "ashby",
+  "slug": "northwoodspace",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "space",
+  "sponsors_visas": false
+ },
+ {
+  "name": "Muon Space",
+  "ats": "greenhouse",
+  "slug": "muonspace",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "space",
+  "sponsors_visas": false
+ },
+ {
+  "name": "Katalyst Space",
+  "ats": "greenhouse",
+  "slug": "katalyst",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "space",
+  "sponsors_visas": false
+ },
+ {
+  "name": "Portal Space Systems",
+  "ats": "greenhouse",
+  "slug": "portalspacesystems",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "space",
+  "sponsors_visas": false
+ },
+ {
+  "name": "Outpost Space",
+  "ats": "greenhouse",
+  "slug": "outpostspace",
+  "prestige_tier": 2,
+  "size": "startup",
+  "industry": "space",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Gravitics",
+  "ats": "greenhouse",
+  "slug": "graviticsinc",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "space",
+  "sponsors_visas": false
+ },
+ {
+  "name": "Albedo",
+  "ats": "greenhouse",
+  "slug": "albedo",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "space",
+  "sponsors_visas": false
+ },
+ {
+  "name": "Terran Orbital",
+  "ats": "greenhouse",
+  "slug": "terranorbitalcorporation",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "space",
+  "sponsors_visas": false
+ },
+ {
+  "name": "Slingshot Aerospace",
+  "ats": "ashby",
+  "slug": "slingshot-aerospace",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "space",
+  "sponsors_visas": false
+ },
+ {
+  "name": "LeoLabs",
+  "ats": "greenhouse",
+  "slug": "leolabsinc",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "space",
+  "sponsors_visas": false
+ },
+ {
+  "name": "Scout Space",
+  "ats": "greenhouse",
+  "slug": "scoutspace",
+  "prestige_tier": 2,
+  "size": "startup",
+  "industry": "space",
+  "sponsors_visas": false
+ },
+ {
+  "name": "Turion Space",
+  "ats": "ashby",
+  "slug": "turion-space",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "space",
+  "sponsors_visas": false
+ },
+ {
+  "name": "Momentus",
+  "ats": "greenhouse",
+  "slug": "momentus",
+  "prestige_tier": 2,
+  "size": "mid",
+  "industry": "space",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Epsilon3",
+  "ats": "lever",
+  "slug": "epsilon3",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "space",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Orbital Sidekick",
+  "ats": "lever",
+  "slug": "orbitalsidekick",
+  "prestige_tier": 2,
+  "size": "startup",
+  "industry": "space",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Quindar",
+  "ats": "ashby",
+  "slug": "quindar",
+  "prestige_tier": 2,
+  "size": "startup",
+  "industry": "space",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Hubble Network",
+  "ats": "greenhouse",
+  "slug": "hubblenetwork",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "space",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Planet Labs",
+  "ats": "greenhouse",
+  "slug": "planetlabs",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "space",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Spire Global",
+  "ats": "greenhouse",
+  "slug": "spire",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "space",
+  "sponsors_visas": null
+ },
+ {
+  "name": "BlackSky",
+  "ats": "greenhouse",
+  "slug": "blacksky",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "space",
+  "sponsors_visas": false
+ },
+ {
+  "name": "HawkEye 360",
+  "ats": "greenhouse",
+  "slug": "hawkeye360",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "space",
+  "sponsors_visas": false
+ },
+ {
+  "name": "AST SpaceMobile",
+  "ats": "greenhouse",
+  "slug": "astspacemobile",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "space",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Skylo",
+  "ats": "ashby",
+  "slug": "skylo",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "space",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Kepler Communications",
+  "ats": "lever",
+  "slug": "kepler",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "space",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Loft Orbital",
+  "ats": "lever",
+  "slug": "loftorbital",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "space",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Hydrosat",
+  "ats": "recruitee",
+  "slug": "hydrosat",
+  "prestige_tier": 2,
+  "size": "startup",
+  "industry": "space",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Isar Aerospace",
+  "ats": "greenhouse",
+  "slug": "isaraerospace",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "space",
+  "sponsors_visas": null
+ },
+ {
+  "name": "The Exploration Company",
+  "ats": "ashby",
+  "slug": "the-exploration-company",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "space",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Dawn Aerospace",
+  "ats": "greenhouse",
+  "slug": "dawnaerospace",
+  "prestige_tier": 2,
+  "size": "startup",
+  "industry": "space",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Astroscale",
+  "ats": "bamboohr",
+  "slug": "astroscale",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "space",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Lunar Outpost",
+  "ats": "bamboohr",
+  "slug": "lunaroutpost",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "space",
+  "sponsors_visas": false
+ },
+ {
+  "name": "Vaya Space",
+  "ats": "bamboohr",
+  "slug": "vayaspace",
+  "prestige_tier": 2,
+  "size": "startup",
+  "industry": "space",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Anduril",
+  "ats": "greenhouse",
+  "slug": "andurilindustries",
+  "prestige_tier": 5,
+  "size": "large",
+  "industry": "defense",
+  "sponsors_visas": false
+ },
+ {
+  "name": "Shield AI",
+  "ats": "lever",
+  "slug": "shieldai",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "defense",
+  "sponsors_visas": false
+ },
+ {
+  "name": "Saronic",
+  "ats": "ashby",
+  "slug": "saronic",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "defense",
+  "sponsors_visas": false
+ },
+ {
+  "name": "Epirus",
+  "ats": "greenhouse",
+  "slug": "epirus",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "defense",
+  "sponsors_visas": false
+ },
+ {
+  "name": "Chaos Industries",
+  "ats": "greenhouse",
+  "slug": "chaosindustries",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "defense",
+  "sponsors_visas": false
+ },
+ {
+  "name": "Mach Industries",
+  "ats": "greenhouse",
+  "slug": "machindustries",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "defense",
+  "sponsors_visas": false
+ },
+ {
+  "name": "Neros",
+  "ats": "greenhouse",
+  "slug": "nerostechnologies",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "defense",
+  "sponsors_visas": false
+ },
+ {
+  "name": "Vannevar Labs",
+  "ats": "greenhouse",
+  "slug": "vannevarlabs",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "defense",
+  "sponsors_visas": false
+ },
+ {
+  "name": "Shift5",
+  "ats": "greenhouse",
+  "slug": "shift5",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "defense",
+  "sponsors_visas": false
+ },
+ {
+  "name": "Allen Control Systems",
+  "ats": "greenhouse",
+  "slug": "allencontrolsystems",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "defense",
+  "sponsors_visas": false
+ },
+ {
+  "name": "Zone 5 Technologies",
+  "ats": "greenhouse",
+  "slug": "zone5technologies",
+  "prestige_tier": 2,
+  "size": "startup",
+  "industry": "defense",
+  "sponsors_visas": false
+ },
+ {
+  "name": "Picogrid",
+  "ats": "ashby",
+  "slug": "picogrid",
+  "prestige_tier": 2,
+  "size": "startup",
+  "industry": "defense",
+  "sponsors_visas": false
+ },
+ {
+  "name": "Echodyne",
+  "ats": "greenhouse",
+  "slug": "echodynecorp",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "defense",
+  "sponsors_visas": false
+ },
+ {
+  "name": "Valar Atomics",
+  "ats": "greenhouse",
+  "slug": "valaratomics",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "defense",
+  "sponsors_visas": false
+ },
+ {
+  "name": "Radiant Industries",
+  "ats": "ashby",
+  "slug": "radiant-industries",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "defense",
+  "sponsors_visas": false
+ },
+ {
+  "name": "Helsing",
+  "ats": "greenhouse",
+  "slug": "helsing",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "defense",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Auterion",
+  "ats": "greenhouse",
+  "slug": "auterion",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "defense",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Primer AI",
+  "ats": "greenhouse",
+  "slug": "primerai",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "defense",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Govini",
+  "ats": "smartrecruiters",
+  "slug": "govini",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "defense",
+  "sponsors_visas": false
+ },
+ {
+  "name": "Applied Intuition",
+  "ats": "ashby",
+  "slug": "applied",
+  "prestige_tier": 5,
+  "size": "large",
+  "industry": "defense",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Brinc Drones",
+  "ats": "ashby",
+  "slug": "brinc",
+  "prestige_tier": 2,
+  "size": "startup",
+  "industry": "defense",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Skydio",
+  "ats": "ashby",
+  "slug": "skydio",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "robotics",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Zipline",
+  "ats": "greenhouse",
+  "slug": "flyzipline",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "robotics",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Wing",
+  "ats": "greenhouse",
+  "slug": "wing",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "aerospace",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Reliable Robotics",
+  "ats": "ashby",
+  "slug": "reliable-robotics",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "aerospace",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Merlin Labs",
+  "ats": "lever",
+  "slug": "merlinlabs",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "aerospace",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Skyryse",
+  "ats": "greenhouse",
+  "slug": "skyryse",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "aerospace",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Electra Aero",
+  "ats": "greenhouse",
+  "slug": "electraaero",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "aerospace",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Heart Aerospace",
+  "ats": "greenhouse",
+  "slug": "heartaerospace",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "aerospace",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Whisper Aero",
+  "ats": "greenhouse",
+  "slug": "whisperaero",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "aerospace",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Vertical Aerospace",
+  "ats": "ashby",
+  "slug": "vertical-aerospace",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "aerospace",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Elroy Air",
+  "ats": "lever",
+  "slug": "elroyair",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "aerospace",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Pivotal",
+  "ats": "lever",
+  "slug": "pivotal",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "aerospace",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Hadrian",
+  "ats": "ashby",
+  "slug": "hadrian-automation",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "manufacturing",
+  "sponsors_visas": false
+ },
+ {
+  "name": "Divergent Technologies",
+  "ats": "greenhouse",
+  "slug": "divergent",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "manufacturing",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Vulcan Elements",
+  "ats": "greenhouse",
+  "slug": "vulcanelements",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "manufacturing",
+  "sponsors_visas": false
+ },
+ {
+  "name": "Velo3D",
+  "ats": "lever",
+  "slug": "velo3d",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "manufacturing",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Seurat Technologies",
+  "ats": "greenhouse",
+  "slug": "seurat",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "manufacturing",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Formic",
+  "ats": "greenhouse",
+  "slug": "formic",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "robotics",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Scale AI",
+  "ats": "greenhouse",
+  "slug": "scaleai",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "ai",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Vercel",
+  "ats": "greenhouse",
+  "slug": "vercel",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "dev tools",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Elastic",
+  "ats": "greenhouse",
+  "slug": "elastic",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "data",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Samsara",
+  "ats": "greenhouse",
+  "slug": "samsara",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "infrastructure",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Cockroach Labs",
+  "ats": "greenhouse",
+  "slug": "cockroachlabs",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "data",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Fivetran",
+  "ats": "greenhouse",
+  "slug": "fivetran",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "data",
+  "sponsors_visas": null
+ },
+ {
+  "name": "PagerDuty",
+  "ats": "greenhouse",
+  "slug": "pagerduty",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "dev tools",
+  "sponsors_visas": null
+ },
+ {
+  "name": "New Relic",
+  "ats": "greenhouse",
+  "slug": "newrelic",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "infrastructure",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Okta",
+  "ats": "greenhouse",
+  "slug": "okta",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "security",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Tailscale",
+  "ats": "greenhouse",
+  "slug": "tailscale",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "infrastructure",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Grafana Labs",
+  "ats": "greenhouse",
+  "slug": "grafanalabs",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "infrastructure",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Honeycomb",
+  "ats": "greenhouse",
+  "slug": "honeycomb",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "infrastructure",
+  "sponsors_visas": null
+ },
+ {
+  "name": "LaunchDarkly",
+  "ats": "greenhouse",
+  "slug": "launchdarkly",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "dev tools",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Mixpanel",
+  "ats": "greenhouse",
+  "slug": "mixpanel",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "data",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Sourcegraph",
+  "ats": "greenhouse",
+  "slug": "sourcegraph91",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "dev tools",
+  "sponsors_visas": null
+ },
+ {
+  "name": "CircleCI",
+  "ats": "greenhouse",
+  "slug": "circleci",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "dev tools",
+  "sponsors_visas": null
+ },
+ {
+  "name": "JFrog",
+  "ats": "greenhouse",
+  "slug": "jfrog",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "dev tools",
+  "sponsors_visas": null
+ },
+ {
+  "name": "CoreWeave",
+  "ats": "greenhouse",
+  "slug": "coreweave",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "infrastructure",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Together AI",
+  "ats": "greenhouse",
+  "slug": "togetherai",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "ai",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Airtable",
+  "ats": "greenhouse",
+  "slug": "airtable",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "productivity",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Algolia",
+  "ats": "greenhouse",
+  "slug": "algolia",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "dev tools",
+  "sponsors_visas": null
+ },
+ {
+  "name": "PlanetScale",
+  "ats": "greenhouse",
+  "slug": "planetscale",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "data",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Fastly",
+  "ats": "greenhouse",
+  "slug": "fastly",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "infrastructure",
+  "sponsors_visas": null
+ },
+ {
+  "name": "DigitalOcean",
+  "ats": "greenhouse",
+  "slug": "digitalocean98",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "infrastructure",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Zscaler",
+  "ats": "greenhouse",
+  "slug": "zscaler",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "security",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Rubrik",
+  "ats": "greenhouse",
+  "slug": "rubrik",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "security",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Wiz",
+  "ats": "greenhouse",
+  "slug": "wizinc",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "security",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Tanium",
+  "ats": "greenhouse",
+  "slug": "tanium",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "security",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Abnormal Security",
+  "ats": "greenhouse",
+  "slug": "abnormalsecurity",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "security",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Sumo Logic",
+  "ats": "greenhouse",
+  "slug": "sumologic",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "infrastructure",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Nuro",
+  "ats": "greenhouse",
+  "slug": "nuro",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "robotics",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Glean",
+  "ats": "greenhouse",
+  "slug": "gleanwork",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "ai",
+  "sponsors_visas": null
+ },
+ {
+  "name": "xAI",
+  "ats": "greenhouse",
+  "slug": "xai",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "ai",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Waymo",
+  "ats": "greenhouse",
+  "slug": "waymo",
+  "prestige_tier": 5,
+  "size": "large",
+  "industry": "robotics",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Stability AI",
+  "ats": "greenhouse",
+  "slug": "stabilityai",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "ai",
+  "sponsors_visas": null
+ },
+ {
+  "name": "SambaNova",
+  "ats": "greenhouse",
+  "slug": "sambanovasystems",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "semiconductors",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Lambda",
+  "ats": "ashby",
+  "slug": "lambda",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "ai",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Cohere",
+  "ats": "ashby",
+  "slug": "cohere",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "ai",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Replit",
+  "ats": "ashby",
+  "slug": "replit",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "dev tools",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Modal",
+  "ats": "ashby",
+  "slug": "modal",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "ai",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Harvey",
+  "ats": "ashby",
+  "slug": "harvey",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "ai",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Sierra",
+  "ats": "ashby",
+  "slug": "sierra",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "ai",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Decagon",
+  "ats": "ashby",
+  "slug": "decagon",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "ai",
+  "sponsors_visas": null
+ },
+ {
+  "name": "ElevenLabs",
+  "ats": "ashby",
+  "slug": "elevenlabs",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "ai",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Runway",
+  "ats": "ashby",
+  "slug": "runway",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "ai",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Hugging Face",
+  "ats": "workable",
+  "slug": "huggingface",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "ai",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Neon",
+  "ats": "ashby",
+  "slug": "neon",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "data",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Render",
+  "ats": "ashby",
+  "slug": "render",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "infrastructure",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Clerk",
+  "ats": "ashby",
+  "slug": "clerk",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "dev tools",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Resend",
+  "ats": "ashby",
+  "slug": "resend",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "dev tools",
+  "sponsors_visas": null
+ },
+ {
+  "name": "PostHog",
+  "ats": "ashby",
+  "slug": "posthog",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "dev tools",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Warp",
+  "ats": "ashby",
+  "slug": "warp",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "dev tools",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Mercor",
+  "ats": "ashby",
+  "slug": "mercor",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "ai",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Writer",
+  "ats": "ashby",
+  "slug": "writer",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "ai",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Cognition",
+  "ats": "ashby",
+  "slug": "cognition",
+  "prestige_tier": 4,
+  "size": "startup",
+  "industry": "ai",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Vanta",
+  "ats": "ashby",
+  "slug": "vanta",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "security",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Drata",
+  "ats": "ashby",
+  "slug": "drata",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "security",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Socket",
+  "ats": "ashby",
+  "slug": "socket",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "security",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Semgrep",
+  "ats": "ashby",
+  "slug": "semgrep",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "security",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Crusoe",
+  "ats": "ashby",
+  "slug": "crusoe",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "infrastructure",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Hex",
+  "ats": "ashby",
+  "slug": "hex",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "data",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Mintlify",
+  "ats": "ashby",
+  "slug": "mintlify",
+  "prestige_tier": 2,
+  "size": "startup",
+  "industry": "dev tools",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Pinecone",
+  "ats": "ashby",
+  "slug": "pinecone",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "data",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Weaviate",
+  "ats": "ashby",
+  "slug": "weaviate",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "data",
+  "sponsors_visas": null
+ },
+ {
+  "name": "LangChain",
+  "ats": "ashby",
+  "slug": "langchain",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "ai",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Cribl",
+  "ats": "greenhouse",
+  "slug": "cribl",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "data",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Netlify",
+  "ats": "greenhouse",
+  "slug": "netlify",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "dev tools",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Zapier",
+  "ats": "ashby",
+  "slug": "zapier",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "productivity",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Pure Storage",
+  "ats": "greenhouse",
+  "slug": "purestorage",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "infrastructure",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Torq",
+  "ats": "greenhouse",
+  "slug": "torq",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "security",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Poolside",
+  "ats": "ashby",
+  "slug": "poolside",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "ai",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Thinking Machines",
+  "ats": "ashby",
+  "slug": "thinkingmachines",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "ai",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Physical Intelligence",
+  "ats": "ashby",
+  "slug": "physicalintelligence",
+  "prestige_tier": 4,
+  "size": "startup",
+  "industry": "robotics",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Zoox",
+  "ats": "lever",
+  "slug": "zoox",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "robotics",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Veracode",
+  "ats": "greenhouse",
+  "slug": "veracode",
+  "prestige_tier": 2,
+  "size": "mid",
+  "industry": "security",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Contentful",
+  "ats": "greenhouse",
+  "slug": "contentful",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "dev tools",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Starburst",
+  "ats": "greenhouse",
+  "slug": "starburst",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "data",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Dremio",
+  "ats": "greenhouse",
+  "slug": "dremio",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "data",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Imply",
+  "ats": "greenhouse",
+  "slug": "imply",
+  "prestige_tier": 2,
+  "size": "mid",
+  "industry": "data",
+  "sponsors_visas": null
+ },
+ {
+  "name": "SingleStore",
+  "ats": "greenhouse",
+  "slug": "singlestore",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "data",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Harness",
+  "ats": "greenhouse",
+  "slug": "harnessinc",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "dev tools",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Absci",
+  "ats": "ashby",
+  "slug": "absci",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "biotech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Asimov",
+  "ats": "ashby",
+  "slug": "asimov",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "biotech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Benchling",
+  "ats": "ashby",
+  "slug": "benchling",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "biotech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Brimstone",
+  "ats": "ashby",
+  "slug": "brimstone",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "climate",
+  "sponsors_visas": null
+ },
+ {
+  "name": "CuspAI",
+  "ats": "ashby",
+  "slug": "cuspai",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "materials",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Eight Sleep",
+  "ats": "ashby",
+  "slug": "eightsleep",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "medtech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Form Energy",
+  "ats": "ashby",
+  "slug": "formenergy",
+  "prestige_tier": 5,
+  "size": "mid",
+  "industry": "climate",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Helion",
+  "ats": "ashby",
+  "slug": "helion",
+  "prestige_tier": 5,
+  "size": "mid",
+  "industry": "climate",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Insitro",
+  "ats": "ashby",
+  "slug": "insitro",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "biotech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Radiant Industries",
+  "ats": "ashby",
+  "slug": "radiant",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "climate",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Twelve",
+  "ats": "ashby",
+  "slug": "twelve",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "climate",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Whoop",
+  "ats": "ashby",
+  "slug": "whoop",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "medtech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Beam Therapeutics",
+  "ats": "greenhouse",
+  "slug": "beamtherapeutics",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "biotech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Butterfly Network",
+  "ats": "greenhouse",
+  "slug": "butterflynetwork",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "medtech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Cala Health",
+  "ats": "greenhouse",
+  "slug": "calahealth",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "medtech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Captura",
+  "ats": "greenhouse",
+  "slug": "captura",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "climate",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Carbon",
+  "ats": "greenhouse",
+  "slug": "carbon",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "manufacturing",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Culture Biosciences",
+  "ats": "greenhouse",
+  "slug": "culturebiosciences",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "biotech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Element Biosciences",
+  "ats": "greenhouse",
+  "slug": "elementbiosciences",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "biotech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Factorial Energy",
+  "ats": "greenhouse",
+  "slug": "factorialenergy",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "materials",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Fervo Energy",
+  "ats": "greenhouse",
+  "slug": "fervoenergy",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "climate",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Fictiv",
+  "ats": "greenhouse",
+  "slug": "fictiv",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "manufacturing",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Formlabs",
+  "ats": "greenhouse",
+  "slug": "formlabs",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "manufacturing",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Freenome",
+  "ats": "greenhouse",
+  "slug": "freenome",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "biotech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Generate Biomedicines",
+  "ats": "greenhouse",
+  "slug": "generatebiomedicines",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "biotech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Ginkgo Bioworks",
+  "ats": "greenhouse",
+  "slug": "ginkgobioworks",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "biotech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Group14 Technologies",
+  "ats": "greenhouse",
+  "slug": "group14",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "materials",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Inceptive",
+  "ats": "greenhouse",
+  "slug": "inceptive",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "biotech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Isomorphic Labs",
+  "ats": "greenhouse",
+  "slug": "isomorphiclabs",
+  "prestige_tier": 5,
+  "size": "mid",
+  "industry": "biotech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Kairos Power",
+  "ats": "greenhouse",
+  "slug": "kairospower",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "climate",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Lila Sciences",
+  "ats": "greenhouse",
+  "slug": "lilasciences",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "biotech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Markforged",
+  "ats": "greenhouse",
+  "slug": "markforged",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "manufacturing",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Natera",
+  "ats": "greenhouse",
+  "slug": "natera",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "biotech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Neuralink",
+  "ats": "greenhouse",
+  "slug": "neuralink",
+  "prestige_tier": 5,
+  "size": "mid",
+  "industry": "medtech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Oklo",
+  "ats": "greenhouse",
+  "slug": "oklo",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "climate",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Oura",
+  "ats": "greenhouse",
+  "slug": "oura",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "medtech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Outset Medical",
+  "ats": "greenhouse",
+  "slug": "outsetmedical",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "medtech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Pacific Fusion",
+  "ats": "greenhouse",
+  "slug": "pacificfusion",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "climate",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Pivot Bio",
+  "ats": "greenhouse",
+  "slug": "pivotbio",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "biotech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Profluent",
+  "ats": "greenhouse",
+  "slug": "profluent",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "biotech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Quaise Energy",
+  "ats": "greenhouse",
+  "slug": "quaise",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "climate",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Recursion",
+  "ats": "greenhouse",
+  "slug": "recursionpharmaceuticals",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "biotech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Redwood Materials",
+  "ats": "greenhouse",
+  "slug": "redwoodmaterials",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "materials",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Resilience",
+  "ats": "greenhouse",
+  "slug": "resilience",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "biotech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Rondo Energy",
+  "ats": "greenhouse",
+  "slug": "rondoenergy",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "climate",
+  "sponsors_visas": null
+ },
+ {
+  "name": "SES AI",
+  "ats": "greenhouse",
+  "slug": "sesai",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "materials",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Seer",
+  "ats": "greenhouse",
+  "slug": "seer",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "biotech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Solid Power",
+  "ats": "greenhouse",
+  "slug": "solidpower",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "materials",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Twist Bioscience",
+  "ats": "greenhouse",
+  "slug": "twistbioscience",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "biotech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Ultima Genomics",
+  "ats": "greenhouse",
+  "slug": "ultimagenomics",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "biotech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Valo Health",
+  "ats": "greenhouse",
+  "slug": "valohealth",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "biotech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Xometry",
+  "ats": "greenhouse",
+  "slug": "xometry",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "manufacturing",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Arsenal Bio",
+  "ats": "lever",
+  "slug": "arsenalbio",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "biotech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Bright Machines",
+  "ats": "lever",
+  "slug": "brightmachines",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "manufacturing",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Cellares",
+  "ats": "lever",
+  "slug": "cellares",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "biotech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Charm Industrial",
+  "ats": "lever",
+  "slug": "charmindustrial",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "climate",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Enveda",
+  "ats": "lever",
+  "slug": "enveda",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "biotech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Protolabs",
+  "ats": "lever",
+  "slug": "protolabs",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "manufacturing",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Sila Nano",
+  "ats": "lever",
+  "slug": "sila",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "materials",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Synthego",
+  "ats": "lever",
+  "slug": "synthego",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "biotech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "AbbVie",
+  "ats": "smartrecruiters",
+  "slug": "abbvie",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "biotech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Alnylam",
+  "ats": "smartrecruiters",
+  "slug": "alnylam",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "biotech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Celanese",
+  "ats": "smartrecruiters",
+  "slug": "celanese",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "chemicals",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Intuitive Surgical",
+  "ats": "smartrecruiters",
+  "slug": "intuitive",
+  "prestige_tier": 5,
+  "size": "large",
+  "industry": "medtech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Lonza",
+  "ats": "smartrecruiters",
+  "slug": "lonza",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "biotech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Masimo",
+  "ats": "smartrecruiters",
+  "slug": "masimo",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "medtech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Novavax",
+  "ats": "smartrecruiters",
+  "slug": "novavax",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "biotech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Lucid Motors",
+  "ats": "greenhouse",
+  "slug": "lucidmotors",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "automotive",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Motional",
+  "ats": "greenhouse",
+  "slug": "motional",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "automotive",
+  "sponsors_visas": null
+ },
+ {
+  "name": "May Mobility",
+  "ats": "greenhouse",
+  "slug": "maymobility",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "automotive",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Wayve",
+  "ats": "ashby",
+  "slug": "wayve",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "automotive",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Torc Robotics",
+  "ats": "greenhouse",
+  "slug": "torcrobotics",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "automotive",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Kodiak Robotics",
+  "ats": "greenhouse",
+  "slug": "kodiak",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "automotive",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Stack AV",
+  "ats": "greenhouse",
+  "slug": "stackav",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "automotive",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Bot Auto",
+  "ats": "greenhouse",
+  "slug": "botauto",
+  "prestige_tier": 2,
+  "size": "startup",
+  "industry": "automotive",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Aeva",
+  "ats": "lever",
+  "slug": "aeva",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "automotive",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Harbinger Motors",
+  "ats": "greenhouse",
+  "slug": "harbingermotors",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "automotive",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Faraday Future",
+  "ats": "greenhouse",
+  "slug": "faradayfuture",
+  "prestige_tier": 2,
+  "size": "mid",
+  "industry": "automotive",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Hyliion",
+  "ats": "greenhouse",
+  "slug": "hyliion",
+  "prestige_tier": 2,
+  "size": "mid",
+  "industry": "automotive",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Verkor",
+  "ats": "lever",
+  "slug": "verkor",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "automotive",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Bird",
+  "ats": "greenhouse",
+  "slug": "bird",
+  "prestige_tier": 2,
+  "size": "mid",
+  "industry": "mobility",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Spin",
+  "ats": "greenhouse",
+  "slug": "spin",
+  "prestige_tier": 2,
+  "size": "mid",
+  "industry": "mobility",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Via",
+  "ats": "greenhouse",
+  "slug": "via",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "mobility",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Revel",
+  "ats": "ashby",
+  "slug": "revel",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "mobility",
+  "sponsors_visas": null
+ },
+ {
+  "name": "ChargePoint",
+  "ats": "greenhouse",
+  "slug": "chargepoint",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "mobility",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Wallbox",
+  "ats": "bamboohr",
+  "slug": "wallbox",
+  "prestige_tier": 2,
+  "size": "mid",
+  "industry": "mobility",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Our Next Energy",
+  "ats": "greenhouse",
+  "slug": "onenergy",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "materials",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Peak Energy",
+  "ats": "greenhouse",
+  "slug": "peakenergy",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "energy",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Noon Energy",
+  "ats": "greenhouse",
+  "slug": "noonenergy",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "energy",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Invinity",
+  "ats": "lever",
+  "slug": "invinity",
+  "prestige_tier": 2,
+  "size": "mid",
+  "industry": "energy",
+  "sponsors_visas": null
+ },
+ {
+  "name": "General Matter",
+  "ats": "greenhouse",
+  "slug": "generalmatter",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "energy",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Terrestrial Energy",
+  "ats": "bamboohr",
+  "slug": "terrestrialenergy",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "energy",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Ormat",
+  "ats": "smartrecruiters",
+  "slug": "ormat",
+  "prestige_tier": 2,
+  "size": "large",
+  "industry": "energy",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Antora Energy",
+  "ats": "greenhouse",
+  "slug": "antora",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "energy",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Mainspring Energy",
+  "ats": "lever",
+  "slug": "mainspringenergy",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "energy",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Base Power",
+  "ats": "ashby",
+  "slug": "base-power",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "energy",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Span",
+  "ats": "ashby",
+  "slug": "span",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "energy",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Lunar Energy",
+  "ats": "greenhouse",
+  "slug": "lunarenergy",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "energy",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Quilt",
+  "ats": "greenhouse",
+  "slug": "quilt",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "energy",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Voltus",
+  "ats": "lever",
+  "slug": "voltus",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "energy",
+  "sponsors_visas": null
+ },
+ {
+  "name": "EnergyHub",
+  "ats": "greenhouse",
+  "slug": "energyhub",
+  "prestige_tier": 2,
+  "size": "mid",
+  "industry": "energy",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Aurora Solar",
+  "ats": "ashby",
+  "slug": "aurorasolar",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "energy",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Swift Solar",
+  "ats": "greenhouse",
+  "slug": "swiftsolar",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "energy",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Tandem PV",
+  "ats": "ashby",
+  "slug": "tandempv",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "energy",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Silicon Ranch",
+  "ats": "greenhouse",
+  "slug": "siliconranch",
+  "prestige_tier": 2,
+  "size": "mid",
+  "industry": "energy",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Sunnova",
+  "ats": "greenhouse",
+  "slug": "sunnova",
+  "prestige_tier": 2,
+  "size": "large",
+  "industry": "energy",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Apex Clean Energy",
+  "ats": "smartrecruiters",
+  "slug": "apexcleanenergy",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "energy",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Avangrid",
+  "ats": "smartrecruiters",
+  "slug": "avangrid",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "energy",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Arcadia",
+  "ats": "lever",
+  "slug": "arcadia",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "energy",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Heirloom",
+  "ats": "ashby",
+  "slug": "heirloomcarbon",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "climate",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Watershed",
+  "ats": "ashby",
+  "slug": "watershed",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "climate",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Tulip",
+  "ats": "greenhouse",
+  "slug": "tulip",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "manufacturing",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Path Robotics",
+  "ats": "greenhouse",
+  "slug": "pathrobotics",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "manufacturing",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Agility Robotics",
+  "ats": "greenhouse",
+  "slug": "agilityrobotics",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "manufacturing",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Apptronik",
+  "ats": "greenhouse",
+  "slug": "apptronik",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "manufacturing",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Figure AI",
+  "ats": "greenhouse",
+  "slug": "figureai",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "manufacturing",
+  "sponsors_visas": null
+ },
+ {
+  "name": "1X",
+  "ats": "ashby",
+  "slug": "1x",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "manufacturing",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Anybotics",
+  "ats": "lever",
+  "slug": "anybotics",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "manufacturing",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Carbon Robotics",
+  "ats": "greenhouse",
+  "slug": "carbonrobotics",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "manufacturing",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Nimble Robotics",
+  "ats": "greenhouse",
+  "slug": "nimblerobotics",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "manufacturing",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Dexterity",
+  "ats": "lever",
+  "slug": "dexterity",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "manufacturing",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Locus Robotics",
+  "ats": "greenhouse",
+  "slug": "locusrobotics",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "manufacturing",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Adyen",
+  "ats": "greenhouse",
+  "slug": "adyen",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "fintech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Affirm",
+  "ats": "greenhouse",
+  "slug": "affirm",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "fintech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Akuna Capital",
+  "ats": "greenhouse",
+  "slug": "akunacapital",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "quant trading",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Alpaca",
+  "ats": "greenhouse",
+  "slug": "alpaca",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "fintech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Anaplan",
+  "ats": "greenhouse",
+  "slug": "anaplan",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "enterprise software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Attentive",
+  "ats": "greenhouse",
+  "slug": "attentive",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "enterprise software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Bandwidth",
+  "ats": "greenhouse",
+  "slug": "bandwidth",
+  "prestige_tier": 2,
+  "size": "mid",
+  "industry": "infrastructure",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Betterment",
+  "ats": "greenhouse",
+  "slug": "betterment",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "fintech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Blend",
+  "ats": "greenhouse",
+  "slug": "blend",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "fintech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Block",
+  "ats": "greenhouse",
+  "slug": "block",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "fintech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Braze",
+  "ats": "greenhouse",
+  "slug": "braze",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "enterprise software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Brex",
+  "ats": "greenhouse",
+  "slug": "brex",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "fintech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Calendly",
+  "ats": "greenhouse",
+  "slug": "calendly",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "productivity",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Carta",
+  "ats": "greenhouse",
+  "slug": "carta",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "fintech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Celonis",
+  "ats": "greenhouse",
+  "slug": "celonis",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "enterprise software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Chime",
+  "ats": "greenhouse",
+  "slug": "chime",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "fintech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Clear Street",
+  "ats": "greenhouse",
+  "slug": "clearstreet",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "fintech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Clover Health",
+  "ats": "greenhouse",
+  "slug": "cloverhealth",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "health software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Coalition",
+  "ats": "greenhouse",
+  "slug": "coalition",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "insurtech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Consensys",
+  "ats": "greenhouse",
+  "slug": "consensys",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "fintech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Culture Amp",
+  "ats": "greenhouse",
+  "slug": "cultureamp",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "hr software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Dataiku",
+  "ats": "greenhouse",
+  "slug": "dataiku",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "ai",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Dialpad",
+  "ats": "greenhouse",
+  "slug": "dialpad",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "enterprise software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Doximity",
+  "ats": "greenhouse",
+  "slug": "doximity",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "health software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Elation Health",
+  "ats": "greenhouse",
+  "slug": "elationhealth",
+  "prestige_tier": 2,
+  "size": "startup",
+  "industry": "health software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Everlaw",
+  "ats": "greenhouse",
+  "slug": "everlaw",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "enterprise software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Fireblocks",
+  "ats": "greenhouse",
+  "slug": "fireblocks",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "fintech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Five9",
+  "ats": "greenhouse",
+  "slug": "five9",
+  "prestige_tier": 2,
+  "size": "large",
+  "industry": "enterprise software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Flatiron Health",
+  "ats": "greenhouse",
+  "slug": "flatironhealth",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "health software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Flow Traders",
+  "ats": "greenhouse",
+  "slug": "flowtraders",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "quant trading",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Galileo",
+  "ats": "greenhouse",
+  "slug": "galileo",
+  "prestige_tier": 2,
+  "size": "mid",
+  "industry": "fintech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Gemini",
+  "ats": "greenhouse",
+  "slug": "gemini",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "fintech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Greenhouse",
+  "ats": "greenhouse",
+  "slug": "greenhouse",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "hr software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Gusto",
+  "ats": "greenhouse",
+  "slug": "gusto",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "hr software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "IMC Trading",
+  "ats": "greenhouse",
+  "slug": "imc",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "quant trading",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Intercom",
+  "ats": "greenhouse",
+  "slug": "intercom",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "enterprise software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Jane Street",
+  "ats": "greenhouse",
+  "slug": "janestreet",
+  "prestige_tier": 5,
+  "size": "large",
+  "industry": "quant trading",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Jump Trading",
+  "ats": "greenhouse",
+  "slug": "jumptrading",
+  "prestige_tier": 5,
+  "size": "large",
+  "industry": "quant trading",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Justworks",
+  "ats": "greenhouse",
+  "slug": "justworks",
+  "prestige_tier": 2,
+  "size": "mid",
+  "industry": "hr software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Klaviyo",
+  "ats": "greenhouse",
+  "slug": "klaviyo",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "enterprise software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Komodo Health",
+  "ats": "greenhouse",
+  "slug": "komodohealth",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "health software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Lattice",
+  "ats": "greenhouse",
+  "slug": "lattice",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "hr software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Lithic",
+  "ats": "greenhouse",
+  "slug": "lithic",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "fintech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Maven Clinic",
+  "ats": "greenhouse",
+  "slug": "mavenclinic",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "health software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Melio",
+  "ats": "greenhouse",
+  "slug": "melio",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "fintech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Mercury",
+  "ats": "greenhouse",
+  "slug": "mercury",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "fintech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Monzo",
+  "ats": "greenhouse",
+  "slug": "monzo",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "fintech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Neo4j",
+  "ats": "greenhouse",
+  "slug": "neo4j",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "data",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Omada Health",
+  "ats": "greenhouse",
+  "slug": "omadahealth",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "health software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Oportun",
+  "ats": "greenhouse",
+  "slug": "oportun",
+  "prestige_tier": 2,
+  "size": "mid",
+  "industry": "fintech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Oscar Health",
+  "ats": "greenhouse",
+  "slug": "oscar",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "health software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Pagaya",
+  "ats": "greenhouse",
+  "slug": "pagaya",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "fintech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Payoneer",
+  "ats": "greenhouse",
+  "slug": "payoneer",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "fintech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Peloton",
+  "ats": "greenhouse",
+  "slug": "peloton",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "consumer",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Pendo",
+  "ats": "greenhouse",
+  "slug": "pendo",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "enterprise software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Pie Insurance",
+  "ats": "greenhouse",
+  "slug": "pieinsurance",
+  "prestige_tier": 2,
+  "size": "mid",
+  "industry": "insurtech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Point72",
+  "ats": "greenhouse",
+  "slug": "point72",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "quant trading",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Qualtrics",
+  "ats": "greenhouse",
+  "slug": "qualtrics",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "enterprise software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Qventus",
+  "ats": "greenhouse",
+  "slug": "qventus",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "health software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Ripple",
+  "ats": "greenhouse",
+  "slug": "ripple",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "fintech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Sigma Computing",
+  "ats": "greenhouse",
+  "slug": "sigmacomputing",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "data",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Smartsheet",
+  "ats": "greenhouse",
+  "slug": "smartsheet",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "productivity",
+  "sponsors_visas": null
+ },
+ {
+  "name": "SoFi",
+  "ats": "greenhouse",
+  "slug": "sofi",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "fintech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Squarespace",
+  "ats": "greenhouse",
+  "slug": "squarespace",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "consumer",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Sword Health",
+  "ats": "greenhouse",
+  "slug": "swordhealth",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "health software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Toast",
+  "ats": "greenhouse",
+  "slug": "toast",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "fintech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Twitch",
+  "ats": "greenhouse",
+  "slug": "twitch",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "media",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Upstart",
+  "ats": "greenhouse",
+  "slug": "upstart",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "fintech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Virtu Financial",
+  "ats": "greenhouse",
+  "slug": "virtu",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "quant trading",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Webflow",
+  "ats": "greenhouse",
+  "slug": "webflow",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "dev tools",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Workato",
+  "ats": "greenhouse",
+  "slug": "workato",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "enterprise software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Yext",
+  "ats": "greenhouse",
+  "slug": "yext",
+  "prestige_tier": 2,
+  "size": "mid",
+  "industry": "enterprise software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Zocdoc",
+  "ats": "greenhouse",
+  "slug": "zocdoc",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "health software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Anchorage Digital",
+  "ats": "lever",
+  "slug": "anchorage",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "fintech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Coupa",
+  "ats": "lever",
+  "slug": "coupa",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "enterprise software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Greenlight",
+  "ats": "lever",
+  "slug": "greenlight",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "fintech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Included Health",
+  "ats": "lever",
+  "slug": "includedhealth",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "health software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Lyra Health",
+  "ats": "lever",
+  "slug": "lyrahealth",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "health software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Outreach",
+  "ats": "lever",
+  "slug": "outreach",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "enterprise software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Ro",
+  "ats": "lever",
+  "slug": "ro",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "health software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Veeva",
+  "ats": "lever",
+  "slug": "veeva",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "health software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Wealthfront",
+  "ats": "lever",
+  "slug": "wealthfront",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "fintech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "1Password",
+  "ats": "ashby",
+  "slug": "1password",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "security",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Abridge",
+  "ats": "ashby",
+  "slug": "abridge",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "health software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Acorns",
+  "ats": "ashby",
+  "slug": "acorns",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "fintech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Airwallex",
+  "ats": "ashby",
+  "slug": "airwallex",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "fintech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Alchemy",
+  "ats": "ashby",
+  "slug": "alchemy",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "fintech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Ambience Healthcare",
+  "ats": "ashby",
+  "slug": "ambiencehealthcare",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "health software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Amplitude",
+  "ats": "ashby",
+  "slug": "amplitude",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "data",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Circle",
+  "ats": "ashby",
+  "slug": "circle",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "fintech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "ClickHouse",
+  "ats": "ashby",
+  "slug": "clickhouse",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "data",
+  "sponsors_visas": null
+ },
+ {
+  "name": "ClickUp",
+  "ats": "ashby",
+  "slug": "clickup",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "productivity",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Column",
+  "ats": "ashby",
+  "slug": "column",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "fintech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Commure",
+  "ats": "ashby",
+  "slug": "commure",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "health software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Dave",
+  "ats": "ashby",
+  "slug": "dave",
+  "prestige_tier": 2,
+  "size": "mid",
+  "industry": "fintech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Gainsight",
+  "ats": "ashby",
+  "slug": "gainsight",
+  "prestige_tier": 2,
+  "size": "mid",
+  "industry": "enterprise software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Headway",
+  "ats": "ashby",
+  "slug": "headway",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "health software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Imprint",
+  "ats": "ashby",
+  "slug": "imprint",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "fintech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Iterable",
+  "ats": "ashby",
+  "slug": "iterable",
+  "prestige_tier": 2,
+  "size": "mid",
+  "industry": "enterprise software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Kin Insurance",
+  "ats": "ashby",
+  "slug": "kin",
+  "prestige_tier": 2,
+  "size": "mid",
+  "industry": "insurtech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Lemonade",
+  "ats": "ashby",
+  "slug": "lemonade",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "insurtech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Miro",
+  "ats": "ashby",
+  "slug": "miro",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "productivity",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Modern Treasury",
+  "ats": "ashby",
+  "slug": "moderntreasury",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "fintech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Nabla",
+  "ats": "ashby",
+  "slug": "nabla",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "health software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Nubank",
+  "ats": "ashby",
+  "slug": "nubank",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "fintech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Paxos",
+  "ats": "ashby",
+  "slug": "paxos",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "fintech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Perplexity",
+  "ats": "ashby",
+  "slug": "perplexity",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "ai",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Plaid",
+  "ats": "ashby",
+  "slug": "plaid",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "fintech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Redis",
+  "ats": "ashby",
+  "slug": "redis",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "data",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Sanity",
+  "ats": "ashby",
+  "slug": "sanity",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "dev tools",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Sentry",
+  "ats": "ashby",
+  "slug": "sentry",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "dev tools",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Snowflake",
+  "ats": "ashby",
+  "slug": "snowflake",
+  "prestige_tier": 5,
+  "size": "large",
+  "industry": "data",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Snyk",
+  "ats": "ashby",
+  "slug": "snyk",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "security",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Strava",
+  "ats": "ashby",
+  "slug": "strava",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "consumer",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Temporal",
+  "ats": "ashby",
+  "slug": "temporal",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "dev tools",
+  "sponsors_visas": null
+ },
+ {
+  "name": "UiPath",
+  "ats": "ashby",
+  "slug": "uipath",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "enterprise software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Workhuman",
+  "ats": "ashby",
+  "slug": "workhuman",
+  "prestige_tier": 2,
+  "size": "mid",
+  "industry": "hr software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Canva",
+  "ats": "smartrecruiters",
+  "slug": "canva",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "productivity",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Freshworks",
+  "ats": "smartrecruiters",
+  "slug": "freshworks",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "enterprise software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Gong",
+  "ats": "smartrecruiters",
+  "slug": "gong",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "enterprise software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "ServiceNow",
+  "ats": "smartrecruiters",
+  "slug": "servicenow",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "enterprise software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Wise",
+  "ats": "smartrecruiters",
+  "slug": "wise",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "fintech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Archer",
+  "ats": "greenhouse",
+  "slug": "archer",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "aerospace",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Astera Labs",
+  "ats": "greenhouse",
+  "slug": "asteralabs",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "hardware",
+  "sponsors_visas": null
+ },
+ {
+  "name": "BuildOps",
+  "ats": "greenhouse",
+  "slug": "buildops",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "construction",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Etched",
+  "ats": "greenhouse",
+  "slug": "etchedai",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "hardware",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Fleetio",
+  "ats": "greenhouse",
+  "slug": "fleetio",
+  "prestige_tier": 2,
+  "size": "mid",
+  "industry": "logistics",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Flexport",
+  "ats": "greenhouse",
+  "slug": "flexport",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "logistics",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Lightmatter",
+  "ats": "greenhouse",
+  "slug": "lightmatter",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "hardware",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Motive",
+  "ats": "greenhouse",
+  "slug": "gomotive",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "logistics",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Tenstorrent",
+  "ats": "greenhouse",
+  "slug": "tenstorrent",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "hardware",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Thoughtworks",
+  "ats": "greenhouse",
+  "slug": "thoughtworks",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "consulting",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Uber Freight",
+  "ats": "greenhouse",
+  "slug": "uberfreight",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "logistics",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Verkada",
+  "ats": "greenhouse",
+  "slug": "verkada",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "hardware",
+  "sponsors_visas": null
+ },
+ {
+  "name": "project44",
+  "ats": "greenhouse",
+  "slug": "project44",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "logistics",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Gridware",
+  "ats": "lever",
+  "slug": "gridware",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "energy",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Hermeus",
+  "ats": "lever",
+  "slug": "hermeus",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "aerospace",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Waabi",
+  "ats": "lever",
+  "slug": "waabi",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "hardware",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Afry",
+  "ats": "smartrecruiters",
+  "slug": "AFRY",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "consulting",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Bosch",
+  "ats": "smartrecruiters",
+  "slug": "BoschGroup",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "manufacturing",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Continental",
+  "ats": "smartrecruiters",
+  "slug": "Continental",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "manufacturing",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Mott MacDonald",
+  "ats": "smartrecruiters",
+  "slug": "MottMacDonald",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "consulting",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Saint-Gobain",
+  "ats": "smartrecruiters",
+  "slug": "SaintGobain",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "construction",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Thales",
+  "ats": "smartrecruiters",
+  "slug": "Thales",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "aerospace",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Western Digital",
+  "ats": "smartrecruiters",
+  "slug": "WesternDigital",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "hardware",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Climeworks",
+  "ats": "recruitee",
+  "slug": "climeworks",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "energy",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Nearfield Instruments",
+  "ats": "recruitee",
+  "slug": "nearfieldinstruments",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "hardware",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Simpson Gumpertz",
+  "ats": "bamboohr",
+  "slug": "sgh",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "consulting",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Pickle Robot",
+  "ats": "lever",
+  "slug": "picklerobot",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "robotics",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Ambi Robotics",
+  "ats": "lever",
+  "slug": "ambirobotics",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "robotics",
+  "sponsors_visas": null
+ },
+ {
+  "name": "OSARO",
+  "ats": "lever",
+  "slug": "osaro",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "robotics",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Diligent Robotics",
+  "ats": "greenhouse",
+  "slug": "diligentrobotics",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "robotics",
+  "sponsors_visas": null
+ },
+ {
+  "name": "The Bot Company",
+  "ats": "ashby",
+  "slug": "thebotcompany",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "robotics",
+  "sponsors_visas": null
+ },
+ {
+  "name": "SimpliSafe",
+  "ats": "greenhouse",
+  "slug": "simplisafe",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "hardware",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Roku",
+  "ats": "greenhouse",
+  "slug": "roku",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "hardware",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Matic",
+  "ats": "greenhouse",
+  "slug": "matic",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "robotics",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Scout Motors",
+  "ats": "greenhouse",
+  "slug": "scoutmotors",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "automotive",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Standard Bots",
+  "ats": "ashby",
+  "slug": "standardbots",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "robotics",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Reflex Robotics",
+  "ats": "ashby",
+  "slug": "reflexrobotics",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "robotics",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Agtonomy",
+  "ats": "lever",
+  "slug": "agtonomy",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "robotics",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Sunday Robotics",
+  "ats": "ashby",
+  "slug": "sunday",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "robotics",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Axelera AI",
+  "ats": "ashby",
+  "slug": "axelera",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "semiconductors",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Cerebras",
+  "ats": "ashby",
+  "slug": "cerebras",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "semiconductors",
+  "sponsors_visas": null
+ },
+ {
+  "name": "d-Matrix",
+  "ats": "ashby",
+  "slug": "d-matrix",
+  "prestige_tier": 4,
+  "size": "startup",
+  "industry": "semiconductors",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Etched",
+  "ats": "ashby",
+  "slug": "etched",
+  "prestige_tier": 4,
+  "size": "startup",
+  "industry": "semiconductors",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Netgear",
+  "ats": "ashby",
+  "slug": "netgear",
+  "prestige_tier": 2,
+  "size": "large",
+  "industry": "networking",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Quadric",
+  "ats": "ashby",
+  "slug": "quadric",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "semiconductors",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Codasip",
+  "ats": "bamboohr",
+  "slug": "codasip",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "semiconductors",
+  "sponsors_visas": null
+ },
+ {
+  "name": "EdgeCortix",
+  "ats": "bamboohr",
+  "slug": "edgecortix",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "semiconductors",
+  "sponsors_visas": null
+ },
+ {
+  "name": "IonQ",
+  "ats": "greenhouse",
+  "slug": "ionq",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "quantum",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Maybell Quantum",
+  "ats": "greenhouse",
+  "slug": "maybellquantum",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "quantum",
+  "sponsors_visas": null
+ },
+ {
+  "name": "PsiQuantum",
+  "ats": "greenhouse",
+  "slug": "psiquantum",
+  "prestige_tier": 5,
+  "size": "mid",
+  "industry": "quantum",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Ubiquiti",
+  "ats": "greenhouse",
+  "slug": "ubiquiti",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "networking",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Alice & Bob",
+  "ats": "lever",
+  "slug": "alice-bob",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "quantum",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Atom Computing",
+  "ats": "lever",
+  "slug": "atomcomputing",
+  "prestige_tier": 4,
+  "size": "startup",
+  "industry": "quantum",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Eliyan",
+  "ats": "lever",
+  "slug": "eliyan",
+  "prestige_tier": 3,
+  "size": "startup",
+  "industry": "semiconductors",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Extreme Networks",
+  "ats": "lever",
+  "slug": "extremenetworks",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "networking",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Q-CTRL",
+  "ats": "lever",
+  "slug": "q-ctrl",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "quantum",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Rigetti",
+  "ats": "lever",
+  "slug": "rigetti",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "quantum",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Arista Networks",
+  "ats": "smartrecruiters",
+  "slug": "aristanetworks",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "networking",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Microchip",
+  "ats": "smartrecruiters",
+  "slug": "microchip",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "semiconductors",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Character.AI",
+  "ats": "ashby",
+  "slug": "character",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "ai",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Zip",
+  "ats": "ashby",
+  "slug": "zip",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "productivity",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Backblaze",
+  "ats": "greenhouse",
+  "slug": "backblaze",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "infrastructure",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Coursera",
+  "ats": "greenhouse",
+  "slug": "coursera",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "consumer",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Duolingo",
+  "ats": "greenhouse",
+  "slug": "duolingo",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "consumer",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Epic Games",
+  "ats": "greenhouse",
+  "slug": "epicgames",
+  "prestige_tier": 5,
+  "size": "large",
+  "industry": "consumer",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Faire",
+  "ats": "greenhouse",
+  "slug": "faire",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "consumer",
+  "sponsors_visas": null
+ },
+ {
+  "name": "GetYourGuide",
+  "ats": "greenhouse",
+  "slug": "getyourguide",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "travel",
+  "sponsors_visas": null
+ },
+ {
+  "name": "HelloFresh",
+  "ats": "greenhouse",
+  "slug": "hellofresh",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "consumer",
+  "sponsors_visas": null
+ },
+ {
+  "name": "JetBrains",
+  "ats": "greenhouse",
+  "slug": "jetbrains",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "dev",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Khan Academy",
+  "ats": "greenhouse",
+  "slug": "khanacademy",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "consumer",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Lucid Software",
+  "ats": "greenhouse",
+  "slug": "lucidsoftware",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "productivity",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Mozilla",
+  "ats": "greenhouse",
+  "slug": "mozilla",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "dev",
+  "sponsors_visas": null
+ },
+ {
+  "name": "N26",
+  "ats": "greenhouse",
+  "slug": "n26",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "fintech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Nextdoor",
+  "ats": "greenhouse",
+  "slug": "nextdoor",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "consumer",
+  "sponsors_visas": null
+ },
+ {
+  "name": "OpenTable",
+  "ats": "greenhouse",
+  "slug": "opentable",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "travel",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Riot Games",
+  "ats": "greenhouse",
+  "slug": "riotgames",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "consumer",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Roblox",
+  "ats": "greenhouse",
+  "slug": "roblox",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "consumer",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Scopely",
+  "ats": "greenhouse",
+  "slug": "scopely",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "consumer",
+  "sponsors_visas": null
+ },
+ {
+  "name": "SeatGeek",
+  "ats": "greenhouse",
+  "slug": "seatgeek",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "consumer",
+  "sponsors_visas": null
+ },
+ {
+  "name": "SumUp",
+  "ats": "greenhouse",
+  "slug": "sumup",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "fintech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Tripadvisor",
+  "ats": "greenhouse",
+  "slug": "tripadvisor",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "travel",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Trivago",
+  "ats": "greenhouse",
+  "slug": "trivago",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "travel",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Typeform",
+  "ats": "greenhouse",
+  "slug": "typeform",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "productivity",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Vonage",
+  "ats": "greenhouse",
+  "slug": "vonage",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "infrastructure",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Vox Media",
+  "ats": "greenhouse",
+  "slug": "voxmedia",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "media",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Wikimedia Foundation",
+  "ats": "greenhouse",
+  "slug": "wikimedia",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "consumer",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Wise",
+  "ats": "greenhouse",
+  "slug": "wise",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "fintech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Wolt",
+  "ats": "greenhouse",
+  "slug": "wolt",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "consumer",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Binance",
+  "ats": "lever",
+  "slug": "binance",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "fintech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Crypto.com",
+  "ats": "lever",
+  "slug": "crypto",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "fintech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Canva",
+  "ats": "smartrecruiters",
+  "slug": "Canva",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "productivity",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Ubisoft",
+  "ats": "smartrecruiters",
+  "slug": "Ubisoft2",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "consumer",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Boeing",
+  "ats": "workday",
+  "slug": "boeing.wd1.EXTERNAL_CAREERS",
+  "prestige_tier": 5,
+  "size": "large",
+  "industry": "aerospace",
+  "sponsors_visas": false
+ },
+ {
+  "name": "Northrop Grumman",
+  "ats": "workday",
+  "slug": "ngc.wd1.Northrop_Grumman_External_Site",
+  "prestige_tier": 5,
+  "size": "large",
+  "industry": "defense",
+  "sponsors_visas": false
+ },
+ {
+  "name": "RTX (Raytheon, Collins, Pratt & Whitney)",
+  "ats": "workday",
+  "slug": "globalhr.wd5.REC_RTX_Ext_Gateway",
+  "prestige_tier": 5,
+  "size": "large",
+  "industry": "aerospace",
+  "sponsors_visas": null
+ },
+ {
+  "name": "GE Aerospace",
+  "ats": "workday",
+  "slug": "geaerospace.wd5.GE_ExternalSite",
+  "prestige_tier": 5,
+  "size": "large",
+  "industry": "aerospace",
+  "sponsors_visas": null
+ },
+ {
+  "name": "GE Vernova",
+  "ats": "workday",
+  "slug": "gevernova.wd5.Vernova_ExternalSite",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "energy",
+  "sponsors_visas": null
+ },
+ {
+  "name": "GE HealthCare",
+  "ats": "workday",
+  "slug": "gehc.wd5.GEHC_ExternalSite",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "medical devices",
+  "sponsors_visas": null
+ },
+ {
+  "name": "General Dynamics IT",
+  "ats": "workday",
+  "slug": "gdit.wd5.External_Career_Site",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "defense",
+  "sponsors_visas": false
+ },
+ {
+  "name": "Leidos",
+  "ats": "workday",
+  "slug": "leidos.wd5.External",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "defense",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Booz Allen Hamilton",
+  "ats": "workday",
+  "slug": "bah.wd1.BAH_Jobs",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "consulting",
+  "sponsors_visas": null
+ },
+ {
+  "name": "CACI",
+  "ats": "workday",
+  "slug": "caci.wd1.External",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "defense",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Parsons",
+  "ats": "workday",
+  "slug": "parsons.wd5.Search",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "engineering",
+  "sponsors_visas": null
+ },
+ {
+  "name": "KBR",
+  "ats": "workday",
+  "slug": "kbr.wd5.KBR_Careers",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "engineering",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Blue Origin",
+  "ats": "workday",
+  "slug": "blueorigin.wd5.BlueOrigin",
+  "prestige_tier": 5,
+  "size": "large",
+  "industry": "aerospace",
+  "sponsors_visas": false
+ },
+ {
+  "name": "Sierra Nevada Corporation",
+  "ats": "workday",
+  "slug": "snc.wd1.SNC_External_Career_Site",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "aerospace",
+  "sponsors_visas": false
+ },
+ {
+  "name": "Sierra Space",
+  "ats": "workday",
+  "slug": "sierraspace.wd1.Sierra_Space_External_Career_Site",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "aerospace",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Draper",
+  "ats": "workday",
+  "slug": "draper.wd5.Draper_Careers",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "aerospace",
+  "sponsors_visas": false
+ },
+ {
+  "name": "Woodward",
+  "ats": "workday",
+  "slug": "woodward.wd5.Woodward",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "aerospace",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Moog",
+  "ats": "workday",
+  "slug": "moog.wd5.MOOG_External_Career_Site",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "aerospace",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Curtiss-Wright",
+  "ats": "workday",
+  "slug": "curtisswright.wd1.CW_External_Career_Site",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "aerospace",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Hexcel",
+  "ats": "workday",
+  "slug": "hexcel.wd5.HexcelCareers",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "aerospace",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Cubic",
+  "ats": "workday",
+  "slug": "cubic.wd1.cubic_USA_careers",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "defense",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Amentum",
+  "ats": "workday",
+  "slug": "pae.wd1.Amentum_Careers",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "defense",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Vantor (Maxar)",
+  "ats": "workday",
+  "slug": "maxar.wd1.Vantor",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "aerospace",
+  "sponsors_visas": false
+ },
+ {
+  "name": "Planet Labs",
+  "ats": "workday",
+  "slug": "planet.wd3.Planet",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "aerospace",
+  "sponsors_visas": null
+ },
+ {
+  "name": "NVIDIA",
+  "ats": "workday",
+  "slug": "nvidia.wd5.NVIDIAExternalCareerSite",
+  "prestige_tier": 5,
+  "size": "large",
+  "industry": "semiconductors",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Intel",
+  "ats": "workday",
+  "slug": "intel.wd1.External",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "semiconductors",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Analog Devices",
+  "ats": "workday",
+  "slug": "analogdevices.wd1.External",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "semiconductors",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Micron",
+  "ats": "workday",
+  "slug": "micron.wd1.External",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "semiconductors",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Applied Materials",
+  "ats": "workday",
+  "slug": "amat.wd1.External",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "semiconductors",
+  "sponsors_visas": null
+ },
+ {
+  "name": "KLA",
+  "ats": "workday",
+  "slug": "kla.wd1.Search",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "semiconductors",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Broadcom",
+  "ats": "workday",
+  "slug": "broadcom.wd1.External_Career",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "semiconductors",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Marvell",
+  "ats": "workday",
+  "slug": "marvell.wd1.MarvellCareers",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "semiconductors",
+  "sponsors_visas": null
+ },
+ {
+  "name": "NXP",
+  "ats": "workday",
+  "slug": "nxp.wd3.careers",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "semiconductors",
+  "sponsors_visas": null
+ },
+ {
+  "name": "GlobalFoundries",
+  "ats": "workday",
+  "slug": "globalfoundries.wd1.External",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "semiconductors",
+  "sponsors_visas": null
+ },
+ {
+  "name": "SiFive",
+  "ats": "workday",
+  "slug": "sifive.wd1.sifivecareers",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "semiconductors",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Cadence",
+  "ats": "workday",
+  "slug": "cadence.wd1.External_Careers",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "eda",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Autodesk",
+  "ats": "workday",
+  "slug": "autodesk.wd1.Ext",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Salesforce",
+  "ats": "workday",
+  "slug": "salesforce.wd12.External_Career_Site",
+  "prestige_tier": 5,
+  "size": "large",
+  "industry": "software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Adobe",
+  "ats": "workday",
+  "slug": "adobe.wd5.external_experienced",
+  "prestige_tier": 5,
+  "size": "large",
+  "industry": "software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Workday",
+  "ats": "workday",
+  "slug": "workday.wd5.Workday",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Cisco",
+  "ats": "workday",
+  "slug": "cisco.wd5.Cisco_Careers",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "networking",
+  "sponsors_visas": null
+ },
+ {
+  "name": "HP",
+  "ats": "workday",
+  "slug": "hp.wd5.ExternalCareerSite",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "hardware",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Hewlett Packard Enterprise",
+  "ats": "workday",
+  "slug": "hpe.wd5.Jobsathpe",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "hardware",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Zoom",
+  "ats": "workday",
+  "slug": "zoom.wd5.Zoom",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "software",
+  "sponsors_visas": null
+ },
+ {
+  "name": "PayPal",
+  "ats": "workday",
+  "slug": "paypal.wd1.jobs",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "fintech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Mastercard",
+  "ats": "workday",
+  "slug": "mastercard.wd1.CorporateCareers",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "fintech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Visa",
+  "ats": "workday",
+  "slug": "visa.wd5.visa",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "fintech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Capital One",
+  "ats": "workday",
+  "slug": "capitalone.wd12.Capital_One",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "fintech",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Target",
+  "ats": "workday",
+  "slug": "target.wd5.targetcareers",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "retail",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Verizon",
+  "ats": "workday",
+  "slug": "verizon.wd12.verizon-careers",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "telecom",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Motorola Solutions",
+  "ats": "workday",
+  "slug": "motorolasolutions.wd5.Careers",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "communications",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Trimble",
+  "ats": "workday",
+  "slug": "trimble.wd1.TrimbleCareers",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "hardware",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Jabil",
+  "ats": "workday",
+  "slug": "jabil.wd5.Jabil_Careers",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "manufacturing",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Medtronic",
+  "ats": "workday",
+  "slug": "medtronic.wd1.MedtronicCareers",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "medical devices",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Stryker",
+  "ats": "workday",
+  "slug": "stryker.wd1.StrykerCareers",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "medical devices",
+  "sponsors_visas": null
+ },
+ {
+  "name": "BD",
+  "ats": "workday",
+  "slug": "bdx.wd1.EXTERNAL_CAREER_SITE_USA",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "medical devices",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Baxter",
+  "ats": "workday",
+  "slug": "baxter.wd1.baxter",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "medical devices",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Danaher",
+  "ats": "workday",
+  "slug": "danaher.wd1.DanaherJobs",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "life sciences",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Thermo Fisher Scientific",
+  "ats": "workday",
+  "slug": "thermofisher.wd5.ThermoFisherCareers",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "life sciences",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Abbott",
+  "ats": "workday",
+  "slug": "abbott.wd5.abbottcareers",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "life sciences",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Agilent",
+  "ats": "workday",
+  "slug": "agilent.wd5.Agilent_Careers",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "life sciences",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Illumina",
+  "ats": "workday",
+  "slug": "illumina.wd1.illumina-careers",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "life sciences",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Pfizer",
+  "ats": "workday",
+  "slug": "pfizer.wd1.PfizerCareers",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "pharma",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Merck",
+  "ats": "workday",
+  "slug": "msd.wd5.SearchJobs",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "pharma",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Amgen",
+  "ats": "workday",
+  "slug": "amgen.wd1.Careers",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "pharma",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Regeneron",
+  "ats": "workday",
+  "slug": "regeneron.wd1.Careers",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "pharma",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Gilead Sciences",
+  "ats": "workday",
+  "slug": "gilead.wd1.gileadcareers",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "pharma",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Dow",
+  "ats": "workday",
+  "slug": "dow.wd1.ExternalCareers",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "chemicals",
+  "sponsors_visas": null
+ },
+ {
+  "name": "DuPont",
+  "ats": "workday",
+  "slug": "dupont.wd5.Jobs",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "chemicals",
+  "sponsors_visas": null
+ },
+ {
+  "name": "3M",
+  "ats": "workday",
+  "slug": "3m.wd1.Search",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "industrial",
+  "sponsors_visas": null
+ },
+ {
+  "name": "PPG",
+  "ats": "workday",
+  "slug": "ppg.wd5.PPG_Careers",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "chemicals",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Air Products",
+  "ats": "workday",
+  "slug": "airproducts.wd5.AP0001",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "chemicals",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Ecolab",
+  "ats": "workday",
+  "slug": "ecolab.wd1.Ecolab_External",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "chemicals",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Huntsman",
+  "ats": "workday",
+  "slug": "huntsman.wd1.Huntsman",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "chemicals",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Albemarle",
+  "ats": "workday",
+  "slug": "albemarle.wd5.External",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "chemicals",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Chemours",
+  "ats": "workday",
+  "slug": "chemours.wd103.Chemours",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "chemicals",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Westlake",
+  "ats": "workday",
+  "slug": "westlake.wd1.westlake",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "chemicals",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Alcoa",
+  "ats": "workday",
+  "slug": "alcoa.wd5.Careers",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "materials",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Caterpillar",
+  "ats": "workday",
+  "slug": "cat.wd5.CaterpillarCareers",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "industrial",
+  "sponsors_visas": null
+ },
+ {
+  "name": "General Motors",
+  "ats": "workday",
+  "slug": "generalmotors.wd5.Careers_GM",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "automotive",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Stellantis",
+  "ats": "workday",
+  "slug": "stellantis.wd3.External_Career_Site_ID01",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "automotive",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Aptiv",
+  "ats": "workday",
+  "slug": "aptiv.wd5.APTIV_CAREERS",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "automotive",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Magna",
+  "ats": "workday",
+  "slug": "magna.wd3.Magna",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "automotive",
+  "sponsors_visas": null
+ },
+ {
+  "name": "BorgWarner",
+  "ats": "workday",
+  "slug": "borgwarner.wd5.BorgWarner_Careers",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "automotive",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Goodyear",
+  "ats": "workday",
+  "slug": "goodyear.wd1.GoodyearCareers",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "automotive",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Polaris",
+  "ats": "workday",
+  "slug": "polaris.wd5.PolarisJobs",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "automotive",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Allison Transmission",
+  "ats": "workday",
+  "slug": "allisontransmission.wd1.ATI-External",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "automotive",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Johnson Controls",
+  "ats": "workday",
+  "slug": "jci.wd5.JCI",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "industrial",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Carrier",
+  "ats": "workday",
+  "slug": "carrier.wd5.jobs",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "industrial",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Trane Technologies",
+  "ats": "workday",
+  "slug": "tranetechnologies.wd12.Trane_Technologies_Careers",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "industrial",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Rockwell Automation",
+  "ats": "workday",
+  "slug": "rockwellautomation.wd1.External_Rockwell_Automation",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "industrial",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Illinois Tool Works",
+  "ats": "workday",
+  "slug": "itw.wd5.External",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "industrial",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Dover",
+  "ats": "workday",
+  "slug": "dover.wd103.Dover",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "industrial",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Stanley Black & Decker",
+  "ats": "workday",
+  "slug": "sbdinc.wd1.Stanley_Black_Decker_Career_Site",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "industrial",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Pentair",
+  "ats": "workday",
+  "slug": "pentair.wd5.Pentair_Careers",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "industrial",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Graco",
+  "ats": "workday",
+  "slug": "graco.wd501.Graco_Careers",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "industrial",
+  "sponsors_visas": null
+ },
+ {
+  "name": "RegalRexnord",
+  "ats": "workday",
+  "slug": "regalrexnord.wd1.Careers",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "industrial",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Sensata",
+  "ats": "workday",
+  "slug": "sensata.wd1.Sensata-Careers",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "industrial",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Littelfuse",
+  "ats": "workday",
+  "slug": "littelfuse.wd1.Littelfuse-Careers",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "industrial",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Terex",
+  "ats": "workday",
+  "slug": "terex.wd1.terexcareers",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "industrial",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Brunswick",
+  "ats": "workday",
+  "slug": "brunswick.wd1.search",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "industrial",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Generac",
+  "ats": "workday",
+  "slug": "generac.wd5.ExternalCareers",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "energy",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Flowserve",
+  "ats": "workday",
+  "slug": "flowserve.wd1.applied",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "industrial",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Baker Hughes",
+  "ats": "workday",
+  "slug": "bakerhughes.wd5.BakerHughes",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "energy",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Chevron",
+  "ats": "workday",
+  "slug": "chevron.wd5.jobs",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "energy",
+  "sponsors_visas": null
+ },
+ {
+  "name": "ConocoPhillips",
+  "ats": "workday",
+  "slug": "conocophillips.wd1.External",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "energy",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Duke Energy",
+  "ats": "workday",
+  "slug": "dukeenergy.wd1.search",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "energy",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Sunrun",
+  "ats": "workday",
+  "slug": "sunrun.wd5.Sunrun_Careers",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "energy",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Nextpower (Nextracker)",
+  "ats": "workday",
+  "slug": "nextracker.wd5.nextpower_careers",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "energy",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Bloom Energy",
+  "ats": "workday",
+  "slug": "bloomenergy.wd1.BloomEnergyCareers",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "energy",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Plug Power",
+  "ats": "workday",
+  "slug": "plugpower.wd5.Plug_Power_Inc",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "energy",
+  "sponsors_visas": null
+ },
+ {
+  "name": "X-energy",
+  "ats": "workday",
+  "slug": "xenergy.wd5.X-energyUS",
+  "prestige_tier": 4,
+  "size": "mid",
+  "industry": "energy",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Stem",
+  "ats": "workday",
+  "slug": "stem.wd12.StemInc",
+  "prestige_tier": 3,
+  "size": "mid",
+  "industry": "energy",
+  "sponsors_visas": null
+ },
+ {
+  "name": "GE Appliances",
+  "ats": "workday",
+  "slug": "haier.wd3.GE_Appliances",
+  "prestige_tier": 3,
+  "size": "large",
+  "industry": "consumer hardware",
+  "sponsors_visas": null
+ },
+ {
+  "name": "Rolls-Royce",
+  "ats": "workday",
+  "slug": "rollsroyce.wd3.professional",
+  "prestige_tier": 4,
+  "size": "large",
+  "industry": "aerospace",
+  "sponsors_visas": null
+ }
+]

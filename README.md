@@ -74,10 +74,19 @@ First-time setup is `add-user`, then `grant-admin`, then `reset-link`. `ADMIN_EM
 
 ## Jobs
 
-`docker compose exec worker python -m jobfinder.cli ingest` pulls every board in
-`backend/jobfinder/ingest/companies.yaml` plus every `backend/jobfinder/ingest/companies.d/*.yaml` (per-sector
-seed files; duplicates by `(ats, slug)` are skipped, first file wins) into the `jobs` table; use
-`--company discord` for one board. Add companies by adding rows to one of those files. LinkedIn/Indeed scraping is
+`docker compose exec worker python -m jobfinder.cli ingest` pulls every enabled board in the `companies` table
+into the `jobs` table; use `--company discord` for one board. The table is the only list of boards: a new
+deployment gets the starting set from migration 0021, weekly discovery adds more, and pasting a job link adds
+its board. Admins manage boards with the CLI (validated against the live board before it is stored):
+
+```bash
+docker compose exec worker python -m jobfinder.cli add-board --ats greenhouse --slug acme --name "Acme Inc"
+docker compose exec worker python -m jobfinder.cli list-boards [--ats lever] [--origin seed|discovered|user]
+docker compose exec worker python -m jobfinder.cli set-board --id 42 --prestige 4 --industry fintech \
+  [--size startup|mid|large] [--sponsors-visas yes|no] [--enabled yes|no] [--name "Acme"]
+```
+
+LinkedIn/Indeed scraping is
 opt-in and against those sites' terms: set `ENABLE_JOBSPY=true` in `backend/.env`, build the worker with
 `WITH_JOBSPY=true` (root `.env`), then `ingest --jobspy`. The worker also runs it on a schedule (see Daily email below).
 
