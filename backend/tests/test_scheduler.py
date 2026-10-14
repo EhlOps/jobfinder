@@ -15,6 +15,7 @@ from tests.factories import make_match, make_user
 def test_scheduler_has_ingest_and_daily_email_jobs(monkeypatch):
     monkeypatch.setattr(get_settings(), "ingest_interval_hours", 3)
     monkeypatch.setattr(get_settings(), "discovery_enabled", False)
+    monkeypatch.setattr(get_settings(), "coverage_enabled", False)
     sched = worker.make_scheduler()
     jobs = {j.id: j for j in sched.get_jobs()}
     assert set(jobs) == {"ingest_jobs", "daily_emails", "plan_work"}
@@ -25,10 +26,18 @@ def test_scheduler_has_ingest_and_daily_email_jobs(monkeypatch):
 
 def test_scheduler_adds_weekly_discovery_when_enabled(monkeypatch):
     monkeypatch.setattr(get_settings(), "discovery_enabled", True)
+    monkeypatch.setattr(get_settings(), "coverage_enabled", False)
     jobs = {j.id: j for j in worker.make_scheduler().get_jobs()}
     assert set(jobs) == {"ingest_jobs", "daily_emails", "plan_work", "discover_boards"}
     assert jobs["discover_boards"].args == ("discover_boards",)
     assert "day_of_week='sun'" in str(jobs["discover_boards"].trigger)
+
+
+def test_scheduler_adds_weekly_coveted_score_when_enabled(monkeypatch):
+    monkeypatch.setattr(get_settings(), "coverage_enabled", True)
+    jobs = {j.id: j for j in worker.make_scheduler().get_jobs()}
+    assert jobs["score_coveted"].args == ("score_coveted",)
+    assert "day_of_week='sun'" in str(jobs["score_coveted"].trigger)
 
 
 async def test_scheduled_work_goes_through_the_queue_without_piling_up(engine, monkeypatch):

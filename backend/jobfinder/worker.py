@@ -104,6 +104,11 @@ def make_scheduler() -> AsyncIOScheduler:
             enqueue_scheduled, "cron", day_of_week="sun", hour=4, minute=30, args=["discover_boards"],
             id="discover_boards", coalesce=True, max_instances=1,
         )
+    if s.coverage_enabled:  # after discovery, so the outside-list signal is fresh
+        scheduler.add_job(
+            enqueue_scheduled, "cron", day_of_week="sun", hour=6, minute=0, args=["score_coveted"],
+            id="score_coveted", coalesce=True, max_instances=1,
+        )
     return scheduler
 
 

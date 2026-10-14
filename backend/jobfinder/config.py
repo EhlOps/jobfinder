@@ -64,6 +64,8 @@ class Settings(BaseSettings):
     discovery_max_candidates: int = 300  # new boards validated per discovery run
     job_links_enabled: bool = True  # users may paste job links; the board behind each one is added for everyone
     job_links_per_user_day: int = 20  # pasted links per user per rolling 24h
+    coverage_enabled: bool = True  # weekly coveted score + coverage audit (ingest.coveted)
+    coverage_resolves_per_run: int = 20  # coveted employers sent through the resolver per audit run
     jobspy_max_queries: int = 10
     jobspy_results_per_query: int = 25
     session_ttl_days: int = 30
