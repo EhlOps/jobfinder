@@ -60,6 +60,8 @@ def clean_url(raw: str) -> str:
 
 def name_from_slug(ats: str, slug: str) -> str:
     """A readable company name from the board slug ('acme-robotics' -> 'Acme Robotics'). Admins can rename."""
+    if "__" in slug:  # composite custom-domain key "careers.acme.com__us__en" -> name from the domain
+        return name_from_domain(registrable_domain("https://" + slug.split("__")[0]))
     base = slug.split(".")[0] if ats == "workday" else slug
     words = [w for w in re.split(r"[-_.\s]+", base) if w]
     return (" ".join(w if w.isupper() else w.capitalize() for w in words) or slug)[:200]
