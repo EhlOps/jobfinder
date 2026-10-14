@@ -30,6 +30,7 @@ MAX_JSON_PER_PAGE = 3
 MAX_VALIDATE_PAGES = 3
 MIN_JOB_LINKS = 2
 MAX_SITEMAP_LOCS = 20_000
+MAX_SAMPLE_CHARS = 8_000  # JSON kept on ctx.json_samples per endpoint
 
 _QUOTED_URL = re.compile(r"""(href\s*=\s*)?["'](https?://[^"'\s<>\\]{4,500}|/[^"'\s<>\\]{1,500})["']""",
                          re.IGNORECASE)
@@ -242,6 +243,7 @@ class _Sniff:
             if ("json", url) in self.tried:
                 continue
             resp = await self.fetch(url, JSON_TYPES + ("text/plain",))
+            self.ctx.json_tried.add(url)
             if resp is None:
                 continue
             try:
@@ -249,6 +251,7 @@ class _Sniff:
             except ValueError:
                 self.note(f"{url[:150]}: not JSON")
                 continue
+            self.ctx.json_samples.append((resp.url, resp.text[:MAX_SAMPLE_CHARS]))  # for the LLM rung
             recipe, why = explain_json_sample(resp.url, "GET", data, pasted_url=self.ctx.url)
             if recipe is None:
                 self.note(f"{url[:150]}: {why}")

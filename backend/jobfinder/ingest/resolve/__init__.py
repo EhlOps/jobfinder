@@ -10,6 +10,7 @@ import hashlib
 import logging
 import re
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 from urllib.parse import urlsplit, urlunsplit
 
 import httpx
@@ -26,6 +27,9 @@ from jobfinder.ingest.service import ingest_company, upsert_postings
 from jobfinder.ingest.sources.custom import refusal_for_url, refusal_message, site_for_url
 from jobfinder.ingest.validate import SLUG_RE, add_board
 from jobfinder.models import Company, Job, JobLink
+
+if TYPE_CHECKING:
+    from jobfinder.ai.tasks import AITasks
 
 log = logging.getLogger("jobfinder.resolve")
 
@@ -99,7 +103,7 @@ async def existing_board(db: AsyncSession, ats: str, slug: str) -> Company | Non
 
 
 async def resolve_link(db: AsyncSession, link_id: int, client: httpx.AsyncClient | None = None, *,
-                       allow_llm: bool = False) -> dict:
+                       allow_llm: bool = False, ai: "AITasks | None" = None) -> dict:
     """Resolve one pasted link: find its board, add it if it's new, then fetch that board right away.
     Never raises for a bad board: the outcome is recorded on the link so the user sees why."""
     link = await db.get(JobLink, link_id)
@@ -108,7 +112,7 @@ async def resolve_link(db: AsyncSession, link_id: int, client: httpx.AsyncClient
     own = client is None
     client = client or httpx.AsyncClient(timeout=30, follow_redirects=True, headers=_HEADERS)
     try:
-        return await _resolve(db, link, client, allow_llm)
+        return await _resolve(db, link, client, allow_llm, ai)
     except Exception as e:  # never leave a link stuck in 'resolving'
         log.exception("resolving job link %s failed", link_id)
         await db.rollback()
@@ -191,14 +195,22 @@ class _Outcome:
 
 
 async def _ladder(db: AsyncSession, url: str, client: httpx.AsyncClient, allow_llm: bool, *,
-                  page: SafeResponse | None = None, robots: PoliteFetcher | None = None, label: str = "") -> _Outcome:
+                  page: SafeResponse | None = None, robots: PoliteFetcher | None = None, label: str = "",
+                  ai: "AITasks | None" = None) -> _Outcome:
     """Run the rungs over `url`, cheapest first, until one yields a board that can be added or reused.
     `page` (already fetched, SSRF- and robots-checked) saves the context fetching it again."""
-    ctx = ResolveContext(url, client, allow_llm=allow_llm, robots=robots)
+    ctx = ResolveContext(url, client, allow_llm=allow_llm, robots=robots, ai=ai)
     if page is not None:  # what ctx.page() would have cached after a successful fetch
         ctx._page, ctx._fetched = page, True
     out = _Outcome(ctx)
     for rung in RUNGS:
+        if rung.name == "llm" and ctx.allow_llm:
+            # a recipe board for this domain already exists and would be kept (_recipe_company): use it
+            # rather than paying for an induction whose result is thrown away
+            known = await existing_board(db, "recipe", registrable_domain(url))
+            if known is not None:
+                out.hit, out.company, out.added, out.rung = ("recipe", known.slug), known, False, "recipe_board"
+                return out
         try:
             hit = await rung.run(ctx)
         except Exception as e:  # a broken rung passes; the next one gets a go
@@ -229,13 +241,13 @@ async def _ladder(db: AsyncSession, url: str, client: httpx.AsyncClient, allow_l
 
 async def resolve_url(db: AsyncSession, url: str, client: httpx.AsyncClient, *, allow_llm: bool = False,
                       page: SafeResponse | None = None, robots: PoliteFetcher | None = None,
-                      ) -> tuple[Company | None, str | None, list[str]]:
+                      ai: "AITasks | None" = None) -> tuple[Company | None, str | None, list[str]]:
     """Resolve a URL with no JobLink behind it (the coverage audit): (company, rung, notes). A board that
     is new is added with origin 'user' and fetched right away, as for a pasted link."""
     refused = refusal_for_url(url)
     if refused is not None:  # terms/robots review said no: nothing here may fetch or scrape this site
         return None, None, [refusal_message(refused)]
-    out = await _ladder(db, url, client, allow_llm, page=page, robots=robots)
+    out = await _ladder(db, url, client, allow_llm, page=page, robots=robots, ai=ai)
     company = out.company
     if company is not None and out.added:
         await ingest_company(db, client, company)
@@ -246,13 +258,14 @@ async def resolve_url(db: AsyncSession, url: str, client: httpx.AsyncClient, *, 
     return company, out.rung, notes
 
 
-async def _resolve(db: AsyncSession, link: JobLink, client: httpx.AsyncClient, allow_llm: bool) -> dict:
+async def _resolve(db: AsyncSession, link: JobLink, client: httpx.AsyncClient, allow_llm: bool,
+                   ai: "AITasks | None" = None) -> dict:
     refused = refusal_for_url(link.url)
     if refused is not None:  # terms/robots review said no: no rung may fetch or scrape this site
         _finish(link, "unresolved", error=refusal_message(refused), rung="terms_refused")
         await db.commit()
         return {"status": "unresolved", "reason": "terms refused", "site": refused.name}
-    out = await _ladder(db, link.url, client, allow_llm, label=f"link {link.id}")
+    out = await _ladder(db, link.url, client, allow_llm, label=f"link {link.id}", ai=ai)
     ctx = out.ctx
     if out.hit is not None:
         link.ats, link.slug = out.hit

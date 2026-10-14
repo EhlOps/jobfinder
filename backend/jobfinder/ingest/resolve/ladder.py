@@ -7,7 +7,7 @@ A rung looks at a pasted URL (and, if it needs to, the page behind it) and retur
 or None to pass. Rungs run cheapest first (RUNGS in rungs/__init__.py, sorted by `order`).
 """
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 import httpx
 
@@ -15,6 +15,9 @@ from jobfinder.ingest.base import JobPosting
 from jobfinder.ingest.discovery.robots import PoliteFetcher
 from jobfinder.ingest.http_safety import TEXT_TYPES, FetchError, SafeResponse, safe_fetch
 from jobfinder.ingest.recipes import Recipe
+
+if TYPE_CHECKING:
+    from jobfinder.ai.tasks import AITasks
 
 PAGE_MAX_BYTES = 3_000_000
 
@@ -47,13 +50,17 @@ class ResolveContext:
     (SSRF-checked on every hop, size-capped, robots.txt honoured)."""
 
     def __init__(self, url: str, client: httpx.AsyncClient, *, allow_llm: bool = False,
-                 robots: PoliteFetcher | None = None):
+                 robots: PoliteFetcher | None = None, ai: "AITasks | None" = None):
         self.url = url
         self.client = client
         self.allow_llm = allow_llm
+        self.ai = ai  # the LLM rung's Claude; None (or allow_llm False) and it passes
         self.robots = robots if robots is not None else PoliteFetcher(client)
         self.notes: list[str] = []  # why rungs passed, for Admin > Coverage
         self.single_job: JobPosting | None = None
+        # same-site JSON a rung fetched, (url, body), and every URL it tried as JSON: hints for the LLM rung
+        self.json_samples: list[tuple[str, str]] = []
+        self.json_tried: set[str] = set()
         self._page: SafeResponse | None = None
         self._page_error: str | None = None
         self._fetched = False
