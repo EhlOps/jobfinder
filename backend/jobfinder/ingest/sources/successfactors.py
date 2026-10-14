@@ -9,8 +9,8 @@ the UDM API) is disallowed on these sites and is never called.
 import asyncio
 import re
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 from urllib.parse import urljoin, urlsplit
-from urllib.robotparser import RobotFileParser
 
 import httpx
 from lxml import etree
@@ -26,6 +26,9 @@ from jobfinder.ingest.base import (
     safe_http_url,
 )
 from jobfinder.profile.web_page import FetchError
+
+if TYPE_CHECKING:
+    from jobfinder.ingest.discovery.robots import PoliteFetcher
 
 SEARCH_URL = "{base}/search/?q=&sortColumn=referencedate&sortDirection=desc&startrow={start}"
 MAX_PAGES = 40  # 25 rows a page -> 1,000 newest postings (EY lists ~8,800)
@@ -200,49 +203,7 @@ def parse_successfactors(rows: list[dict], company_name: str, slug: str) -> list
     return out
 
 
-class _Robots:
-    """robots.txt for the one board host, fetched through safe_fetch: the host comes from a slug, so even this
-    request must be IP-pinned and capped (PoliteFetcher's plain client.get is not). Same rules as PoliteFetcher:
-    401/403 -> nothing allowed, 404/410 -> everything allowed, other errors -> nothing allowed."""
-
-    def __init__(self, client: httpx.AsyncClient):
-        self.client = client
-        self._parsers: dict[str, RobotFileParser | None] = {}
-        self._lock = asyncio.Lock()
-
-    async def _load(self, origin: str) -> RobotFileParser | None:
-        from jobfinder.ingest.discovery.robots import USER_AGENT
-        from jobfinder.ingest.http_safety import TEXT_TYPES, safe_fetch
-
-        parser = RobotFileParser()
-        try:
-            r = await safe_fetch(self.client, f"{origin}/robots.txt", headers={"User-Agent": USER_AGENT},
-                                 accept=TEXT_TYPES, max_bytes=500_000, raise_for_status=False)
-        except FetchError:
-            return None
-        if r.status in (401, 403):
-            parser.disallow_all = True
-        elif r.status in (404, 410):
-            parser.allow_all = True
-        elif r.status >= 400:
-            return None
-        else:
-            parser.parse(r.text.splitlines())
-        return parser
-
-    async def allowed(self, url: str) -> bool:
-        from jobfinder.ingest.discovery.robots import ROBOTS_TOKEN
-
-        parts = urlsplit(url)
-        origin = f"{parts.scheme}://{parts.netloc}"
-        async with self._lock:
-            if origin not in self._parsers:
-                self._parsers[origin] = await self._load(origin)
-        parser = self._parsers[origin]
-        return parser is not None and parser.can_fetch(ROBOTS_TOKEN, url)
-
-
-async def _get(client: httpx.AsyncClient, robots: _Robots, url: str) -> str:
+async def _get(client: httpx.AsyncClient, robots: "PoliteFetcher", url: str) -> str:
     """Robots-checked, SSRF-safe GET of an HTML page; HTTP errors surface as httpx.HTTPStatusError so ingest
     health treats them like any other ATS."""
     # imported lazily: http_safety -> discovery -> validate -> this registry would be circular
@@ -260,12 +221,14 @@ async def fetch_successfactors(
     client: httpx.AsyncClient, slug: str, company_name: str, list_only: bool = False
 ) -> list[JobPosting]:
     """list_only reads just the first search page and skips the job-page fetches (cheap probe)."""
+    # imported lazily (see _get); PoliteFetcher loads robots.txt through safe_fetch, so it is IP-pinned too
+    from jobfinder.ingest.discovery.robots import PoliteFetcher
     from jobfinder.ingest.http_safety import assert_public_host
 
     host, brand = parse_slug(slug)
     await assert_public_host(host)  # a custom domain from the slug: never let it point inside
     base = board_base(host, brand)
-    robots = _Robots(client)
+    robots = PoliteFetcher(client)
 
     listed: list[dict] = []
     seen: set[str] = set()

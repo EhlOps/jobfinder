@@ -9,6 +9,7 @@ import httpx
 log = logging.getLogger("jobfinder.discovery")
 USER_AGENT = "JobFinderDiscovery/1.0 (+personal job search tool; polite, low volume)"
 ROBOTS_TOKEN = "JobFinderDiscovery"
+ROBOTS_MAX_BYTES = 512_000  # Google reads 500 KiB; a bigger file counts as unreadable (nothing allowed)
 
 
 def can_fetch(parser: RobotFileParser, useragent: str, url: str) -> bool:
@@ -58,19 +59,27 @@ class PoliteFetcher:
             return self._robots[origin]
 
     async def _load(self, origin: str) -> RobotFileParser | None:
-        parser: RobotFileParser | None = RobotFileParser()
+        """robots.txt goes through safe_fetch like everything else: the origin can come from a pasted URL, so
+        even this request is IP-pinned, redirect-checked and capped (a private address -> None -> nothing
+        allowed)."""
+        # imported lazily: http_safety imports this module
+        from jobfinder.ingest.http_safety import TEXT_TYPES, FetchError, safe_fetch
+
+        accept = (*TEXT_TYPES, "application/octet-stream")  # S3/CDN-hosted robots.txt
+        parser = RobotFileParser()
         try:
-            r = await self.client.get(f"{origin}/robots.txt", headers={"User-Agent": USER_AGENT})
-            if r.status_code in (401, 403):
-                parser.disallow_all = True
-            elif r.status_code in (404, 410):
-                parser.allow_all = True  # no robots.txt: nothing is forbidden
-            elif r.status_code >= 400:
-                parser = None  # cannot tell: be conservative
-            else:
-                parser.parse(r.text.splitlines())
-        except httpx.HTTPError:
-            parser = None
+            r = await safe_fetch(self.client, f"{origin}/robots.txt", headers={"User-Agent": USER_AGENT},
+                                 accept=accept, max_bytes=ROBOTS_MAX_BYTES, raise_for_status=False)
+        except FetchError:  # private address, unreachable, over the cap or not text: be conservative
+            return None
+        if r.status in (401, 403):
+            parser.disallow_all = True
+        elif r.status in (404, 410):
+            parser.allow_all = True  # no robots.txt: nothing is forbidden
+        elif r.status >= 400:
+            return None  # cannot tell: be conservative
+        else:
+            parser.parse(r.text.splitlines())
         return parser
 
     async def allowed(self, url: str) -> bool:
