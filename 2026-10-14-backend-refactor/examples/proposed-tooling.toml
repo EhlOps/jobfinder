@@ -1,0 +1,43 @@
+# Sketch: additions to backend/pyproject.toml (D6, D7).
+
+[project.scripts]
+jobfinder = "jobfinder.cli:app"          # uv run jobfinder --help
+
+[project]
+dependencies = [
+  # ... existing ...
+  "typer>=0.12",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=8", "pytest-asyncio>=0.24", "ruff>=0.7",
+  "pytest-xdist>=3.6",                     # uv run pytest -n auto (one test DB per worker: jobfinder_test_gw0, ...)
+  "respx>=0.21",                           # fake httpx for sources and the resolver
+  "import-linter>=2.1",                    # uv run lint-imports
+]
+
+[tool.importlinter]
+root_package = "jobfinder"
+
+[[tool.importlinter.contracts]]
+name = "Layers: entrypoints > features > tasks/ai > core"
+type = "layers"
+layers = [
+  "jobfinder.app | jobfinder.worker | jobfinder.cli | jobfinder.renderer",
+  "jobfinder.features",
+  "jobfinder.tasks | jobfinder.ai",
+  "jobfinder.core",
+]
+
+[[tool.importlinter.contracts]]
+name = "Features use each other only through service.py"
+type = "forbidden"
+source_modules = ["jobfinder.features.*"]
+forbidden_modules = ["jobfinder.features.*.router", "jobfinder.features.*.models"]
+allow_indirect_imports = true
+
+# tests/test_architecture.py (sketch):
+#   def test_features_never_commit():
+#       hits = [p for p in Path("jobfinder/features").rglob("*.py") if ".commit()" in p.read_text()]
+#       assert not hits, hits
