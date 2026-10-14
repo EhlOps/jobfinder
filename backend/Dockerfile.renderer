@@ -1,0 +1,39 @@
+# renderer image (opt-in, compose profile "renderer"): the official Playwright image (Chromium + its system
+# libraries, multi-arch incl. linux/arm64) plus the backend package with the `renderer` extra. It claims only
+# render_* tasks. Keep the image tag and the playwright pin in pyproject.toml on the same version.
+FROM mcr.microsoft.com/playwright/python:v1.63.0-noble
+
+# Browsers ship in the image (/ms-playwright); never download at runtime.
+# Settings insists on a SECRET_KEY; the renderer signs nothing and holds no secrets, so a fixed placeholder
+# is baked in rather than passing the real one to this container.
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_PROJECT_ENVIRONMENT=/opt/venv \
+    UV_PYTHON_DOWNLOADS=never \
+    PATH=/opt/venv/bin:$PATH \
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
+    SECRET_KEY=renderer-signs-nothing-this-is-not-a-secret-0000
+
+COPY --from=ghcr.io/astral-sh/uv:0.12.23 /uv /uvx /bin/
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libpq5 tini \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+RUN useradd -m -u 10001 jobfinder
+WORKDIR /app
+
+COPY pyproject.toml uv.lock* ./
+RUN uv sync --locked --no-dev --no-install-project --extra renderer --python /usr/bin/python3
+
+COPY jobfinder ./jobfinder
+RUN uv sync --locked --no-dev --extra renderer --python /usr/bin/python3 \
+    && python -c "import playwright, sys; print('playwright ok', sys.version)" \
+    && chown -R jobfinder:jobfinder /app
+
+USER jobfinder
+ENTRYPOINT ["tini", "--"]
+CMD ["python", "-m", "jobfinder.renderer"]

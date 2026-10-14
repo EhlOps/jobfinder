@@ -90,6 +90,23 @@ LinkedIn/Indeed scraping is
 opt-in and against those sites' terms: set `ENABLE_JOBSPY=true` in `backend/.env`, build the worker with
 `WITH_JOBSPY=true` (root `.env`), then `ingest --jobspy`. The worker also runs it on a schedule (see Daily email below).
 
+### Optional: the render worker (JavaScript-only careers sites)
+
+Some careers sites only show their jobs after JavaScript runs. A separate, sandboxed headless-browser container
+(`renderer`, built from `backend/Dockerfile.renderer`) can open such a page when a user pastes a link from it.
+It records the JSON the page loads and, where it can, turns that into an ordinary API recipe so later fetches
+need no browser. It is off by default and doesn't start with a plain `docker compose up`. To turn it on:
+
+1. Root `.env`: `COMPOSE_PROFILES=renderer`.
+2. `backend/.env`: `RENDERER_ENABLED=true` (the api and worker read this; without it nothing is sent to the
+   renderer, and boards that need it are skipped).
+3. `docker compose up -d --build`.
+
+The container runs as a non-root user with a read-only filesystem, no capabilities, 1.5 GB of memory, no
+published ports and no secrets. Every request the page makes is checked first: only public http(s) addresses,
+robots.txt honoured, a 30-second limit per page, and no downloads or saved cookies. Try it on one page without the
+database: `docker compose run --rm renderer python -m jobfinder.renderer capture https://careers.example.com/jobs`.
+
 US federal jobs (engineering, computer science, IT and program-management series) come from the official
 USAJobs API. Request a free key at <https://developer.usajobs.gov/APIRequest>, then set `USAJOBS_API_KEY` and
 `USAJOBS_EMAIL` in `backend/.env`; the source turns on automatically once both are set and runs with every ingest

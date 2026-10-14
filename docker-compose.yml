@@ -72,6 +72,35 @@ services:
       db:
         condition: service_healthy
 
+  # Opt-in headless browser (resolver rung 4.5): claims only render_* tasks. Not started by a plain
+  # `docker compose up`; enable with COMPOSE_PROFILES=renderer (root .env) + RENDERER_ENABLED=true
+  # (backend/.env). Gets only the database settings: no backend/.env, no volumes, no published ports.
+  renderer:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.renderer
+    profiles: ["renderer"]
+    restart: unless-stopped
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      HOME: /tmp
+    read_only: true
+    tmpfs:
+      - /tmp:size=512m
+    shm_size: 256m
+    mem_limit: 1536m
+    pids_limit: 512
+    cpus: 1.5
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      db:
+        condition: service_healthy
+
   # Caddy: serves the built app, proxies /api to the api, sets security headers, and gets TLS
   # certificates when SITE_ADDRESS is a domain (see frontend/Caddyfile, docker-compose.prod.yml and the
   # README's Deploy section).

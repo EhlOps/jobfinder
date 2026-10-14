@@ -27,6 +27,8 @@ dependencies = [
 [project.optional-dependencies]
 # LinkedIn/Indeed scraping (opt-in, heavy: pulls in pandas/numpy)
 jobspy = ["python-jobspy>=1.1.80"]
+# The opt-in render worker (backend/Dockerfile.renderer). Pinned to the Playwright image's version.
+renderer = ["playwright==1.63.0"]
 
 [dependency-groups]
 dev = ["pytest>=8", "pytest-asyncio>=0.24", "ruff>=0.7"]

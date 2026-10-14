@@ -128,6 +128,9 @@ async def test_unknown_kind_and_empty_recipe():
     with pytest.raises(RecipeError, match="no recipe"):
         await run_recipe(None, "acme.com", "Acme", None)
     with pytest.raises(RecipeError, match="no runner"):
+        await run_recipe(None, "acme.com", "Acme", Recipe.model_construct(**{**recipe(), "kind": "nope"}))
+    # rendered_html has a runner (renderer/, opt-in); with the renderer off it refuses
+    with pytest.raises(RecipeError, match="switched off"):
         await run_recipe(None, "acme.com", "Acme", Recipe.model_validate(recipe(kind="rendered_html")))
 
 

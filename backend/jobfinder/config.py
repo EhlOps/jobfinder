@@ -74,6 +74,8 @@ class Settings(BaseSettings):
     coverage_resolves_per_run: int = 20  # coveted employers sent through the resolver per audit run
     resolver_llm_enabled: bool = True  # last resolver rung: Claude proposes a recipe for an unknown site
     recipe_model: str = "sonnet"  # model that induces recipes: haiku | sonnet | opus
+    renderer_enabled: bool = False  # rung 4.5: the opt-in Playwright container (compose profile "renderer")
+    renderer_max_rendered_boards: int = 25  # boards that need the browser on every fetch (rendered_html)
     jobspy_max_queries: int = 10
     jobspy_results_per_query: int = 25
     session_ttl_days: int = 30

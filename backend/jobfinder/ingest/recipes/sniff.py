@@ -11,16 +11,18 @@ from jobfinder.ingest.recipes import Recipe, RecipeError, parse_recipe
 from jobfinder.ingest.recipes.json_api import get_all
 
 MAX_JSON_NODES = 20_000
+MIN_PAGE_LEN = 5  # a sample this long is taken as a full page
 _PATH_KEY = re.compile(r"[A-Za-z0-9_\-$@]+")
 
 # Candidate keys (compared lower-case without _ or -), best first.
 ID_KEYS = ("id", "jobid", "reqid", "requisitionid", "jobreqid", "postingid")
 TITLE_KEYS = ("title", "name", "jobtitle", "postingtitle")
-URL_KEYS = ("url", "absoluteurl", "applyurl", "canonicalurl", "joburl", "hostedurl", "link")
+URL_KEYS = ("url", "absoluteurl", "applyurl", "canonicalurl", "joburl", "hostedurl", "link",
+            "canonicalpositionurl", "positionurl")
 LOCATION_KEYS = ("location", "locationname", "city", "locations", "primarylocation")
 POSTED_KEYS = ("posted", "dateposted", "posteddate", "createdat", "publishedat", "pubdate", "updatedat",
-               "postedon")
-DESCRIPTION_KEYS = ("description", "content", "descriptionhtml", "summary")
+               "postedon", "postedts")
+DESCRIPTION_KEYS = ("description", "content", "descriptionhtml", "summary", "descriptionteaser")
 PAGE_KEYS = ("page", "pagenumber", "pageno", "p")
 OFFSET_KEYS = ("offset", "from", "start", "skip")
 SIZE_KEYS = ("limit", "size", "count", "rows", "pagesize", "perpage")
@@ -102,16 +104,18 @@ def _int(v) -> int | None:
         else None
 
 
-def pagination_for(url: str, json_body: dict | None = None) -> dict:
+def pagination_for(url: str, json_body: dict | None = None, page_len: int = 0) -> dict:
     """Page through the endpoint when its query (GET) or top-level body (POST) already has a page or offset
     parameter; the size parameter gives the offset step. Paging always starts at the first page (0 or 1),
-    whatever page the sample happened to be."""
+    whatever page the sample happened to be. An offset with no size parameter steps by the sample's
+    length (`page_len`) when that looks like a full page (Eightfold's `start=0` alone, say)."""
     params = dict(json_body) if json_body is not None else dict(parse_qsl(urlsplit(url).query))
     q = {_norm_key(k): (k, _int(v)) for k, v in params.items() if isinstance(k, str) and _int(v) is not None}
     for name in PAGE_KEYS:
         if name in q:
             return {"kind": "page", "param": q[name][0], "start": min(q[name][1], 1), "step": 1}
     size = next((q[n][1] for n in SIZE_KEYS if n in q and q[n][1] > 0), None)
+    size = size or (page_len if page_len >= MIN_PAGE_LEN else None)
     for name in OFFSET_KEYS:
         if size and name in q:
             return {"kind": "offset", "param": q[name][0], "start": 0, "step": min(size, 1000)}
@@ -170,7 +174,8 @@ def explain_json_sample(url: str, method: str, body: object, json_body: dict | N
         req["json_body"] = json_body if json_body is not None else {}
     try:
         recipe = parse_recipe({"kind": "json_api", "list": req, "items": path, "fields": fields,
-                               "pagination": pagination_for(url, json_body if method == "POST" else None)})
+                               "pagination": pagination_for(url, json_body if method == "POST" else None,
+                                                             len(items))})
     except RecipeError as e:
         return None, str(e)
     return recipe, ""
