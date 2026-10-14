@@ -1,0 +1,171 @@
+"""Paste a job link -> the company's whole board is added (for everyone) and its other roles are shown."""
+from datetime import datetime
+from typing import Annotated
+
+import sqlalchemy as sa
+from fastapi import APIRouter, Depends, HTTPException, Response
+from pydantic import BaseModel, Field, field_validator
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from jobfinder.auth import ratelimit
+from jobfinder.auth.security import current_user
+from jobfinder.config import get_settings
+from jobfinder.db import get_db
+from jobfinder.ingest.base import safe_http_url
+from jobfinder.ingest.discovery import board_from_url
+from jobfinder.ingest.resolve import UNSUPPORTED, BadLink, clean_url, existing_board
+from jobfinder.models import Company, Job, JobLink, JobMatch, User
+from jobfinder.scheduling import queue
+
+router = APIRouter(prefix="/api/job-links", tags=["job-links"])
+
+DB = Annotated[AsyncSession, Depends(get_db)]
+CurrentUser = Annotated[User, Depends(current_user)]
+RATE_KIND = "job_link"
+MAX_JOBS = 200
+
+
+class LinkIn(BaseModel):
+    url: str = Field(max_length=4096)  # clean_url enforces the real limit with a readable message
+
+
+class LinkOut(BaseModel):
+    id: int
+    url: str
+    status: str
+    company_id: int | None
+    company: str | None
+    ats: str | None
+    error: str | None
+    job_count: int
+    pasted_job_id: int | None
+    created_at: datetime
+    resolved_at: datetime | None
+
+    @field_validator("url")
+    @classmethod
+    def _http_only(cls, v: str) -> str:
+        return safe_http_url(v)
+
+
+class LinkJob(BaseModel):
+    id: int
+    title: str
+    location: str
+    url: str
+    posted_at: datetime | None
+    match_id: int | None
+    score: int | None
+
+    @field_validator("url")
+    @classmethod
+    def _http_only(cls, v: str) -> str:
+        return safe_http_url(v)
+
+
+class LinkDetail(LinkOut):
+    jobs: list[LinkJob]
+
+
+def _enabled() -> None:
+    if not get_settings().job_links_enabled:
+        raise HTTPException(404, "Adding job links is turned off")
+
+
+async def _out(db: AsyncSession, link: JobLink) -> LinkOut:
+    company = await db.get(Company, link.company_id) if link.company_id else None
+    count, pasted = 0, None
+    if company:
+        active = sa.and_(Job.company_id == company.id, Job.is_active.is_(True))
+        count = await db.scalar(sa.select(sa.func.count()).select_from(Job).where(active)) or 0
+        pasted = await db.scalar(sa.select(Job.id).where(active, Job.url == link.url).limit(1))
+    return LinkOut(
+        id=link.id, url=link.url, status=link.status, company_id=link.company_id,
+        company=company.name if company else None, ats=link.ats, error=link.error, job_count=count,
+        pasted_job_id=pasted, created_at=link.created_at, resolved_at=link.resolved_at,
+    )
+
+
+async def _own(db: AsyncSession, user: User, link_id: int) -> JobLink:
+    link = await db.get(JobLink, link_id)
+    if link is None or link.user_id != user.id:
+        raise HTTPException(404, "Link not found")
+    return link
+
+
+@router.post("", response_model=LinkOut, status_code=202)
+async def add_link(body: LinkIn, user: CurrentUser, db: DB, response: Response):
+    _enabled()
+    try:
+        url = clean_url(body.url)
+    except BadLink as e:
+        raise HTTPException(422, str(e)) from e
+
+    dup = await db.scalar(sa.select(JobLink).where(JobLink.user_id == user.id, JobLink.url == url))
+    if dup:
+        response.status_code = 200
+        return await _out(db, dup)
+
+    limit = get_settings().job_links_per_user_day
+    if await ratelimit.count_since(db, RATE_KIND, str(user.id), 86400) >= limit:
+        raise HTTPException(429, f"You can add up to {limit} job links a day. Try again tomorrow.")
+    await ratelimit.hit(db, RATE_KIND, str(user.id))
+
+    link = JobLink(user_id=user.id, url=url, status="resolving")
+    board = board_from_url(url)
+    if board is None:
+        link.status, link.error = "unresolved", UNSUPPORTED
+    else:
+        link.ats, link.slug = board
+        known = await existing_board(db, *board)
+        if known is not None:  # already polled on schedule: nothing to fetch
+            link.status, link.company_id = "resolved", known.id
+            link.resolved_at = sa.func.now()
+    db.add(link)
+    await db.commit()
+    await db.refresh(link)
+    if link.status == "resolving":
+        await queue.enqueue(db, "resolve_job_link", {"link_id": link.id}, user_id=user.id)
+    else:
+        response.status_code = 201
+    return await _out(db, link)
+
+
+@router.get("", response_model=list[LinkOut])
+async def list_links(user: CurrentUser, db: DB):
+    _enabled()
+    links = (await db.scalars(
+        sa.select(JobLink).where(JobLink.user_id == user.id).order_by(JobLink.created_at.desc(), JobLink.id.desc())
+    )).all()
+    return [await _out(db, link) for link in links]
+
+
+@router.get("/{link_id}", response_model=LinkDetail)
+async def get_link(link_id: int, user: CurrentUser, db: DB):
+    _enabled()
+    link = await _own(db, user, link_id)
+    out = await _out(db, link)
+    jobs: list[LinkJob] = []
+    if link.company_id:
+        rows = (await db.execute(
+            sa.select(Job, JobMatch.id, JobMatch.llm_score)
+            .outerjoin(JobMatch, sa.and_(JobMatch.job_id == Job.id, JobMatch.user_id == user.id))
+            .where(Job.company_id == link.company_id, Job.is_active.is_(True))
+            .order_by(JobMatch.llm_score.desc().nulls_last(), Job.posted_at.desc().nulls_last(), Job.id.desc())
+            .limit(MAX_JOBS)
+        )).all()
+        jobs = [
+            LinkJob(id=j.id, title=j.title, location=j.location or "", url=j.url, posted_at=j.posted_at,
+                    match_id=mid, score=score)
+            for j, mid, score in rows
+        ]
+    return LinkDetail(**out.model_dump(), jobs=jobs)
+
+
+@router.delete("/{link_id}", status_code=204)
+async def delete_link(link_id: int, user: CurrentUser, db: DB):
+    """Removes the user's link only. The board stays: other people may be getting matches from it."""
+    _enabled()
+    link = await _own(db, user, link_id)
+    await db.delete(link)
+    await db.commit()

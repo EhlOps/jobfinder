@@ -161,8 +161,29 @@ class Company(Base):
     consecutive_failures: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     disabled_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    origin: Mapped[str] = mapped_column(String(16), default="seed", server_default="seed")  # seed|discovered
+    origin: Mapped[str] = mapped_column(String(16), default="seed", server_default="seed")  # seed|discovered|user
     validated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class JobLink(Base):
+    """A job URL a user pasted. The board it resolves to is shared with everyone; the link itself is private."""
+
+    __tablename__ = "job_links"
+    __table_args__ = (
+        UniqueConstraint("user_id", "url", name="uq_job_link_user_url"),
+        Index("ix_job_links_user_created", "user_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    url: Mapped[str] = mapped_column(String(2048))
+    status: Mapped[str] = mapped_column(String(16), default="resolving")  # resolving|resolved|unresolved
+    ats: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    slug: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id", ondelete="SET NULL"), nullable=True)
+    error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class Job(Base):

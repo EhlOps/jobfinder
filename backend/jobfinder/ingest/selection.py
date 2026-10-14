@@ -1,6 +1,6 @@
 """Pick which company boards one ingest run fetches (REQ-26 d).
 
-Seed boards always run. Discovered boards (origin 'discovered') are capped per run: most of the
+Seed boards and boards users added by pasting a job link (origin 'user') always run. Discovered boards (origin 'discovered') are capped per run: most of the
 cap goes to boards relevant to active users' targets, the rest to whichever boards have gone
 longest without a fetch, so every board is eventually visited.
 """

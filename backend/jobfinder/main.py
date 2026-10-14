@@ -5,6 +5,7 @@ from jobfinder.api import (
     cover_letters,
     documents,
     interview,
+    job_links,
     links,
     matches,
     onboarding,
@@ -22,6 +23,7 @@ app.include_router(profile.router)
 app.include_router(interview.router)
 app.include_router(documents.router)
 app.include_router(links.router)
+app.include_router(job_links.router)
 app.include_router(onboarding.router)
 app.include_router(tasks.router)
 app.include_router(ai_admin.router)

@@ -62,6 +62,8 @@ class Settings(BaseSettings):
     planner_backoff_minutes: int = 30  # pause all planning after a rate-limit or auth error from Claude
     discovery_enabled: bool = True  # weekly board discovery from public directories (honours robots.txt and terms)
     discovery_max_candidates: int = 300  # new boards validated per discovery run
+    job_links_enabled: bool = True  # users may paste job links; the board behind each one is added for everyone
+    job_links_per_user_day: int = 20  # pasted links per user per rolling 24h
     jobspy_max_queries: int = 10
     jobspy_results_per_query: int = 25
     session_ttl_days: int = 30

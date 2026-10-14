@@ -236,3 +236,15 @@ export interface SourceRow {
   consecutive_failures: number; last_success_at: string | null; last_fetched_at: string | null;
   last_error: string | null; disabled_reason: string | null; validated_at: string | null; job_count: number;
 }
+
+export type JobLinkStatus = "resolving" | "resolved" | "unresolved";
+export interface JobLink {
+  id: number; url: string; status: JobLinkStatus; company_id: number | null; company: string | null;
+  ats: string | null; error: string | null; job_count: number; pasted_job_id: number | null;
+  created_at: string; resolved_at: string | null;
+}
+export interface JobLinkJob {
+  id: number; title: string; location: string; url: string; posted_at: string | null;
+  match_id: number | null; score: number | null;
+}
+export interface JobLinkDetail extends JobLink { jobs: JobLinkJob[] }
