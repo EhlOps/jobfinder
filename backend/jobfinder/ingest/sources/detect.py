@@ -8,12 +8,14 @@ from collections.abc import Callable
 
 from jobfinder.ingest.sources.oracle_hcm import detect_ce_page
 from jobfinder.ingest.sources.phenom import detect_phenom
+from jobfinder.ingest.sources.successfactors import detect_successfactors
 
 Detector = Callable[[str, str], tuple[str, str] | None]  # (page_url, html) -> (ats, slug) | None
 
 HTML_DETECTORS: list[Detector] = [
     detect_phenom,
     detect_ce_page,  # Oracle Recruiting Cloud
+    detect_successfactors,
 ]
 
 

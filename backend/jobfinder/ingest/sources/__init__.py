@@ -12,6 +12,7 @@ from jobfinder.ingest.sources.oracle_hcm import fetch_oracle_hcm
 from jobfinder.ingest.sources.phenom import fetch_phenom
 from jobfinder.ingest.sources.recruitee import fetch_recruitee
 from jobfinder.ingest.sources.smartrecruiters import fetch_smartrecruiters
+from jobfinder.ingest.sources.successfactors import fetch_successfactors
 from jobfinder.ingest.sources.workable import fetch_workable
 from jobfinder.ingest.sources.workday import fetch_workday
 
@@ -29,6 +30,7 @@ ATS_FETCHERS: dict[str, Fetcher] = {
     "workday": fetch_workday,
     "phenom": fetch_phenom,
     "oracle_hcm": fetch_oracle_hcm,
+    "successfactors": fetch_successfactors,
 }
 
 # Cheap existence probes (no per-posting detail requests) for the ATSes whose full fetch fans out; others reuse the full fetcher.
@@ -39,4 +41,5 @@ PROBE_FETCHERS: dict[str, Fetcher] = {
     "workday": partial(fetch_workday, list_only=True),
     "phenom": partial(fetch_phenom, list_only=True),
     "oracle_hcm": partial(fetch_oracle_hcm, list_only=True),
+    "successfactors": partial(fetch_successfactors, list_only=True),
 }
