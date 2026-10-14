@@ -15,6 +15,7 @@ from jobfinder.ingest.sources.phenom import fetch_phenom
 from jobfinder.ingest.sources.recruitee import fetch_recruitee
 from jobfinder.ingest.sources.smartrecruiters import fetch_smartrecruiters
 from jobfinder.ingest.sources.successfactors import fetch_successfactors
+from jobfinder.ingest.sources.taleo import fetch_taleo
 from jobfinder.ingest.sources.workable import fetch_workable
 from jobfinder.ingest.sources.workday import fetch_workday
 
@@ -35,6 +36,7 @@ ATS_FETCHERS: dict[str, Fetcher] = {
     "successfactors": fetch_successfactors,
     "icims": fetch_icims,
     "eightfold": fetch_eightfold,
+    "taleo": fetch_taleo,
 }
 
 # Cheap existence probes (no per-posting detail requests) for the ATSes whose full fetch fans out; others reuse the full fetcher.
@@ -48,4 +50,5 @@ PROBE_FETCHERS: dict[str, Fetcher] = {
     "successfactors": partial(fetch_successfactors, list_only=True),
     "icims": partial(fetch_icims, list_only=True),
     "eightfold": partial(fetch_eightfold, list_only=True),
+    "taleo": partial(fetch_taleo, list_only=True),
 }
