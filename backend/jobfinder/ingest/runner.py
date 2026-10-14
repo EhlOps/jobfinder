@@ -1,6 +1,8 @@
 """Top-level ingest run shared by the CLI and the worker handler."""
 import logging
+from datetime import UTC, datetime, timedelta
 
+from jobfinder.auth import ratelimit
 from jobfinder.config import get_settings
 from jobfinder.ingest import service
 from jobfinder.ingest.service import IngestStats, SessionFactory
@@ -52,14 +54,37 @@ async def ingest_usajobs(session_factory: SessionFactory, transport=None) -> Ing
     return stats
 
 
+EXTRA_KIND = "ingest_extra"  # rate_events kind: when jobspy/usajobs last ran
+
+
+async def _extra_due(session_factory: SessionFactory, source: str) -> bool:
+    """On the adaptive schedule the run fires every few minutes, but jobspy and usajobs keep their
+    own `ingest_interval_hours` cadence: run only if the last run is older than that, and record
+    this one. (rate_events are pruned after a day, so intervals over 24h behave as 24h.)"""
+    async with session_factory() as db:
+        last = await ratelimit.last_at(db, EXTRA_KIND, source)
+        if last and last > datetime.now(UTC) - timedelta(hours=get_settings().ingest_interval_hours):
+            return False
+        await ratelimit.hit(db, EXTRA_KIND, source)
+    return True
+
+
 async def run_ingest(
-    session_factory: SessionFactory, *, ats: str | None = None, slug: str | None = None, jobspy: bool | None = None
+    session_factory: SessionFactory, *, ats: str | None = None, slug: str | None = None, jobspy: bool | None = None,
+    all_boards: bool = False,
 ) -> dict:
-    results = await service.ingest_boards(session_factory, ats=ats, slug=slug)
+    """The scheduled run fetches only due boards; `all_boards` (the CLI) is a full run, as before."""
+    results = await service.ingest_boards(session_factory, ats=ats, slug=slug, all_boards=all_boards)
+    # an explicit request (CLI, --jobspy, ats=...) always runs; the scheduled run is gated
+    gated = get_settings().adaptive_schedule_enabled and ats is None and not all_boards
     use_jobspy = get_settings().enable_jobspy if jobspy is None else jobspy
-    if use_jobspy and not slug and ats in (None, "jobspy"):
+    if use_jobspy and not slug and ats in (None, "jobspy") and (
+        not (gated and jobspy is None) or await _extra_due(session_factory, "jobspy")
+    ):
         results.append(await ingest_jobspy(session_factory))
-    if get_settings().usajobs_enabled and not slug and ats in (None, "usajobs"):
+    if get_settings().usajobs_enabled and not slug and ats in (None, "usajobs") and (
+        not gated or await _extra_due(session_factory, "usajobs")
+    ):
         results.append(await ingest_usajobs(session_factory))
     return {
         "companies": len(results),

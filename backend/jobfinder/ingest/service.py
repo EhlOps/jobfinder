@@ -15,6 +15,7 @@ from sqlalchemy.dialects.postgresql import ARRAY, insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jobfinder.config import get_settings
+from jobfinder.ingest import schedule
 from jobfinder.ingest.base import JobPosting, safe_http_url
 from jobfinder.ingest.selection import Target, select_boards
 from jobfinder.ingest.sources import ATS_FETCHERS, Fetcher
@@ -155,11 +156,42 @@ def _record_failure(company: Company, error: str) -> bool:
     return False
 
 
+async def _schedule_next(db: AsyncSession, company: Company, *, failed: bool = False) -> None:
+    """Set the board's adaptive interval and next slot (ingest.schedule); no-op when that's off."""
+    s = get_settings()
+    if not s.adaptive_schedule_enabled:
+        return
+    at = schedule.now()
+    first = await db.scalar(sa.select(sa.func.min(Job.first_seen_at)).where(Job.company_id == company.id))
+    since = at - schedule.CHURN_WINDOW
+    new_jobs = 0
+    if first is not None:  # the board's first batch is its backlog, not churn
+        new_jobs = await db.scalar(
+            sa.select(sa.func.count()).select_from(Job).where(
+                Job.company_id == company.id, Job.first_seen_at > max(since, first + schedule.FIRST_BATCH)
+            )
+        ) or 0
+    if first is None or first > since:  # younger than the window: at least the base cadence
+        new_jobs = max(new_jobs, schedule.CHURN_PIVOT)
+    interval = schedule.board_interval(
+        new_jobs, schedule.effective_tier(company.coveted_tier, company.origin),
+        base=s.ingest_base_interval_minutes, min_minutes=s.ingest_min_interval_minutes,
+        max_minutes=s.ingest_max_interval_minutes,
+    )
+    delay = interval
+    if failed:
+        failures = company.consecutive_failures or 0
+        delay = schedule.failure_delay(interval, failures, s.ingest_max_interval_minutes)
+    company.fetch_interval_minutes = interval
+    company.next_fetch_at = schedule.next_fetch(company.id, delay, at, s.ingest_max_interval_minutes)
+
+
 async def _fail_board(db: AsyncSession, company: Company, error: str, now: datetime) -> None:
     """Record a failed attempt and commit. A board that just got auto-disabled is never polled again,
     so its jobs would stay active with dead apply links: deactivate them now."""
     disabled = _record_failure(company, error)
     company.last_fetched_at = now  # an attempt counts, so selection rotates past dead boards
+    await _schedule_next(db, company, failed=True)  # and its next slot backs off exponentially
     if disabled:
         await db.execute(
             sa.update(Job).where(Job.source == company.ats, Job.company_id == company.id, Job.is_active.is_(True)).values(is_active=False)
@@ -231,6 +263,7 @@ async def ingest_company(db: AsyncSession, client: httpx.AsyncClient, company: C
             company.last_error = stats.error
             company.last_fetched_at = datetime.now(UTC)
             _recipe_run(company, 0)
+            await _schedule_next(db, company)
             await db.commit()
             return stats
         stats.deactivated = await deactivate_missing(db, company.ats, company.id, [])
@@ -238,21 +271,26 @@ async def ingest_company(db: AsyncSession, client: httpx.AsyncClient, company: C
     _record_success(company, now)
     company.last_fetched_at = now
     _recipe_run(company, len(postings))
+    await _schedule_next(db, company)
     await db.commit()
     return stats
 
 
 async def ingest_boards(
     session_factory: SessionFactory, *, ats: str | None = None, slug: str | None = None,
-    concurrency: int | None = None,
+    concurrency: int | None = None, all_boards: bool = False,
 ) -> list[IngestStats]:
-    """Poll every enabled company board. One company failing never affects the others."""
+    """Poll every enabled company board, or with the adaptive schedule only those that are due
+    (an explicit `ats`/`slug` or `all_boards` always fetches). One company failing never affects
+    the others."""
     async with session_factory() as db:
         q = sa.select(Company).where(Company.enabled.is_(True)).order_by(Company.id)
         if ats:
             q = q.where(Company.ats == ats)
         if slug:
             q = q.where(Company.slug == slug)
+        if get_settings().adaptive_schedule_enabled and not (ats or slug or all_boards):
+            q = q.where(sa.or_(Company.next_fetch_at.is_(None), Company.next_fetch_at <= schedule.now()))
         boards = list((await db.scalars(q)).all())
         if not slug:  # an explicit board is always fetched; otherwise cap the discovered ones
             statuses = (await db.scalars(

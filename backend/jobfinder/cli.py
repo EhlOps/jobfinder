@@ -24,7 +24,9 @@ async def ingest(args: argparse.Namespace) -> int:
     from jobfinder.db import SessionLocal
     from jobfinder.ingest.runner import run_ingest
 
-    out = await run_ingest(SessionLocal, ats=args.ats, slug=args.company, jobspy=True if args.jobspy else None)
+    out = await run_ingest(
+        SessionLocal, ats=args.ats, slug=args.company, jobspy=True if args.jobspy else None, all_boards=True
+    )
     for r in out["detail"]:
         status = f"ERROR: {r['error']}" if r["error"] else "ok"
         print(f"{r['company']:<22} {r['source']:<10} fetched={r['fetched']:<4} new={r['new']:<4} "
@@ -255,6 +257,7 @@ async def set_board(args: argparse.Namespace) -> int:
             # same as the admin page's re-enable: counters reset; a merely failing board keeps them
             company.enabled, company.consecutive_failures = True, 0
             company.disabled_reason = company.last_error = None
+            company.next_fetch_at = None  # due on the next tick, not after the failure backoff
         if args.enabled is not None:
             changes["enabled"] = args.enabled
         await db.commit()
