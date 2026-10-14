@@ -34,8 +34,14 @@ if TYPE_CHECKING:
 log = logging.getLogger("jobfinder.resolve")
 
 MAX_URL_CHARS = 2048
-SUPPORTED = "Greenhouse, Lever, Ashby, Workable, SmartRecruiters, Recruitee, BambooHR and Workday"
-UNSUPPORTED = f"We can't read this site's job board yet. Links from {SUPPORTED} work today."
+SUPPORTED = (
+    "Greenhouse, Lever, Ashby, Workable, SmartRecruiters, Recruitee, BambooHR, Workday, iCIMS, "
+    "Oracle Recruiting, SuccessFactors, Eightfold, Phenom and Taleo"
+)
+UNSUPPORTED = (
+    "We can't read this site's job board yet. Links from career sites on "
+    f"{SUPPORTED} work best; we also try the company's own careers pages."
+)
 SINGLE_ONLY = "We saved this job, but couldn't find the rest of the company's job board yet."
 _HEADERS = {"User-Agent": "JobFinder/0.1 (+personal job search)"}
 LINK_SOURCE = "link"  # Job.source for a pasted posting kept on its own (no board)
