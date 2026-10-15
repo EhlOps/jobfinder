@@ -24,8 +24,9 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: images-${{ github.event.pull_request.number || github.ref }}
-  # Only superseded PR builds are cancelled: every push to main/dev must publish its sha-<short> tag,
+  group: images-${{ github.event.pull_request.number || github.sha }}
+  # PRs share a group and cancel superseded builds. Pushes get one group per commit (a shared group
+  # would still drop queued runs), so every push to main/dev publishes its sha-<short> tag,
   # because overlays pin images by SHA (#43).
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
