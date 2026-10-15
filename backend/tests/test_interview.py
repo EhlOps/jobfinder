@@ -1,3 +1,4 @@
+import pytest
 import sqlalchemy as sa
 from factories import make_match, make_user
 
@@ -62,6 +63,7 @@ async def test_audit_keeps_queue_order_and_appends_only_new_questions(maker):
         assert ai.seen["queued"] == ["What did you own at Acme?", "Notice period?"]
 
 
+@pytest.mark.real_commit
 async def test_answer_during_audit_is_not_readded_and_skip_survives(maker):
     async with maker() as db:
         u = await make_user(db)
