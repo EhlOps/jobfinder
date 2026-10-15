@@ -1,0 +1,96 @@
+# Builds the four arm64 images (the k3s host is aarch64) and publishes them to GHCR:
+#   ghcr.io/ehlops/jobfinder-{api,worker,renderer,web}:{sha-<short sha>,main|dev}
+# Pull requests build only (no push), to catch broken Dockerfiles before merge.
+#
+# One-time step for the owner: a package created by the first push starts out PRIVATE, even though
+# the repo is public. Open each package (github.com/EhlOps?tab=packages → jobfinder-<name> →
+# Package settings → Change visibility) and switch it to Public. Until then k3s pulls fail with
+# 401/403, because the cluster uses no pull secret.
+name: images
+
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - ".github/workflows/images.yml"
+  pull_request:
+    branches: [main, dev]
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - ".github/workflows/images.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: images-${{ github.event.pull_request.number || github.sha }}
+  # PRs share a group and cancel superseded builds. Pushes get one group per commit (a shared group
+  # would still drop queued runs), so every push to main/dev publishes its sha-<short> tag,
+  # because overlays pin images by SHA (#43).
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    name: build (${{ matrix.name }})
+    runs-on: ubuntu-24.04-arm  # native arm64: no QEMU emulation
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: api
+            context: backend
+            dockerfile: backend/Dockerfile
+          - name: worker  # WITH_JOBSPY keeps its Dockerfile default (false)
+            context: backend
+            dockerfile: backend/Dockerfile.worker
+          - name: renderer
+            context: backend
+            dockerfile: backend/Dockerfile.renderer
+          - name: web
+            context: frontend
+            dockerfile: frontend/Dockerfile
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4.4.1
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Tags: sha-<short sha> always, plus the branch name (main/dev) on pushes and pr-<n> on PRs.
+      # The default labels include org.opencontainers.image.source, which links the package to the repo.
+      - name: Image metadata
+        id: meta
+        uses: docker/metadata-action@v6.2.0
+        with:
+          images: ghcr.io/ehlops/jobfinder-${{ matrix.name }}
+          tags: |
+            type=sha,prefix=sha-
+            type=ref,event=branch
+            type=ref,event=pr
+          labels: |
+            org.opencontainers.image.title=jobfinder-${{ matrix.name }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v7.4.0
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,scope=${{ matrix.name }},mode=max
