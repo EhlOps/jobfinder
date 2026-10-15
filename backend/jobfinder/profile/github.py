@@ -3,7 +3,7 @@ import re
 
 import httpx
 
-from jobfinder.config import get_settings
+from jobfinder.core.config import settings
 
 API = "https://api.github.com"
 _USER_RE = re.compile(r"^(?:https?://)?(?:www\.)?github\.com/([A-Za-z0-9-]+)/?", re.IGNORECASE)
@@ -46,7 +46,7 @@ def summarize_repos(username: str, repos: list[dict], readmes: dict[str, str]) -
 async def fetch_github_summary(url: str) -> str:
     username = parse_username(url)
     headers = {"Accept": "application/vnd.github+json", "User-Agent": "JobFinder"}
-    if token := get_settings().github_token:
+    if token := settings.github_token:
         headers["Authorization"] = f"Bearer {token}"
     async with httpx.AsyncClient(timeout=15, headers=headers) as client:
         resp = await client.get(

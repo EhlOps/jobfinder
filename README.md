@@ -45,6 +45,16 @@ Ports are bound to `127.0.0.1`. On a remote machine, tunnel them to browse from 
 
 Postgres is also published on `localhost:5433` (for host-side tests and migrations). Set `API_PORT` / `WEB_PORT` / `DB_PORT` in `.env` to change host ports. AI steps need `CLAUDE_CODE_OAUTH_TOKEN` in `backend/.env` (see below).
 
+### Configuration
+
+Every backend setting is an env var, listed with its default and a comment in
+[`backend/.env.defaults`](backend/.env.defaults) (committed, no secrets). `backend/.env` (gitignored) overrides any
+of them and holds the secrets; the process environment (compose `environment:`) overrides both. There are no
+defaults in Python: a key missing from all three, or a bad value, stops the api, worker or CLI at startup with
+a message naming every such key. Run backend commands from `backend/` (the images use `/app`), where both files
+are read. To add a setting, declare it in `backend/jobfinder/core/config.py` and add it, in the same place, to
+`.env.defaults`; a test fails when the two disagree.
+
 ## Access (invite-only)
 
 There is no sign-up. Add each person yourself, then they set their own password from an emailed link:
@@ -226,11 +236,12 @@ cd frontend && npm install && npm test        # Vitest + Testing Library (no bac
 cd frontend && npm install && npm run dev
 ```
 
-To run the worker on the host (uses your own logged-in `claude` CLI) against the compose database:
+To run the api or worker on the host (the worker uses your own logged-in `claude` CLI) against the compose database:
 
 ```sh
 cd backend && DATABASE_URL=postgresql+asyncpg://jobfinder:change-me@localhost:5433/jobfinder \
   uv run python -m jobfinder.worker
+cd backend && DATABASE_URL=... uv run uvicorn jobfinder.api.app:create_app --factory --reload
 ```
 
 Point the host worker (and api) at a shared `STORE_DIR` if you run them on the host. Stop the docker `worker` first (`docker compose stop worker`) so the two don't compete for tasks.

@@ -18,6 +18,7 @@ import sqlalchemy as sa
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from jobfinder.core.http import USER_AGENT
 from jobfinder.ingest.base import JobPosting
 from jobfinder.ingest.discovery.robots import PoliteFetcher
 from jobfinder.ingest.http_safety import SafeResponse
@@ -43,7 +44,7 @@ UNSUPPORTED = (
     f"{SUPPORTED} work best; we also try the company's own careers pages."
 )
 SINGLE_ONLY = "We saved this job, but couldn't find the rest of the company's job board yet."
-_HEADERS = {"User-Agent": "JobFinder/0.1 (+personal job search)"}
+_HEADERS = {"User-Agent": USER_AGENT}
 LINK_SOURCE = "link"  # Job.source for a pasted posting kept on its own (no board)
 
 

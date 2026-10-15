@@ -19,7 +19,7 @@ from sqlalchemy import false as sa_false
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
-from jobfinder.db import Base
+from jobfinder.core.db import Base
 
 JSONType = JSON().with_variant(JSONB(), "postgresql")
 

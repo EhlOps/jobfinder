@@ -16,11 +16,9 @@ from jobfinder.ai.schemas import (
     ProfileAudit,
     TailoredResume,
 )
-from jobfinder.config import get_settings
+from jobfinder.core.config import settings
 
 PROMPTS = Path(__file__).parent / "prompts"
-MAX_SOURCE_CHARS = 30_000
-MAX_JOB_CHARS = 12_000
 MAX_PAGE_CHARS = 40_000  # recipe induction: the careers page after stripping scripts and styles
 MAX_SAMPLE_CHARS = 8_000
 MAX_SAMPLES = 3
@@ -51,7 +49,7 @@ class AITasks:
 
     async def extract_profile(self, sources: list[tuple[str, str]]) -> Background:
         """sources: (label, text) pairs, e.g. ("resume.pdf", "..."), ("github", "...")."""
-        blocks, budget = [], MAX_SOURCE_CHARS
+        blocks, budget = [], settings.ai_max_source_chars
         for label, text in sources:
             if budget <= 0:
                 break
@@ -62,7 +60,7 @@ class AITasks:
             "Extract the profile from these sources.\n\n" + "\n\n".join(blocks),
             system=load_prompt("profile_extract"),
             output=Background,
-            model="sonnet",
+            model=settings.profile_model,
             task="extract_profile",
             timeout_s=240,
         )
@@ -79,7 +77,7 @@ class AITasks:
             "Here is what we know so far.\n\n" + data_block("data", json.dumps(known, indent=1)),
             system=load_prompt("followups"),
             output=FollowupQuestions,
-            model="sonnet",
+            model=settings.followup_model,
             task="followup_questions",
         )
         return result.questions[:10]
@@ -102,7 +100,7 @@ class AITasks:
             "Audit this candidate.\n\n" + data_block("data", json.dumps(known, indent=1)),
             system=load_prompt("profile_audit"),
             output=ProfileAudit,
-            model="sonnet",
+            model=settings.audit_model,
             task="audit_profile",
             timeout_s=240,
         )
@@ -110,7 +108,7 @@ class AITasks:
     async def ping(self) -> bool:
         """Cheapest possible call, used to check that Claude is connected."""
         out = await self.claude.run(
-            "Reply with ok=true.", system="Reply with JSON only.", output=Ping, model="haiku",
+            "Reply with ok=true.", system="Reply with JSON only.", output=Ping, model=settings.ai_check_model,
             timeout_s=60, task="ai_check",
         )
         return out.ok
@@ -134,10 +132,10 @@ class AITasks:
             "Assess this candidate for this job.\n\n"
             + data_block("candidate", json.dumps(candidate, indent=1))
             + "\n\n"
-            + data_block("job", json.dumps(posting, indent=1) + "\n\nDescription:\n" + (job.get("description") or "")[:MAX_JOB_CHARS])
+            + data_block("job", json.dumps(posting, indent=1) + "\n\nDescription:\n" + (job.get("description") or "")[:settings.ai_max_job_chars])
         )
         return await self.claude.run(
-            body, system=load_prompt("match"), output=MatchScore, model=get_settings().match_model, task="score_match",
+            body, system=load_prompt("match"), output=MatchScore, model=settings.match_model, task="score_match",
             timeout_s=180,
         )
 
@@ -156,7 +154,7 @@ class AITasks:
             "Write the cover letter.\n",
             f"Tone and length: {TONES[tone]}\n",
             data_block("candidate", json.dumps(candidate, indent=1)),
-            data_block("job", json.dumps(posting, indent=1) + "\n\nDescription:\n" + (job.get("description") or "")[:MAX_JOB_CHARS]),
+            data_block("job", json.dumps(posting, indent=1) + "\n\nDescription:\n" + (job.get("description") or "")[:settings.ai_max_job_chars]),
         ]
         if analysis:
             parts.append(data_block("analysis", json.dumps(analysis, indent=1)))
@@ -166,7 +164,7 @@ class AITasks:
 
         async def draft(extra: str = "") -> str:
             text = await self.claude.run(
-                prompt + extra, system=load_prompt("cover_letter"), model="sonnet", task="cover_letter", timeout_s=180,
+                prompt + extra, system=load_prompt("cover_letter"), model=settings.letter_model, task="cover_letter", timeout_s=180,
             )
             return clean_letter(text)
 
@@ -192,7 +190,7 @@ class AITasks:
         ])
         return await self.claude.run(
             body, system=load_prompt("consolidate_questions").replace("{max_questions}", str(max_questions)),
-            output=Consolidated, model="sonnet", task="consolidate_questions", timeout_s=120,
+            output=Consolidated, model=settings.questions_model, task="consolidate_questions", timeout_s=120,
         )
 
     async def tailor_resume(
@@ -206,7 +204,7 @@ class AITasks:
         }
         posting = {k: v for k, v in job.items() if k != "description" and v not in (None, "")}
         parts = ["Tailor the resume to this job.\n", data_block("candidate", json.dumps(candidate, indent=1))]
-        budget = MAX_SOURCE_CHARS
+        budget = settings.ai_max_source_chars
         for label, text in documents:
             if budget <= 0:
                 break
@@ -214,10 +212,10 @@ class AITasks:
             budget -= len(chunk)
             parts.append(data_block("document", chunk, f'name="{label}"'))
         parts.append(
-            data_block("job", json.dumps(posting, indent=1) + "\n\nDescription:\n" + (job.get("description") or "")[:MAX_JOB_CHARS])
+            data_block("job", json.dumps(posting, indent=1) + "\n\nDescription:\n" + (job.get("description") or "")[:settings.ai_max_job_chars])
         )
         return await self.claude.run(
-            "\n\n".join(parts), system=load_prompt("resume_tailor"), output=TailoredResume, model="sonnet",
+            "\n\n".join(parts), system=load_prompt("resume_tailor"), output=TailoredResume, model=settings.resume_model,
             task="tailor_resume", timeout_s=180,
         )
 
@@ -243,7 +241,7 @@ class AITasks:
             parts.append(data_block("data", failure[:1000], 'kind="failure"'))
         return await self.claude.run(
             "\n\n".join(parts), system=load_prompt("recipe_induce"), output=InducedRecipe,
-            model=get_settings().recipe_model, task="recipe_induce", timeout_s=240,
+            model=settings.recipe_model, task="recipe_induce", timeout_s=240,
         )
 
 

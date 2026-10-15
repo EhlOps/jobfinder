@@ -43,18 +43,21 @@ Trade-off: a quiet board is also checked for closed postings only as often as it
 from __future__ import annotations
 
 import math
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
+
+from jobfinder.core.clock import utcnow
+from jobfinder.core.config import settings
 
 CHURN_WINDOW = timedelta(days=7)
-CHURN_PIVOT = 7  # new postings per window that earn the base interval (about one a day)
 TIER_WEIGHT = {1: 4.0, 2: 2.0}  # anything else (3, None) weighs 1
-JITTER = 0.2  # up to this fraction of the interval is added, fixed per board
 FIRST_BATCH = timedelta(minutes=1)  # jobs first seen this close to a board's first job are its backlog
+# INGEST_CHURN_PIVOT: new postings per window that earn the base interval (about one a day).
+# INGEST_JITTER: up to this fraction of the interval is added, fixed per board.
 
 
 def now() -> datetime:
     """The scheduler's clock (patched in tests)."""
-    return datetime.now(UTC)
+    return utcnow()
 
 
 def effective_tier(coveted_tier: int | None, origin: str | None) -> int | None:
@@ -66,7 +69,7 @@ def effective_tier(coveted_tier: int | None, origin: str | None) -> int | None:
 
 def churn_factor(new_jobs: int, base: int, max_minutes: int) -> float:
     quiet = base / max_minutes
-    return max(quiet, math.log2(1 + max(new_jobs, 0)) / math.log2(1 + CHURN_PIVOT))
+    return max(quiet, math.log2(1 + max(new_jobs, 0)) / math.log2(1 + settings.ingest_churn_pivot))
 
 
 def tier_ceiling(tier: int | None, base: int, max_minutes: int) -> int:
@@ -94,9 +97,9 @@ def failure_delay(interval: int, consecutive_failures: int, max_minutes: int) ->
 
 
 def jitter_minutes(company_id: int, interval: int) -> int:
-    """A fixed 0–JITTER share of the interval, derived from the board id (Knuth's hash)."""
+    """A fixed 0–INGEST_JITTER share of the interval, derived from the board id (Knuth's hash)."""
     frac = ((company_id * 2654435761) % 2**32) / 2**32
-    return int(interval * JITTER * frac)
+    return int(interval * settings.ingest_jitter * frac)
 
 
 def next_fetch(company_id: int, delay_minutes: int, at: datetime, max_minutes: int) -> datetime:

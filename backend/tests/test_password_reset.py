@@ -6,6 +6,7 @@ import sqlalchemy as sa
 
 from jobfinder.auth.security import hash_session_token
 from jobfinder.config import Settings, get_settings
+from jobfinder.core.db import database_url
 from jobfinder.models import Profile, Session, User
 from jobfinder.notify import tokens
 from jobfinder.notify.tokens import make_password_token, make_token
@@ -194,8 +195,8 @@ def test_secret_key_guard(monkeypatch):
     monkeypatch.delenv("SECRET_KEY", raising=False)
     for bad in ("", "dev-insecure-change-me", "short"):
         with pytest.raises(ValueError):
-            Settings(secret_key=bad, _env_file=None)
-    assert Settings(secret_key="k" * 40, _env_file=None).secret_key == "k" * 40
+            Settings(_env_file=".env.defaults", secret_key=bad)
+    assert Settings(_env_file=".env.defaults", secret_key="k" * 40).secret_key == "k" * 40
 
 
 def test_fingerprint_empty_for_pending():
@@ -249,15 +250,16 @@ def test_database_url_is_built_from_parts_with_an_encoded_password(monkeypatch):
     monkeypatch.setenv("POSTGRES_USER", "jobfinder")
     monkeypatch.setenv("POSTGRES_PASSWORD", pw)
     monkeypatch.setenv("POSTGRES_DB", "jobs")
-    url = Settings(secret_key="k" * 40, _env_file=None).database_url
+    url = database_url(Settings(_env_file=".env.defaults", secret_key="k" * 40))
     assert url == f"postgresql+asyncpg://jobfinder:{quote(pw, safe='')}@db:5432/jobs"
     parts = urlsplit(url)
     assert parts.hostname == "db" and parts.port == 5432 and parts.path == "/jobs"
     monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://x:y@h:1/z")  # an explicit URL wins
-    assert Settings(secret_key="k" * 40, _env_file=None).database_url == "postgresql+asyncpg://x:y@h:1/z"
+    assert database_url(Settings(_env_file=".env.defaults", secret_key="k" * 40)) == "postgresql+asyncpg://x:y@h:1/z"
 
 
 def test_database_url_default_without_postgres_host(monkeypatch):
     for k in ("DATABASE_URL", "POSTGRES_HOST"):
         monkeypatch.delenv(k, raising=False)
-    assert "localhost:5432" in Settings(secret_key="k" * 40, _env_file=None).database_url
+    url = database_url(Settings(_env_file=".env.defaults", secret_key="k" * 40))
+    assert url == "postgresql+asyncpg://jobfinder:change-me@localhost:5432/jobfinder"  # the old default

@@ -1,22 +1,19 @@
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Literal
 
 import sqlalchemy as sa
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from jobfinder.auth.security import current_user
-from jobfinder.db import get_db
+from jobfinder.api.deps import CurrentUser, DbSession
 from jobfinder.letters.docx_export import build_docx, filename
 from jobfinder.models import CoverLetter, Job, JobMatch, Profile, Task, User
 from jobfinder.scheduling import queue
 
 router = APIRouter(prefix="/api/matches/{match_id}/cover-letter", tags=["cover letters"])
 
-DB = Annotated[AsyncSession, Depends(get_db)]
-CurrentUser = Annotated[User, Depends(current_user)]
 Tone = Literal["professional", "warm", "concise", "enthusiastic"]
 DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 MAX_LETTER_CHARS = 10_000
@@ -76,7 +73,7 @@ def _out(letter: CoverLetter, profile_version: int) -> LetterOut:
 
 
 @router.get("", response_model=LetterState)
-async def get_letter(match_id: int, user: CurrentUser, db: DB):
+async def get_letter(match_id: int, user: CurrentUser, db: DbSession):
     _, job = await _match_and_job(db, user, match_id)
     letter = await _letter(db, user, job.id)
     profile = await db.get(Profile, user.id)
@@ -95,7 +92,7 @@ async def get_letter(match_id: int, user: CurrentUser, db: DB):
 
 
 @router.post("", response_model=TaskRef, status_code=202)
-async def generate(match_id: int, body: GenerateIn, user: CurrentUser, db: DB):
+async def generate(match_id: int, body: GenerateIn, user: CurrentUser, db: DbSession):
     """Draft (or redraft) the letter in the worker. Poll GET /api/tasks/{id}, then GET this resource."""
     _, job = await _match_and_job(db, user, match_id)
     profile = await db.get(Profile, user.id)
@@ -111,7 +108,7 @@ async def generate(match_id: int, body: GenerateIn, user: CurrentUser, db: DB):
 
 
 @router.put("", response_model=LetterOut)
-async def save_edits(match_id: int, body: ContentIn, user: CurrentUser, db: DB):
+async def save_edits(match_id: int, body: ContentIn, user: CurrentUser, db: DbSession):
     _, job = await _match_and_job(db, user, match_id)
     letter = await _letter(db, user, job.id)
     if not letter:
@@ -126,14 +123,14 @@ async def save_edits(match_id: int, body: ContentIn, user: CurrentUser, db: DB):
 
 
 @router.delete("", status_code=204)
-async def delete_letter(match_id: int, user: CurrentUser, db: DB):
+async def delete_letter(match_id: int, user: CurrentUser, db: DbSession):
     _, job = await _match_and_job(db, user, match_id)
     await db.execute(sa.delete(CoverLetter).where(CoverLetter.user_id == user.id, CoverLetter.job_id == job.id))
     await db.commit()
 
 
 @router.get("/download")
-async def download(match_id: int, user: CurrentUser, db: DB):
+async def download(match_id: int, user: CurrentUser, db: DbSession):
     _, job = await _match_and_job(db, user, match_id)
     letter = await _letter(db, user, job.id)
     if not letter:

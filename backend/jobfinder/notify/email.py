@@ -5,7 +5,7 @@ from email.utils import formataddr, parseaddr
 
 import aiosmtplib
 
-from jobfinder.config import get_settings
+from jobfinder.core.config import settings
 
 
 class EmailError(Exception):
@@ -15,7 +15,7 @@ class EmailError(Exception):
 def build_message(
     to: str, subject: str, text: str, html: str | None = None, headers: dict[str, str] | None = None
 ) -> EmailMessage:
-    s = get_settings()
+    s = settings
     # Long single-token headers (List-Unsubscribe URLs) must stay plain `<url>`; the default 78-char limit
     # would turn them into RFC 2047 encoded words that mail clients don't treat as a link.
     msg = EmailMessage(policy=policy.default.clone(max_line_length=998))
@@ -34,7 +34,7 @@ def build_message(
 async def send_email(
     to: str, subject: str, text: str, html: str | None = None, headers: dict[str, str] | None = None
 ) -> None:
-    s = get_settings()
+    s = settings
     msg = build_message(to, subject, text, html, headers)
     try:
         await aiosmtplib.send(

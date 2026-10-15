@@ -8,7 +8,7 @@ import os
 from pathlib import Path
 from typing import Literal
 
-from jobfinder.config import get_settings
+from jobfinder.core.config import settings
 
 MIN_LEN, MAX_LEN = 20, 1000
 
@@ -18,7 +18,7 @@ class InvalidToken(ValueError):
 
 
 def token_path() -> Path:
-    return Path(get_settings().claude_auth_dir) / "oauth_token"
+    return Path(settings.claude_auth_dir) / "oauth_token"
 
 
 def read_token() -> str | None:
@@ -54,4 +54,4 @@ def delete_token() -> None:
 def source() -> Literal["file", "env", "none"]:
     if read_token():
         return "file"
-    return "env" if get_settings().claude_code_oauth_token else "none"
+    return "env" if settings.claude_code_oauth_token else "none"

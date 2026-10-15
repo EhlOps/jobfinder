@@ -11,7 +11,7 @@ import httpx
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from jobfinder.config import get_settings
+from jobfinder.core.config import settings
 from jobfinder.ingest.discovery.robots import PoliteFetcher, RobotsDisallowed, make_client
 from jobfinder.ingest.sources.custom import board_for_url as custom_board_for_url
 from jobfinder.ingest.sources.eightfold import board_from_url as eightfold_board
@@ -136,7 +136,7 @@ async def validate_candidates(
     fetcher: PoliteFetcher, boards: list[tuple[str, str]], concurrency: int | None = None
 ) -> list[ValidationResult]:
     """Probe boards concurrently (bounded), list-only and robots-checked; results are in input order."""
-    sem = asyncio.Semaphore(max(concurrency or get_settings().ingest_concurrency, 1))
+    sem = asyncio.Semaphore(max(concurrency or settings.ingest_concurrency, 1))
     probe_client = _PoliteClient(fetcher)
 
     async def one(ats: str, slug: str) -> ValidationResult:
@@ -209,7 +209,7 @@ async def discover_boards(
     sources: list[Source] | None = None,
 ) -> DiscoveryResult:
     """Run every enabled source, then validate and add at most max_candidates new boards."""
-    cap = get_settings().discovery_max_candidates if max_candidates is None else max_candidates
+    cap = settings.discovery_max_candidates if max_candidates is None else max_candidates
     own = client is None
     client = client or make_client()
     result = DiscoveryResult()

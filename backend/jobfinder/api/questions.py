@@ -1,19 +1,15 @@
 """Clarifying questions: answered in the app (logged in) or from the link in the email (signed token)."""
-from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from jobfinder.auth.security import current_user
-from jobfinder.db import get_db
+from jobfinder.api.deps import CurrentUser, DbSession
 from jobfinder.models import User
 from jobfinder.notify.tokens import InvalidToken, read_token
 from jobfinder.questions import service
 
 router = APIRouter(tags=["questions"])
-DB = Annotated[AsyncSession, Depends(get_db)]
 
 
 class QuestionJob(BaseModel):
@@ -60,23 +56,23 @@ def _user_from_token(purpose: str, token: str) -> int:
 
 # ── logged in ────────────────────────────────────────────────────────────
 @router.get("/api/questions", response_model=QuestionList)
-async def my_questions(user: Annotated[User, Depends(current_user)], db: DB):
+async def my_questions(user: CurrentUser, db: DbSession):
     return QuestionList(questions=await service.list_open(db, user.id))
 
 
 @router.post("/api/questions/answers", response_model=AnswerResult)
-async def answer_mine(body: AnswersIn, user: Annotated[User, Depends(current_user)], db: DB):
+async def answer_mine(body: AnswersIn, user: CurrentUser, db: DbSession):
     return AnswerResult(**await service.answer_questions(db, user.id, [a.model_dump() for a in body.answers]))
 
 
 # ── from the email link (no login; the signed token is the authorisation) ─
 @router.get("/api/q/{token}", response_model=QuestionList)
-async def questions_by_token(token: str, db: DB):
+async def questions_by_token(token: str, db: DbSession):
     return QuestionList(questions=await service.list_open(db, _user_from_token("questions", token)))
 
 
 @router.post("/api/q/{token}/answers", response_model=AnswerResult)
-async def answer_by_token(token: str, body: AnswersIn, db: DB):
+async def answer_by_token(token: str, body: AnswersIn, db: DbSession):
     uid = _user_from_token("questions", token)
     return AnswerResult(**await service.answer_questions(db, uid, [a.model_dump() for a in body.answers]))
 
@@ -106,7 +102,7 @@ async def unsubscribe_confirm(token: str):
 
 
 @router.post("/api/unsubscribe/{token}", response_class=HTMLResponse)
-async def unsubscribe(token: str, db: DB):
+async def unsubscribe(token: str, db: DbSession):
     """The confirmation button and the List-Unsubscribe one-click header (RFC 8058) both POST here."""
     try:
         uid = read_token("unsubscribe", token)

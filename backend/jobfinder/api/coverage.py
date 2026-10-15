@@ -1,22 +1,18 @@
 """Admin › Coverage: how sought-after each employer is, and the coveted ones we can't read yet."""
 from datetime import UTC, datetime
-from typing import Annotated, Literal
+from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from jobfinder.auth.security import require_admin
-from jobfinder.db import get_db
+from jobfinder.api.deps import AdminUser, DbSession
 from jobfinder.ingest import coveted
-from jobfinder.models import Company, CovetedTarget, Job, User
+from jobfinder.models import Company, CovetedTarget, Job
 from jobfinder.scheduling import queue
 
 router = APIRouter(prefix="/api/admin/coverage", tags=["coverage"])
 
-DB = Annotated[AsyncSession, Depends(get_db)]
-Admin = Annotated[User, Depends(require_admin)]
 BAD_DOMAIN = "Enter the employer's bare domain, like acme.com (no https://, path or port)."
 
 
@@ -90,7 +86,7 @@ def _target_row(t: CovetedTarget) -> TargetRow:
 
 
 @router.get("", response_model=Coverage)
-async def coverage(_: Admin, db: DB):
+async def coverage(_: AdminUser, db: DbSession):
     """Coveted employers (tier 1-2, or pinned/unpinned by an admin), most coveted first, plus unresolved targets."""
     now = datetime.now(UTC)
     companies = (await db.scalars(
@@ -123,7 +119,7 @@ async def coverage(_: Admin, db: DB):
 
 
 @router.post("/pin", response_model=PinOut)
-async def pin(body: PinIn, _: Admin, db: DB):
+async def pin(body: PinIn, _: AdminUser, db: DbSession):
     """Pin a known company (tier 1 whatever its score), or add an employer we have no board for by name and
     domain; the latter is sent through the resolver right away."""
     if body.company_id is not None:
@@ -157,7 +153,7 @@ async def pin(body: PinIn, _: Admin, db: DB):
 
 
 @router.post("/unpin", response_model=PinOut)
-async def unpin(body: UnpinIn, _: Admin, db: DB):
+async def unpin(body: UnpinIn, _: AdminUser, db: DbSession):
     """Undo a pin. For a company, `exclude` marks it not coveted at all; for a target with no board, the target
     is dropped."""
     if body.target_id is not None:
@@ -181,13 +177,13 @@ async def unpin(body: UnpinIn, _: Admin, db: DB):
 
 
 @router.post("/rescore", response_model=TaskRef, status_code=202)
-async def rescore(_: Admin, db: DB):
+async def rescore(_: AdminUser, db: DbSession):
     task = await queue.enqueue(db, "score_coveted", dedupe=True)
     return TaskRef(task_id=task.id)
 
 
 @router.post("/targets/{target_id}/resolve", response_model=TaskRef, status_code=202)
-async def resolve_target(target_id: int, _: Admin, db: DB):
+async def resolve_target(target_id: int, _: AdminUser, db: DbSession):
     if await db.get(CovetedTarget, target_id) is None:
         raise HTTPException(404, "No such employer")
     task = await queue.enqueue(db, "audit_coverage", {"target_id": target_id}, dedupe=True)
@@ -195,7 +191,7 @@ async def resolve_target(target_id: int, _: Admin, db: DB):
 
 
 @router.post("/{company_id}/resolve", response_model=TaskRef, status_code=202)
-async def resolve_company(company_id: int, _: Admin, db: DB):
+async def resolve_company(company_id: int, _: AdminUser, db: DbSession):
     if await db.get(Company, company_id) is None:
         raise HTTPException(404, "No such company")
     task = await queue.enqueue(db, "audit_coverage", {"company_id": company_id}, dedupe=True)

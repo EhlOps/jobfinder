@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jobfinder.ai.tasks import AITasks
-from jobfinder.config import get_settings
+from jobfinder.core.config import settings
 from jobfinder.models import ClarifyingQuestion, Job, JobMatch, Profile, ProfileFact
 from jobfinder.scheduling import queue
 
@@ -38,7 +38,7 @@ async def collect_questions(db: AsyncSession, ai: AITasks, user_id: int) -> dict
     the candidate can fill. No LLM call when there is nothing to review."""
     base = sa.and_(JobMatch.user_id == user_id, JobMatch.questions_collected.is_(False))
 
-    if await open_count(db, user_id) >= get_settings().max_open_questions:
+    if await open_count(db, user_id) >= settings.max_open_questions:
         return {"new_questions": 0, "reviewed": 0, "skipped": "too many unanswered questions already"}
 
     rows = (
@@ -78,8 +78,8 @@ async def collect_questions(db: AsyncSession, ai: AITasks, user_id: int) -> dict
             (q.question, q.status)
             for q in await db.scalars(sa.select(ClarifyingQuestion).where(ClarifyingQuestion.user_id == user_id))
         ]
-        room = max(0, get_settings().max_open_questions - await open_count(db, user_id))
-        result = await ai.consolidate_questions(facts, asked, raw, max_questions=min(room, get_settings().questions_per_email))
+        room = max(0, settings.max_open_questions - await open_count(db, user_id))
+        result = await ai.consolidate_questions(facts, asked, raw, max_questions=min(room, settings.questions_per_email))
         existing = {_norm(q) for q, _ in asked} | {_norm(q) for q, _ in facts}
         for cq in result.questions[:room]:
             text = cq.question.strip()

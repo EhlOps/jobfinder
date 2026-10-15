@@ -6,7 +6,7 @@ from urllib.parse import urljoin, urlsplit
 import httpx
 import sqlalchemy as sa
 
-from jobfinder.config import get_settings
+from jobfinder.core.config import settings
 from jobfinder.ingest.base import JobPosting
 from jobfinder.ingest.recipes import (
     MAX_ITEMS,
@@ -35,7 +35,7 @@ async def run_rendered(client: httpx.AsyncClient, recipe: Recipe, slug: str, com
                        wait_s: float = LIST_WAIT_S) -> list[JobPosting]:
     from jobfinder.renderer import LIST, RenderError, RenderUnavailable, request_render
 
-    if not get_settings().renderer_enabled:
+    if not settings.renderer_enabled:
         raise RecipeUnavailable("this board needs the renderer, which is switched off (RENDERER_ENABLED)")
     try:
         result = await request_render(LIST, {"recipe": recipe.model_dump(mode="json")}, timeout_s=wait_s)

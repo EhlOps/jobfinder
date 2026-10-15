@@ -4,7 +4,7 @@ import hashlib
 
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
-from jobfinder.config import get_settings
+from jobfinder.core.config import settings
 
 MAX_AGE = {"questions": 14 * 86400, "unsubscribe": 365 * 86400}
 
@@ -16,7 +16,7 @@ class InvalidToken(Exception):
 
 
 def _serializer(purpose: str) -> URLSafeTimedSerializer:
-    return URLSafeTimedSerializer(get_settings().secret_key, salt=f"jobfinder-{purpose}")
+    return URLSafeTimedSerializer(settings.secret_key, salt=f"jobfinder-{purpose}")
 
 
 def make_token(purpose: str, user_id: int) -> str:
@@ -44,7 +44,7 @@ def make_password_token(user_id: int, password_hash: str | None) -> str:
 
 def read_password_token(token: str) -> tuple[int, str]:
     try:
-        data = _serializer("password-reset").loads(token, max_age=get_settings().password_link_ttl_minutes * 60)
+        data = _serializer("password-reset").loads(token, max_age=settings.password_link_ttl_minutes * 60)
         return int(data["u"]), str(data["f"])
     except SignatureExpired:
         raise InvalidToken(expired=True) from None

@@ -23,6 +23,8 @@ ARG WITH_JOBSPY=false
 COPY pyproject.toml uv.lock* ./
 RUN uv sync --locked --no-dev --no-install-project $([ "$WITH_JOBSPY" = "true" ] && echo "--extra jobspy")
 
+# Every setting's default; the app reads it from the working directory (/app).
+COPY .env.defaults ./
 COPY jobfinder ./jobfinder
 RUN uv sync --locked --no-dev $([ "$WITH_JOBSPY" = "true" ] && echo "--extra jobspy") \
     && mkdir -p /data/store /data/claude /tmp/claude-scratch \

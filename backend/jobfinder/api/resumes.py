@@ -4,14 +4,13 @@ from datetime import datetime
 from typing import Annotated, Literal
 
 import sqlalchemy as sa
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import Response
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jobfinder.ai.schemas import TailoredResume
-from jobfinder.auth.security import current_user
-from jobfinder.db import get_db
+from jobfinder.api.deps import CurrentUser, DbSession
 from jobfinder.models import Job, JobMatch, Profile, Task, User
 from jobfinder.resumes import keywords, service
 from jobfinder.resumes.export import render_docx, render_pdf, resume_to_text
@@ -20,8 +19,6 @@ from jobfinder.storage.documents import DocumentMeta, DocumentStore, NotFound, g
 
 router = APIRouter(prefix="/api/matches/{match_id}/resume", tags=["resumes"])
 
-DB = Annotated[AsyncSession, Depends(get_db)]
-CurrentUser = Annotated[User, Depends(current_user)]
 DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 PDF = "application/pdf"
 EDITED_TAG = service.EDITED_TAG
@@ -94,7 +91,7 @@ def _out(job: Job, meta: DocumentMeta, resume: TailoredResume) -> ResumeOut:
 
 
 @router.get("", response_model=ResumeState)
-async def get_resume(match_id: int, user: CurrentUser, db: DB):
+async def get_resume(match_id: int, user: CurrentUser, db: DbSession):
     job = await _job(db, user, match_id)
     found = _current(get_store(), user.id, match_id)
     pending = (
@@ -112,7 +109,7 @@ async def get_resume(match_id: int, user: CurrentUser, db: DB):
 
 
 @router.post("", response_model=TaskRef, status_code=202)
-async def generate(match_id: int, body: GenerateIn, user: CurrentUser, db: DB):
+async def generate(match_id: int, body: GenerateIn, user: CurrentUser, db: DbSession):
     """Tailor (or re-tailor) the resume in the worker. Poll GET /api/tasks/{id}, then GET this resource."""
     await _job(db, user, match_id)
     profile = await db.get(Profile, user.id)
@@ -127,7 +124,7 @@ async def generate(match_id: int, body: GenerateIn, user: CurrentUser, db: DB):
 
 
 @router.put("", response_model=ResumeOut)
-async def save_edits(match_id: int, body: EditIn, user: CurrentUser, db: DB):
+async def save_edits(match_id: int, body: EditIn, user: CurrentUser, db: DbSession):
     job = await _job(db, user, match_id)
     store = get_store()
     found = _current(store, user.id, match_id)
@@ -145,7 +142,7 @@ async def save_edits(match_id: int, body: EditIn, user: CurrentUser, db: DB):
 
 
 @router.delete("", status_code=204)
-async def delete_resume(match_id: int, user: CurrentUser, db: DB):
+async def delete_resume(match_id: int, user: CurrentUser, db: DbSession):
     await _job(db, user, match_id)
     store = get_store()
     for meta in store.list(user.id, kind="resume", tags=service.match_tags(match_id)):
@@ -156,7 +153,7 @@ async def delete_resume(match_id: int, user: CurrentUser, db: DB):
 
 
 @router.get("/download")
-async def download(match_id: int, user: CurrentUser, db: DB, format: Annotated[Literal["docx", "pdf"], Query()] = "docx"):
+async def download(match_id: int, user: CurrentUser, db: DbSession, format: Annotated[Literal["docx", "pdf"], Query()] = "docx"):
     job = await _job(db, user, match_id)
     found = _current(get_store(), user.id, match_id)
     if not found:

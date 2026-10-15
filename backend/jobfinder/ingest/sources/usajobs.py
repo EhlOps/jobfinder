@@ -14,7 +14,7 @@ import httpx
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from jobfinder.config import get_settings
+from jobfinder.core.config import settings
 from jobfinder.ingest.base import (
     MAX_DESCRIPTION_CHARS,
     JobPosting,
@@ -108,7 +108,7 @@ def parse_usajobs(data: dict) -> list[JobPosting]:
 
 async def build_locations(db: AsyncSession, limit: int | None = None) -> list[str | None]:
     """Nationwide (None) plus distinct place names from users' target locations, capped."""
-    limit = limit or get_settings().usajobs_max_locations
+    limit = limit or settings.usajobs_max_locations
     seen: dict[str, str] = {}
     q = sa.select(Profile.status).join(User, User.id == Profile.user_id).where(User.activated_at.is_not(None))
     for (status,) in (await db.execute(q.order_by(Profile.user_id))).all():
@@ -149,7 +149,7 @@ async def _search(
 
 async def fetch_usajobs(client: httpx.AsyncClient, locations: list[str | None] | None = None) -> list[JobPosting]:
     """No-op unless both the API key and contact email are set. One failing location never loses the others; if every query fails, the first error is raised."""
-    s = get_settings()
+    s = settings
     if not s.usajobs_enabled:
         if s.usajobs_api_key or s.usajobs_email:
             log.warning("usajobs needs both USAJOBS_API_KEY and USAJOBS_EMAIL; source disabled")

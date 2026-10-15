@@ -65,7 +65,9 @@ def test_rung_is_registered_between_listing_sniff_and_llm():
 
 
 def test_renderer_is_off_by_default():
-    assert type(get_settings()).model_fields["renderer_enabled"].default is False
+    from dotenv import dotenv_values
+
+    assert dotenv_values(Path(__file__).parents[1] / ".env.defaults")["RENDERER_ENABLED"] == "false"
 
 
 async def test_disabled_rung_passes_without_enqueueing(maker):

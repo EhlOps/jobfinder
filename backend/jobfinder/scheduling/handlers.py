@@ -59,14 +59,14 @@ async def audit_profile(db: AsyncSession, ai: AITasks, task: Task) -> dict:
 
 async def ingest_jobs(db: AsyncSession, ai: AITasks, task: Task) -> dict:
     """Poll all ATS boards (and jobspy/usajobs when enabled). Scheduling this is milestone 7."""
-    from jobfinder.config import get_settings
+    from jobfinder.core.config import settings
     from jobfinder.db import SessionLocal
     from jobfinder.ingest.runner import run_ingest
 
     summary = await run_ingest(SessionLocal)
     # Matching is planned, not fanned out: the planner picks who needs it most and staggers the runs.
     # Adaptive ticks come every few minutes and often fetch nothing: plan only when jobs changed.
-    if not get_settings().adaptive_schedule_enabled or summary.get("new") or summary.get("deactivated"):
+    if not settings.adaptive_schedule_enabled or summary.get("new") or summary.get("deactivated"):
         await queue.enqueue(db, "plan_work", dedupe=True)
     return summary
 
@@ -190,10 +190,10 @@ async def _llm_allowed(db: AsyncSession) -> bool:
     """The resolver may ask Claude unless it's switched off or the planner is backing off a rate limit."""
     from datetime import UTC, datetime
 
-    from jobfinder.config import get_settings
+    from jobfinder.core.config import settings
     from jobfinder.scheduling import planner
 
-    return get_settings().resolver_llm_enabled and await planner.backoff_until(db, datetime.now(UTC)) is None
+    return settings.resolver_llm_enabled and await planner.backoff_until(db, datetime.now(UTC)) is None
 
 
 async def reinduce_recipe(db: AsyncSession, ai: AITasks, task: Task) -> dict:
@@ -201,11 +201,11 @@ async def reinduce_recipe(db: AsyncSession, ai: AITasks, task: Task) -> dict:
     twice a week per domain (ingest.recipes.health)."""
     from datetime import UTC, datetime, timedelta
 
-    from jobfinder.config import get_settings
+    from jobfinder.core.config import settings
     from jobfinder.ingest.resolve.rungs.llm import reinduce_company
 
     company_id, attempt = int(task.payload["company_id"]), int(task.payload.get("attempt", 0))
-    if not get_settings().resolver_llm_enabled:
+    if not settings.resolver_llm_enabled:
         return {"skipped": "llm disabled"}
     if await _llm_allowed(db):
         out = await reinduce_company(db, ai, company_id)
@@ -214,7 +214,7 @@ async def reinduce_recipe(db: AsyncSession, ai: AITasks, task: Task) -> dict:
     # Not now (rate limit, AI down, site unreachable): an auto-disabled board is never fetched again, so no
     # later run would queue it. Try again after the planner's backoff, a few times.
     if out.pop("retry", False) and attempt < REINDUCE_RETRIES:
-        later = datetime.now(UTC) + timedelta(minutes=get_settings().planner_backoff_minutes)
+        later = datetime.now(UTC) + timedelta(minutes=settings.planner_backoff_minutes)
         await queue.enqueue(db, "reinduce_recipe", {"company_id": company_id, "attempt": attempt + 1},
                             run_after=later, dedupe=True)
         out["requeued"] = later.isoformat()

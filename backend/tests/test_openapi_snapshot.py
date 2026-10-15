@@ -28,10 +28,11 @@ from typing import Any, Literal, get_args, get_origin
 import pytest
 from fastapi.routing import APIRoute, iter_route_contexts
 
-from jobfinder.main import app
+from jobfinder.api.app import create_app
 
 SNAPSHOT_DIR = Path(__file__).parent / "snapshots"
 REGEN_CMD = "UPDATE_SNAPSHOTS=1 uv run pytest tests/test_openapi_snapshot.py"
+app = create_app()
 
 
 def _dump(data: Any) -> str:

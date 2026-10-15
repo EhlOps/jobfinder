@@ -1,12 +1,11 @@
-from typing import Annotated, Any, Literal
+from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from jobfinder.auth.security import current_user
-from jobfinder.db import get_db
+from jobfinder.api.deps import CurrentUser, DbSession
 from jobfinder.matching.prefilter import career_stage
 from jobfinder.models import Profile, ProfileFact, User
 
@@ -91,7 +90,7 @@ async def get_profile(db: AsyncSession, user: User) -> Profile:
 
 @router.get("", response_model=ProfileOut)
 async def read_profile(
-    user: Annotated[User, Depends(current_user)], db: Annotated[AsyncSession, Depends(get_db)]
+    user: CurrentUser, db: DbSession
 ):
     profile = await get_profile(db, user)
     await db.commit()
@@ -101,8 +100,8 @@ async def read_profile(
 @router.put("/status", response_model=ProfileOut)
 async def put_status(
     body: Status,
-    user: Annotated[User, Depends(current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    user: CurrentUser,
+    db: DbSession,
 ):
     profile = await get_profile(db, user)
     profile.status = body.model_dump()
@@ -114,8 +113,8 @@ async def put_status(
 @router.put("/background", response_model=ProfileOut)
 async def put_background(
     body: dict[str, Any],
-    user: Annotated[User, Depends(current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    user: CurrentUser,
+    db: DbSession,
 ):
     """Free-form for now; milestone 3 defines the extracted schema."""
     profile = await get_profile(db, user)
@@ -127,7 +126,7 @@ async def put_background(
 
 @router.get("/facts", response_model=list[FactOut])
 async def list_facts(
-    user: Annotated[User, Depends(current_user)], db: Annotated[AsyncSession, Depends(get_db)]
+    user: CurrentUser, db: DbSession
 ):
     rows = await db.execute(
         select(ProfileFact).where(ProfileFact.user_id == user.id).order_by(ProfileFact.id)
@@ -138,8 +137,8 @@ async def list_facts(
 @router.post("/facts", response_model=FactOut, status_code=201)
 async def add_fact(
     body: FactIn,
-    user: Annotated[User, Depends(current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    user: CurrentUser,
+    db: DbSession,
 ):
     fact = ProfileFact(user_id=user.id, **body.model_dump())
     db.add(fact)
@@ -151,8 +150,8 @@ async def add_fact(
 @router.delete("/facts/{fact_id}", status_code=204)
 async def delete_fact(
     fact_id: int,
-    user: Annotated[User, Depends(current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    user: CurrentUser,
+    db: DbSession,
 ):
     fact = await db.get(ProfileFact, fact_id)
     if not fact or fact.user_id != user.id:

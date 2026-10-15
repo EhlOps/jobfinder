@@ -39,7 +39,8 @@ import sqlalchemy as sa
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from jobfinder.config import get_settings
+from jobfinder.core.config import settings
+from jobfinder.core.urls import clean_domain
 from jobfinder.ingest.discovery.robots import PoliteFetcher
 from jobfinder.ingest.http_safety import TEXT_TYPES, FetchError, safe_fetch
 from jobfinder.ingest.resolve.ladder import PAGE_MAX_BYTES
@@ -55,15 +56,6 @@ ENGAGEMENT_FLOOR = 10  # the engagement count that scores full marks when nobody
 OUTCOME_SHRINK = 5  # matches needed before outcomes count for half their weight
 FAILING_DAYS = 14
 
-# A bare hostname: labels of letters, digits and inner hyphens, at least one dot, a letter-only TLD.
-DOMAIN_RE = re.compile(r"^(?=.{4,255}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$")
-
-
-def clean_domain(raw: str) -> str | None:
-    """'Acme.COM' -> 'acme.com'; None for anything that isn't a bare hostname (scheme, path, port, spaces)."""
-    d = (raw or "").strip().lower().rstrip(".")
-    d = d.removeprefix("www.")
-    return d if DOMAIN_RE.match(d) else None
 
 
 @dataclass
@@ -289,7 +281,7 @@ async def resolve_target(db: AsyncSession, target: CovetedTarget, client: httpx.
 async def audit_coverage(db: AsyncSession, limit: int | None = None, client: httpx.AsyncClient | None = None, *,
                          company_id: int | None = None, target_id: int | None = None) -> dict:
     """Send coveted employers with no working board through the resolver (or just the one asked for)."""
-    limit = get_settings().coverage_resolves_per_run if limit is None else limit
+    limit = settings.coverage_resolves_per_run if limit is None else limit
     now = datetime.now(UTC)
     if company_id is not None:
         company = await db.get(Company, company_id)

@@ -1,22 +1,17 @@
-from typing import Annotated
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy.ext.asyncio import AsyncSession
 
+from jobfinder.api.deps import CurrentUser, DbSession
 from jobfinder.auth import ratelimit
-from jobfinder.auth.security import current_user
-from jobfinder.config import get_settings
-from jobfinder.db import get_db
+from jobfinder.core.config import settings
 from jobfinder.models import Profile, User
 from jobfinder.notify import daily
 from jobfinder.notify.email import EmailError
 from jobfinder.scheduling import queue
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
-DB = Annotated[AsyncSession, Depends(get_db)]
-CurrentUser = Annotated[User, Depends(current_user)]
 
 
 class SettingsBody(BaseModel):
@@ -42,7 +37,7 @@ def _out(u: User) -> SettingsBody:
         digest_enabled=bool(u.digest_enabled), digest_hour=8 if u.digest_hour is None else u.digest_hour,
         timezone=u.timezone or "UTC", question_emails_enabled=bool(u.question_emails_enabled),
         match_budget_enabled=u.match_budget_enabled is not False,
-        match_budget=u.match_budget if u.match_budget is not None else get_settings().match_daily_llm_budget,
+        match_budget=u.match_budget if u.match_budget is not None else settings.match_daily_llm_budget,
     )
 
 
@@ -52,7 +47,7 @@ async def read_settings(user: CurrentUser):
 
 
 @router.put("", response_model=SettingsBody)
-async def write_settings(body: SettingsBody, user: CurrentUser, db: DB):
+async def write_settings(body: SettingsBody, user: CurrentUser, db: DbSession):
     user.digest_enabled, user.digest_hour = body.digest_enabled, body.digest_hour
     user.timezone, user.question_emails_enabled = body.timezone, body.question_emails_enabled
     before = _out(user)
@@ -78,9 +73,9 @@ class PreviewResult(BaseModel):
 
 
 @router.post("/digest/preview", response_model=PreviewResult)
-async def send_preview(user: CurrentUser, db: DB):
+async def send_preview(user: CurrentUser, db: DbSession):
     """Email yourself what the daily email looks like right now (marks nothing as sent)."""
-    s = get_settings()
+    s = settings
     if await ratelimit.count_since(db, "preview_email", str(user.id), 3600) >= s.preview_emails_per_hour:
         raise HTTPException(429, "Too many preview emails. Try again later.")
     await ratelimit.hit(db, "preview_email", str(user.id))
