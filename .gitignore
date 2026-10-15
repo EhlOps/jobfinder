@@ -51,3 +51,6 @@ docker-compose.override.yml
 
 # ── Backups (deploy/backup.sh) ────────────────────────────────────────────
 backups/
+
+# ── sealed-secrets controller key backup (docs/k3s.md); never commit ─────
+sealed-secrets-key*.yaml
