@@ -1,0 +1,6 @@
+# The namespace every JobFinder workload lives in. Overlays may rename it
+# (staging uses jobfinder-staging) via their `namespace:` field.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: jobfinder

@@ -1,0 +1,19 @@
+# Platform smoke test for #38: a whoami pod behind Traefik on
+# 127.0.0.1:8280/healthz. It lives in its own namespace, so
+# `kubectl delete -k deploy/k8s/hello` removes it without touching the
+# jobfinder namespaces.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: jobfinder-hello
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: jobfinder
+      app.kubernetes.io/managed-by: kustomize
+
+resources:
+  - namespace.yaml
+  - deployment.yaml
+  - service.yaml
+  - ingress.yaml

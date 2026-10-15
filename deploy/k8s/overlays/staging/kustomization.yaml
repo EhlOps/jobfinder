@@ -1,0 +1,22 @@
+# Staging: same manifests as prod, isolated in its own namespace so both can
+# run side by side on the single node without name collisions.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Overrides the base namespace for every object, including the Namespace
+# object itself (kustomize renames it).
+namespace: jobfinder-staging
+
+resources:
+  - ../../base
+
+labels:
+  - pairs:
+      app.kubernetes.io/instance: staging
+
+# Placeholders for later issues:
+# - #40/#43: sealed-secret.yaml, sealed for the jobfinder-staging namespace
+#   (a SealedSecret only decrypts in the namespace it was sealed for).
+# - #43: `images:` entries pinning ghcr.io/ehlops/jobfinder-* to a commit SHA,
+#   and a configMapGenerator built from .env.defaults.
+# - #43: replica / resource patches under `patches:`.
