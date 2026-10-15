@@ -35,12 +35,22 @@ The script is idempotent. It prints the status of the compose site, the api and 
 ```sh
 kubectl get nodes                                   # Ready
 kubectl -n kube-system get pods                     # all Running / Completed
-sudo ss -ltnp | grep -E ':(80|443|8280)\b'          # 8280 on 127.0.0.1 only; 80/443 = caddy
+sudo ss -ltnp | grep -E ':(80|443)\b'               # only caddy
+sudo iptables-save | grep 'dport 8280.*DNAT'        # hostPort is a DNAT rule, -d 127.0.0.1 only (no socket in ss)
+curl -s -m 4 http://$(hostname -I | cut -d' ' -f1):8280/ || echo 'not reachable off loopback: good'
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8280/          # 404: Traefik, no routes
 kubeseal --fetch-cert | head -1                     # -----BEGIN CERTIFICATE-----
 kubectl apply -k deploy/k8s/hello && kubectl -n jobfinder-hello rollout status deploy/hello
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8280/healthz   # 200
 ```
+
+Gotchas this script already handles (keep them if you change it):
+
+- **SELinux label.** With the installer's RPM step skipped it doesn't relabel either, and `/usr/local/bin/k3s` keeps `user_tmp_t`, which systemd can't execute ("Permission denied" in `journalctl -u k3s`). The script runs `restorecon` before starting k3s.
+- **Traefik bind address.** The chart reuses `ports.web.hostIP` as the in-pod entrypoint address, so Traefik would listen only on the pod's loopback and refuse the DNAT'd traffic. `additionalArguments` re-binds the entrypoint to `:8000` inside the pod.
+- **Rolling update on one node.** The new Traefik pod can't bind hostPort 8280 while the old one runs, so the strategy is `maxSurge: 0`.
+- **kubectl as opc.** k3s's bundled kubectl ignores `~/.kube/config`; `/etc/profile.d/k3s-kubeconfig.sh` sets `KUBECONFIG` for non-root logins.
+- **sudo PATH.** `secure_path` omits `/usr/local/bin`; the script prepends it.
 
 If 8280 doesn't answer, check that the Traefik pod has `hostPort 8280` with `hostIP 127.0.0.1`
 (`kubectl -n kube-system get pod -l app.kubernetes.io/name=traefik -o yaml | grep -A3 hostPort`) and that the

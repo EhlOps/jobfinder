@@ -9,6 +9,7 @@
 #
 # Usage: sudo bash deploy/k3s/install.sh      Runbook: docs/k3s.md
 set -euo pipefail
+export PATH="/usr/local/bin:$PATH"   # sudo's secure_path leaves out where k3s and kubeseal live
 
 K3S_VERSION="v1.36.5+k3s1"
 K3S_SELINUX_RPM="https://github.com/k3s-io/k3s-selinux/releases/download/v1.6.latest.1/k3s-selinux-1.6-1.el9.noarch.rpm"
@@ -52,10 +53,13 @@ install -m 0600 "$here"/manifests/*.yaml /var/lib/rancher/k3s/server/manifests/
 log "k3s $K3S_VERSION"
 if [[ "$(k3s --version 2>/dev/null | head -1)" != *"$K3S_VERSION"* ]]; then
     # The policy RPM is already installed above; the installer's own repo has no el10 entry.
-    curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="$K3S_VERSION" INSTALL_K3S_SKIP_SELINUX_RPM=true sh -s - server
-else
-    systemctl enable --now k3s
+    # INSTALL_K3S_SKIP_START: with the RPM step skipped the installer also skips relabelling, and the binary
+    # keeps the user_tmp_t label it was downloaded with, which systemd (init_t) may not execute.
+    curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="$K3S_VERSION" INSTALL_K3S_SKIP_SELINUX_RPM=true \
+        INSTALL_K3S_SKIP_START=true sh -s - server
 fi
+restorecon -R /usr/local/bin/k3s /etc/rancher /var/lib/rancher
+systemctl enable --now k3s
 
 log "firewalld: trust cluster CIDRs (runtime + permanent, no reload)"
 for cidr in "${CLUSTER_CIDRS[@]}"; do
@@ -70,6 +74,11 @@ home="$(getent passwd "$KUBE_USER" | cut -d: -f6)"
 install -d -m 0700 -o "$KUBE_USER" -g "$KUBE_USER" "$home/.kube"
 for _ in $(seq 60); do [[ -s /etc/rancher/k3s/k3s.yaml ]] && break; sleep 2; done
 install -m 0600 -o "$KUBE_USER" -g "$KUBE_USER" /etc/rancher/k3s/k3s.yaml "$home/.kube/config"
+# k3s's bundled kubectl ignores ~/.kube/config and falls back to the root-only /etc/rancher/k3s/k3s.yaml.
+cat > /etc/profile.d/k3s-kubeconfig.sh <<'EOF'
+# Managed by deploy/k3s/install.sh
+if [ "$(id -u)" -ne 0 ] && [ -r "$HOME/.kube/config" ]; then export KUBECONFIG="$HOME/.kube/config"; fi
+EOF
 
 log "kubeseal $KUBESEAL_VERSION"
 if [[ "$(kubeseal --version 2>/dev/null)" != *"$KUBESEAL_VERSION"* ]]; then

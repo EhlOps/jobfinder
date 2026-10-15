@@ -9,6 +9,16 @@ spec:
   valuesContent: |-
     service:
       type: ClusterIP        # servicelb is disabled; a LoadBalancer would sit pending
+    # The chart reuses ports.web.hostIP as the in-pod bind address too, which would leave Traefik listening on
+    # the pod's own loopback. Re-bind inside the pod; hostIP still limits the host side to 127.0.0.1.
+    # One node and a hostPort: the old pod must stop before the new one can bind 8280.
+    updateStrategy:
+      type: RollingUpdate
+      rollingUpdate:
+        maxSurge: 0
+        maxUnavailable: 1
+    additionalArguments:
+      - "--entryPoints.web.address=:8000/tcp"
     ports:
       web:
         hostPort: 8280
