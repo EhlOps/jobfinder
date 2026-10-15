@@ -25,7 +25,9 @@ on:
 
 concurrency:
   group: images-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # Only superseded PR builds are cancelled: every push to main/dev must publish its sha-<short> tag,
+  # because overlays pin images by SHA (#43).
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
