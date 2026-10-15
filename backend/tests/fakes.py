@@ -9,6 +9,7 @@
   container.
 """
 import asyncio
+from contextlib import suppress
 from datetime import datetime
 
 import httpx
@@ -218,10 +219,13 @@ def fake_resolve_public(*, refuse_internal: bool = False, refuse_private: bool =
 
 
 class FakeRenderer:
-    """Plays the renderer container: completes render_* tasks with canned results and records them."""
+    """Plays the renderer container: completes render_* tasks with canned results and records them.
 
-    def __init__(self, maker, results):
-        self.maker, self.results, self.seen = maker, results, []
+    `fail`, when set, fails every task with that error (no retry) instead of completing it.
+    """
+
+    def __init__(self, maker, results, *, fail: str | None = None):
+        self.maker, self.results, self.fail, self.seen = maker, results, fail, []
 
     async def loop(self):
         while True:
@@ -229,7 +233,10 @@ class FakeRenderer:
                 t = await queue.claim(db, kind_prefix=queue.RENDER_PREFIX)
                 if t:
                     self.seen.append((t.kind, t.payload))
-                    await queue.complete(db, t, self.results[t.kind])
+                    if self.fail:
+                        await queue.fail(db, t, self.fail, retry=False)
+                    else:
+                        await queue.complete(db, t, self.results[t.kind])
                     continue
             await asyncio.sleep(0.01)
 
@@ -238,4 +245,8 @@ class FakeRenderer:
         return self
 
     async def __aexit__(self, *exc):
+        # Wait for the cancel to land, so the loop can't still hold a connection mid-claim when the test
+        # ends and the engine is disposed.
         self.task.cancel()
+        with suppress(asyncio.CancelledError):
+            await self.task
