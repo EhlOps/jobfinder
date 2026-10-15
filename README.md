@@ -221,7 +221,7 @@ If you use postfix direct mode, also back up the `dkim` volume.
 
 ```sh
 docker compose up -d db                      # tests need Postgres on localhost:5433
-cd backend && uv sync && uv run pytest       # creates/uses a jobfinder_test database
+cd backend && uv sync && uv run pytest -n auto   # ~35 s; one jobfinder_test_<worker> DB per xdist worker
 cd frontend && npm install && npm test        # Vitest + Testing Library (no backend needed)
 cd frontend && npm install && npm run dev
 ```
@@ -237,12 +237,12 @@ Point the host worker (and api) at a shared `STORE_DIR` if you run them on the h
 
 ### Working in parallel worktrees
 
-Each task gets its own worktree and its own test database, so parallel `pytest` runs don't drop each other's schema:
+Each task gets its own worktree and its own `TEST_DB` prefix, so parallel `pytest` runs don't drop each other's schema. Within one run every xdist worker uses `<TEST_DB>_<worker>` (built once, each test rolled back) and `<TEST_DB>_<worker>_rc` for tests marked `real_commit`:
 
 ```sh
 git worktree add ../jobfinder-<task> -b plan/<task> main
 cd ../jobfinder-<task>/backend && uv sync
-TEST_DB=jobfinder_test_<task> uv run pytest -q     # TEST_DB defaults to jobfinder_test
+TEST_DB=jobfinder_test_<task> uv run pytest -n auto -q   # TEST_DB defaults to jobfinder_test
 ```
 
 Set `TEST_ADMIN_URL` if your Postgres is not on `localhost:5433` or uses a different password (URL-encode special characters such as `@` and `!`).
