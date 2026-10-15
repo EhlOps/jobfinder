@@ -17,6 +17,7 @@ from jobfinder.ingest.resolve.rungs import RUNGS
 from jobfinder.ingest.resolve.rungs.listing import MAX_FETCHES, ListingRung, job_pattern
 from jobfinder.ingest.service import ingest_company
 from jobfinder.models import Company, Job, JobLink
+from tests.fakes import fake_resolve_public
 
 FIXTURES = Path(__file__).parent / "fixtures"
 JOB_PAGE = (FIXTURES / "recipe_job_page.html").read_text()
@@ -28,10 +29,7 @@ PLAIN_JOB_PAGE = '<html><body><h1>Robotics Engineer</h1><a href="/careers">Caree
 
 @pytest.fixture(autouse=True)
 def public_dns(monkeypatch):
-    async def fake(url):
-        return httpx.URL(url).host, "93.184.216.34"
-
-    monkeypatch.setattr(http_safety, "resolve_public", fake)
+    monkeypatch.setattr(http_safety, "resolve_public", fake_resolve_public())
 
 
 class Site:

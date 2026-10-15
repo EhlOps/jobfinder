@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 
 import pytest
 import sqlalchemy as sa
-from factories import FakeAI, make_match, make_question, make_user, unknown
+from factories import make_match, make_question, make_user, unknown
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from jobfinder.ai.claude_code import AIError
@@ -14,6 +14,7 @@ from jobfinder.notify import email as mail
 from jobfinder.notify.email import EmailError
 from jobfinder.notify.tokens import read_token
 from jobfinder.worker import run_task
+from tests.fakes import FakeQuestionsAI
 
 
 @pytest.fixture
@@ -246,7 +247,7 @@ async def run_tick(maker, ai=None):
         db.add(t)
         await db.commit()
         tid = t.id
-    await run_task(tid, ai or FakeAI(), maker)
+    await run_task(tid, ai or FakeQuestionsAI(), maker)
     async with maker() as db:
         return (await db.get(Task, tid)).result
 
@@ -292,7 +293,7 @@ async def test_tick_collects_questions_first_and_survives_ai_errors(maker, outbo
         await make_match(db, ok.id, score=70, confidence=0.4, unknowns=[unknown("Another?")])   # a match that also has good news
         await db.execute(sa.update(JobMatch).values(confidence=0.4))
         await db.commit()
-    out = await run_tick(maker, FakeAI(error=AIError("rate_limited", "limit")))
+    out = await run_tick(maker, FakeQuestionsAI(error=AIError("rate_limited", "limit")))
     assert out["sent"] == 1 and out["errors"] == {}                              # matches still go out when collection fails
 
 

@@ -1,7 +1,6 @@
 """Small DB factories shared by the notification/question tests."""
 from datetime import UTC, datetime
 
-from jobfinder.ai.schemas import Consolidated, ConsolidatedQuestion
 from jobfinder.models import ClarifyingQuestion, Job, JobMatch, Profile, User
 
 _n = 0
@@ -56,18 +55,3 @@ async def make_question(db, user_id, text="Have you used Kafka?", *, status="pen
 
 def unknown(q, why="the job asks for it"):
     return {"question": q, "why": why}
-
-
-class FakeAI:
-    """consolidate_questions: by default every raw question becomes its own question."""
-
-    def __init__(self, result: Consolidated | None = None, error: Exception | None = None):
-        self.result, self.error, self.calls = result, error, []
-
-    async def consolidate_questions(self, facts, asked, raw, max_questions=6):
-        self.calls.append({"facts": facts, "asked": asked, "raw": raw, "max": max_questions})
-        if self.error:
-            raise self.error
-        return self.result or Consolidated(
-            questions=[ConsolidatedQuestion(question=q, why=w, sources=[i]) for i, (q, w) in enumerate(raw)]
-        )

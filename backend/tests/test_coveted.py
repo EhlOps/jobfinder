@@ -18,6 +18,7 @@ from jobfinder.ingest.coveted import (
 from jobfinder.ingest.discovery import DiscoveryResult, Source, discover_boards
 from jobfinder.models import Company, CovetedTarget, Job, JobLink, Task
 from jobfinder.scheduling import handlers
+from tests.fakes import fake_resolve_public
 
 GOOD = {"jobs": [
     {"id": 1, "title": "Robotics Engineer", "absolute_url": "https://boards.greenhouse.io/acme/jobs/1",
@@ -32,10 +33,7 @@ def maker(engine):
 
 @pytest.fixture(autouse=True)
 def public_dns(monkeypatch):
-    async def fake(url):
-        return httpx.URL(url).host, "93.184.216.34"
-
-    monkeypatch.setattr(http_safety, "resolve_public", fake)
+    monkeypatch.setattr(http_safety, "resolve_public", fake_resolve_public())
 
 
 def site(routes: dict[str, httpx.Response], calls: list[str] | None = None):

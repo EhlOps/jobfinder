@@ -7,18 +7,9 @@ from jobfinder.ai import credentials
 from jobfinder.ai.claude_code import AIError
 from jobfinder.models import AICall, User
 from jobfinder.worker import run_task
+from tests.fakes import FakePingAI
 
 TOKEN = "sk-ant-oat01-" + "z" * 40
-
-
-class FakeAI:
-    def __init__(self, error: AIError | None = None):
-        self.error = error
-
-    async def ping(self):
-        if self.error:
-            raise self.error
-        return True
 
 
 async def _set_admin(engine, email, value):
@@ -98,12 +89,12 @@ async def test_check_task_reports_success_and_real_error(client, engine, make_ac
 
     tid = (await client.post("/api/admin/ai/check")).json()["task_id"]
     assert (await client.post("/api/admin/ai/check")).json()["task_id"] == tid  # deduped while pending
-    await run_task(tid, FakeAI(), maker)
+    await run_task(tid, FakePingAI(), maker)
     t = (await client.get(f"/api/tasks/{tid}")).json()
     assert t["status"] == "done" and t["result"] == {"ok": True}
 
     tid2 = (await client.post("/api/admin/ai/check")).json()["task_id"]
-    await run_task(tid2, FakeAI(AIError("auth", "Not logged in")), maker)
+    await run_task(tid2, FakePingAI(AIError("auth", "Not logged in")), maker)
     t = (await client.get(f"/api/tasks/{tid2}")).json()
     # an AI problem is a *result* the page can show, not a failed/retried task
     assert t["status"] == "done" and t["result"] == {"ok": False, "error_kind": "auth", "error": "Not logged in"}

@@ -20,6 +20,7 @@ from jobfinder.ingest.sources.taleo import (
     parse_taleo,
 )
 from jobfinder.ingest.validate import SLUG_RE, validate_board
+from tests.fakes import fake_resolve_public
 
 FIX = Path(__file__).parent / "fixtures"
 SLUG = "cu__2"
@@ -33,10 +34,7 @@ DEAD_HTML = (FIX / "taleo_unavailable.html").read_text()
 @pytest.fixture(autouse=True)
 def public_dns(monkeypatch):
     """robots.txt is fetched through safe_fetch (IP-pinned): no real DNS in unit tests."""
-    async def fake(url):
-        return httpx.URL(url).host, "93.184.216.34"
-
-    monkeypatch.setattr(http_safety, "resolve_public", fake)
+    monkeypatch.setattr(http_safety, "resolve_public", fake_resolve_public())
 
 
 def req(job_id, contest, title="Engineer", loc='["Aurora"]', date="Oct 13, 2026"):

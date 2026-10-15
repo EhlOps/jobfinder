@@ -1,6 +1,6 @@
 import pytest
 import sqlalchemy as sa
-from factories import FakeAI, make_match, make_question, make_user, unknown
+from factories import make_match, make_question, make_user, unknown
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from jobfinder.ai.claude_code import AIError
@@ -8,6 +8,7 @@ from jobfinder.ai.schemas import Consolidated, ConsolidatedQuestion
 from jobfinder.config import get_settings
 from jobfinder.models import ClarifyingQuestion, JobMatch, Profile, ProfileFact, Task
 from jobfinder.questions import service
+from tests.fakes import FakeQuestionsAI
 
 
 @pytest.fixture
@@ -27,7 +28,7 @@ async def test_every_active_undismissed_match_is_considered_whatever_its_score(m
         poor, _ = await make_match(db, u.id, score=30, confidence=0.3, unknowns=[unknown("Also ignored?")])
         dismissed, _ = await make_match(db, u.id, score=70, confidence=0.4, status="dismissed", unknowns=[unknown("Dismissed?")])
         closed, _ = await make_match(db, u.id, score=70, confidence=0.4, active=False, unknowns=[unknown("Closed?")])
-        ai = FakeAI()
+        ai = FakeQuestionsAI()
         out = await service.collect_questions(db, ai, u.id)
         assert sorted(r[0] for r in ai.calls[0]["raw"]) == ["Also ignored?", "Have you used Kafka?", "Ignored?"]
         assert out["reviewed"] == 3
@@ -40,7 +41,7 @@ async def test_no_llm_call_when_nothing_to_review(maker):
     async with maker() as db:
         u = await make_user(db)
         await make_match(db, u.id, score=90, confidence=0.9, unknowns=[])
-        ai = FakeAI()
+        ai = FakeQuestionsAI()
         out = await service.collect_questions(db, ai, u.id)
         assert ai.calls == [] and out["new_questions"] == 0
         assert (await service.collect_questions(db, ai, u.id))["new_questions"] == 0      # and nothing is re-reviewed
@@ -58,7 +59,7 @@ async def test_consolidation_merges_sources_and_drops_answered(maker):
             questions=[ConsolidatedQuestion(question="Have you used AI coding tools like Copilot?", why="many jobs ask", sources=[0, 1])],
             already_answered=[2],
         )
-        ai = FakeAI(result)
+        ai = FakeQuestionsAI(result)
         await service.collect_questions(db, ai, u.id)
         assert ai.calls[0]["facts"] == [("Rust?", "Yes, two years")]
         (q,) = (await db.scalars(sa.select(ClarifyingQuestion))).all()
@@ -71,11 +72,11 @@ async def test_duplicates_across_runs_and_existing_questions_are_not_recreated(m
         u = await make_user(db)
         await make_question(db, u.id, "Have you used Kafka?", status="skipped")
         await make_match(db, u.id, score=75, confidence=0.5, unknowns=[unknown("have you used kafka")])   # same text, different punctuation
-        out = await service.collect_questions(db, FakeAI(), u.id)
+        out = await service.collect_questions(db, FakeQuestionsAI(), u.id)
         assert out["new_questions"] == 0 and len((await db.scalars(sa.select(ClarifyingQuestion))).all()) == 1
         # previously asked questions are passed to the model so it can drop paraphrases
         await make_match(db, u.id, score=75, confidence=0.5, unknowns=[unknown("Another new thing?")])
-        ai = FakeAI()
+        ai = FakeQuestionsAI()
         await service.collect_questions(db, ai, u.id)
         assert ai.calls[0]["asked"] == [("Have you used Kafka?", "skipped")]
 
@@ -86,7 +87,7 @@ async def test_open_question_cap_stops_collection(maker, monkeypatch):
         u = await make_user(db)
         await make_question(db, u.id, "Q1?"), await make_question(db, u.id, "Q2?", status="emailed")
         m, _ = await make_match(db, u.id, score=75, confidence=0.5, unknowns=[unknown("Q3?")])
-        ai = FakeAI()
+        ai = FakeQuestionsAI()
         out = await service.collect_questions(db, ai, u.id)
         assert ai.calls == [] and "too many" in out["skipped"] and not (await collected(db))[m.id]
 
@@ -97,7 +98,7 @@ async def test_room_limits_how_many_are_created(maker, monkeypatch):
         u = await make_user(db)
         await make_question(db, u.id, "Existing?")
         await make_match(db, u.id, score=75, confidence=0.5, unknowns=[unknown(f"New question {i}?") for i in range(5)])
-        ai = FakeAI()
+        ai = FakeQuestionsAI()
         await service.collect_questions(db, ai, u.id)
         assert ai.calls[0]["max"] == 2 and len((await db.scalars(sa.select(ClarifyingQuestion))).all()) == 3
 
@@ -107,9 +108,9 @@ async def test_ai_failure_leaves_matches_for_the_next_attempt(maker):
         u = await make_user(db)
         m, _ = await make_match(db, u.id, score=75, confidence=0.5, unknowns=[unknown("Kafka?")])
         with pytest.raises(AIError):
-            await service.collect_questions(db, FakeAI(error=AIError("rate_limited", "limit")), u.id)
+            await service.collect_questions(db, FakeQuestionsAI(error=AIError("rate_limited", "limit")), u.id)
         assert not (await collected(db))[m.id] and (await db.scalars(sa.select(ClarifyingQuestion))).all() == []
-        assert (await service.collect_questions(db, FakeAI(), u.id))["new_questions"] == 1
+        assert (await service.collect_questions(db, FakeQuestionsAI(), u.id))["new_questions"] == 1
 
 
 async def test_answering_creates_facts_bumps_version_and_queues_rescoring(maker):

@@ -10,22 +10,12 @@ from jobfinder.models import ProfileFact
 from jobfinder.resumes import service
 from jobfinder.storage.documents import DocumentStore
 from tests.factories import make_match, make_user
+from tests.fakes import FakeClaude
 
 RESUME = TailoredResume(
     contact=ResumeContact(name="Jane Doe"), summary="Backend engineer.", skills=["Go", "Kubernetes"],
     experience=[], projects=[], education=[],
 )
-
-
-class FakeClaude:
-    def __init__(self, reply=RESUME):
-        self.reply, self.prompts, self.systems, self.outputs = reply, [], [], []
-
-    async def run(self, prompt, *, system, model="sonnet", timeout_s=180, task="", output=None):
-        self.prompts.append(prompt)
-        self.systems.append(system)
-        self.outputs.append(output)
-        return self.reply
 
 
 async def seed(engine, tmp_path):
@@ -42,7 +32,7 @@ async def seed(engine, tmp_path):
 
 async def test_prompt_has_profile_facts_documents_and_posting(engine, tmp_path):
     maker, store, uid, mid = await seed(engine, tmp_path)
-    fake = FakeClaude()
+    fake = FakeClaude(default=RESUME)
     async with maker() as db:
         await service.tailor(db, AITasks(fake), store, uid, mid)
     p = fake.prompts[0]
@@ -57,8 +47,8 @@ async def test_prompt_has_profile_facts_documents_and_posting(engine, tmp_path):
 async def test_stored_as_resume_tagged_with_match_and_replaced_on_retailor(engine, tmp_path):
     maker, store, uid, mid = await seed(engine, tmp_path)
     async with maker() as db:
-        first = await service.tailor(db, AITasks(FakeClaude()), store, uid, mid)
-        second = await service.tailor(db, AITasks(FakeClaude()), store, uid, mid)
+        first = await service.tailor(db, AITasks(FakeClaude(default=RESUME)), store, uid, mid)
+        second = await service.tailor(db, AITasks(FakeClaude(default=RESUME)), store, uid, mid)
     docs = store.list(uid, kind="resume", tags={"match": str(mid)})
     assert [d.id for d in docs] == [second["document_id"]] != [first["document_id"]]
     assert json.loads(store.read_text(uid, docs[0].id))["skills"] == ["Go", "Kubernetes"]
@@ -68,7 +58,7 @@ async def test_stored_as_resume_tagged_with_match_and_replaced_on_retailor(engin
 async def test_tailored_output_is_not_fed_back_as_a_source(engine, tmp_path):
     maker, store, uid, mid = await seed(engine, tmp_path)
     async with maker() as db:
-        await service.tailor(db, AITasks(FakeClaude()), store, uid, mid)
+        await service.tailor(db, AITasks(FakeClaude(default=RESUME)), store, uid, mid)
     assert [label for label, _ in service.source_documents(store, uid)] == ["cv.pdf"]
 
 
@@ -76,7 +66,7 @@ async def test_unknown_match_and_missing_profile(engine, tmp_path):
     maker, store, uid, mid = await seed(engine, tmp_path)
     async with maker() as db:
         with pytest.raises(ValueError, match="Match not found"):
-            await service.tailor(db, AITasks(FakeClaude()), store, uid, mid + 999)
+            await service.tailor(db, AITasks(FakeClaude(default=RESUME)), store, uid, mid + 999)
 
 
 def test_schema_rejects_missing_sections():
@@ -89,11 +79,11 @@ def test_schema_rejects_missing_sections():
 async def test_edit_made_while_queued_survives_generation(engine, tmp_path):
     maker, store, uid, mid = await seed(engine, tmp_path)
     async with maker() as db:
-        first = await service.tailor(db, AITasks(FakeClaude()), store, uid, mid)
+        first = await service.tailor(db, AITasks(FakeClaude(default=RESUME)), store, uid, mid)
     store.set_tags(uid, first["document_id"], {**service.match_tags(mid), "edited": "1"})  # edited after enqueue
     async with maker() as db:
         with pytest.raises(ValueError, match="not regenerated"):
-            await service.tailor(db, AITasks(FakeClaude()), store, uid, mid)
+            await service.tailor(db, AITasks(FakeClaude(default=RESUME)), store, uid, mid)
     docs = store.list(uid, kind="resume", tags=service.match_tags(mid))
     assert [d.id for d in docs] == [first["document_id"]]
 
@@ -101,9 +91,9 @@ async def test_edit_made_while_queued_survives_generation(engine, tmp_path):
 async def test_forced_generation_replaces_edited_resume(engine, tmp_path):
     maker, store, uid, mid = await seed(engine, tmp_path)
     async with maker() as db:
-        first = await service.tailor(db, AITasks(FakeClaude()), store, uid, mid)
+        first = await service.tailor(db, AITasks(FakeClaude(default=RESUME)), store, uid, mid)
         store.set_tags(uid, first["document_id"], {**service.match_tags(mid), "edited": "1"})
-        second = await service.tailor(db, AITasks(FakeClaude()), store, uid, mid, force=True)
+        second = await service.tailor(db, AITasks(FakeClaude(default=RESUME)), store, uid, mid, force=True)
     docs = store.list(uid, kind="resume", tags=service.match_tags(mid))
     assert [d.id for d in docs] == [second["document_id"]]
 

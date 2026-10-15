@@ -24,6 +24,7 @@ from jobfinder.ingest.sources.icims import (
     title_from_path,
 )
 from jobfinder.ingest.validate import validate_board
+from tests.fakes import fake_resolve_public
 
 FIX = Path(__file__).parent / "fixtures"
 SLUG = "careers-scsengineers"
@@ -37,10 +38,7 @@ ROBOTS = "User-agent: *\nDisallow: /jobs/login\nDisallow: /connect\n"
 
 @pytest.fixture(autouse=True)
 def public_dns(monkeypatch):
-    async def fake(url):
-        return httpx.URL(url).host, "93.184.216.34"
-
-    monkeypatch.setattr(http_safety, "resolve_public", fake)
+    monkeypatch.setattr(http_safety, "resolve_public", fake_resolve_public())
 
 
 def portal(routes: dict, seen: list | None = None, robots: str = ROBOTS):

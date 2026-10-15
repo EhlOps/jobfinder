@@ -8,6 +8,7 @@ from jobfinder.ai.claude_code import AIError
 from jobfinder.ai.schemas import Experience, ResumeContact, TailoredResume
 from jobfinder.models import Job, Task
 from jobfinder.worker import run_task
+from tests.fakes import FakeTailorAI
 from tests.test_cover_letters_api import setup as _setup
 
 BASE = "/api/matches/{}/resume"
@@ -19,17 +20,6 @@ def _resume(skills):
         experience=[Experience(company="Stripe", title="Engineer", bullets=["Built a Go retry service"])],
         projects=[], education=[],
     )
-
-
-class FakeAI:
-    def __init__(self, resume=None, error=None):
-        self.resume, self.error, self.calls = resume or _resume(["Go"]), error, []
-
-    async def tailor_resume(self, **kw):
-        self.calls.append(kw)
-        if self.error:
-            raise self.error
-        return self.resume
 
 
 async def setup(client, engine):
@@ -44,7 +34,7 @@ async def setup(client, engine):
 async def generate(client, engine, mid, ai=None, **body):
     r = await client.post(BASE.format(mid), json=body)
     assert r.status_code == 202, r.text
-    await run_task(r.json()["task_id"], ai or FakeAI(), async_sessionmaker(engine, expire_on_commit=False))
+    await run_task(r.json()["task_id"], ai or FakeTailorAI(_resume(["Go"])), async_sessionmaker(engine, expire_on_commit=False))
     return r.json()["task_id"]
 
 
@@ -53,7 +43,7 @@ async def test_generate_edit_download_flow(authed, engine):
     url = BASE.format(mid)
     assert (await authed.get(url)).json() == {"resume": None, "pending_task_id": None}
 
-    ai = FakeAI()
+    ai = FakeTailorAI(_resume(["Go"]))
     tid = await generate(authed, engine, mid, ai)
     assert (await authed.get(f"/api/tasks/{tid}")).json()["status"] == "done"
     assert ai.calls[0]["job"]["company"] == "Acme/Co" and "salary" not in ai.calls[0]["job"]
@@ -99,7 +89,7 @@ async def test_edited_resume_needs_force_to_regenerate(authed, engine):
     await authed.put(url, json={"content": content})
     assert (await authed.post(url, json={})).status_code == 409
 
-    await generate(authed, engine, mid, FakeAI(_resume(["Rust"])), force=True)
+    await generate(authed, engine, mid, FakeTailorAI(_resume(["Rust"])), force=True)
     r = (await authed.get(url)).json()["resume"]
     assert r["edited"] is False and r["content"]["skills"] == ["Rust"]
 
@@ -125,7 +115,7 @@ async def test_claude_failure_fails_task_and_keeps_resume(authed, engine):
     url = BASE.format(mid)
     await generate(authed, engine, mid)
     r = await authed.post(url, json={"force": True})
-    ai = FakeAI(error=AIError("auth", "Claude is not connected"))
+    ai = FakeTailorAI(error=AIError("auth", "Claude is not connected"))
     await run_task(r.json()["task_id"], ai, async_sessionmaker(engine, expire_on_commit=False))
     async with async_sessionmaker(engine)() as db:
         status = await db.scalar(sa.select(Task.status).where(Task.id == r.json()["task_id"]))
