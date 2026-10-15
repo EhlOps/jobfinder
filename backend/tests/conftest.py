@@ -23,10 +23,10 @@ ADMIN_URL = os.environ.get("TEST_ADMIN_URL") or (
 TEST_DB = os.environ.get("TEST_DB", "jobfinder_test")
 # One database per xdist worker ("master" when not distributed), so workers never share rows.
 TEST_DB_NAME = f"{TEST_DB}_{os.environ.get('PYTEST_XDIST_WORKER', 'master')}"
-# real_commit tests get a database of their own, reset per test, so their commits can't leak.
+# real_commit tests get a database of their own, emptied per test, so their commits can't leak.
 # The app's own engine points there too: code that slips past the test session (e.g. run_task's
 # import-time default session_factory) never sees the test's rows and can't commit into the
-# shared database; whatever it writes is wiped by the next real_commit reset.
+# shared database; whatever it writes is wiped by the next real_commit test's truncate.
 RC_DB_NAME = f"{TEST_DB_NAME}_rc"
 # Postgres silently truncates longer names, which would break the "does it exist" check.
 assert len(RC_DB_NAME) <= 63, f"TEST_DB={TEST_DB!r} is too long for a per-worker database name"
@@ -46,8 +46,8 @@ from jobfinder.main import app
 
 async def _drop_leaked_connections(name):
     # A session an earlier test left open (e.g. in a background task it never cancelled) can sit
-    # "idle in transaction" holding locks, and the schema reset would wait on it forever. Each of
-    # these databases belongs to one worker, so any other connection to it is such a leak.
+    # "idle in transaction" holding locks, and the schema reset or truncate would wait on it
+    # forever. Each of these databases belongs to one worker, so any other connection is a leak.
     admin = create_async_engine(ADMIN_URL, isolation_level="AUTOCOMMIT", poolclass=NullPool)
     async with admin.connect() as conn:
         await conn.execute(
@@ -68,6 +68,16 @@ async def _reset_schema(url):
     await eng.dispose()
 
 
+async def _truncate_all(url):
+    """Empty every table (and restart its ids) on a database whose schema is already built."""
+    await _drop_leaked_connections(url.rsplit("/", 1)[1])
+    eng = create_async_engine(url, poolclass=NullPool)
+    tables = ", ".join(f'"{t.name}"' for t in Base.metadata.sorted_tables)
+    async with eng.begin() as conn:
+        await conn.execute(sa.text(f"truncate {tables} restart identity cascade"))
+    await eng.dispose()
+
+
 async def _create_databases():
     admin = create_async_engine(ADMIN_URL, isolation_level="AUTOCOMMIT", poolclass=NullPool)
     async with admin.connect() as conn:
@@ -76,14 +86,68 @@ async def _create_databases():
             if not exists:
                 await conn.execute(sa.text(f'create database "{name}"'))
     await admin.dispose()
+    # Both, up front: the app's own SessionLocal points at the rc database, so a plain test that
+    # reaches it before any real_commit test has run on this worker still finds a current schema.
     await _reset_schema(TEST_URL)
+    await _reset_schema(RC_URL)
 
 
 @pytest.fixture(scope="session")
 def _test_databases():
-    """Create this worker's databases and build the schema once; after that tests only roll back."""
+    """Create this worker's databases and build both schemas once; after that tests roll back or truncate."""
     # Its own short-lived loop: pytest-asyncio gives each test a fresh one, and nothing here outlives it.
     asyncio.run(_create_databases())
+
+
+class ConcurrentSavepointSessions(AssertionError):
+    pass
+
+
+def _guard_savepoint_stack(sync_engine, violations):
+    """Fail loudly when sessions sharing the savepoint-mode connection overlap out of order.
+
+    Each session's transaction is a SAVEPOINT on one connection, which only works if they end in
+    LIFO order: a session opened and finished inside another one is fine, but when an outer one
+    ends while an inner one is still open, Postgres silently discards the inner savepoint and that
+    session later fails with InvalidSavepointSpecificationError, which app code catching Exception
+    tends to swallow. Catch the out-of-order end itself instead, and record it so the test fails at
+    teardown even if the raise is swallowed too.
+    """
+    stack: list[str] = []
+
+    def check(name):
+        if stack and stack[-1] == name:
+            stack.pop()
+            return
+        msg = (
+            f"concurrent sessions in savepoint mode: savepoint {name!r} ended while {stack[-1]!r} (another "
+            "session's transaction) was still open on the shared test connection; mark the test "
+            "@pytest.mark.real_commit"
+            if name in stack
+            else f"savepoint {name!r} ended but was never opened on the shared test connection"
+        )
+        violations.append(msg)
+        raise ConcurrentSavepointSessions(msg)
+
+    seq = 0
+
+    @sa.event.listens_for(sync_engine, "savepoint")
+    def _push(conn, name):
+        # The event fires before the Connection names the savepoint; mirror its per-connection
+        # sa_savepoint_<n> sequence (one connection per test here).
+        nonlocal seq
+        if name is None:
+            seq += 1
+            name = f"sa_savepoint_{seq}"
+        stack.append(name)
+
+    @sa.event.listens_for(sync_engine, "release_savepoint")
+    def _release(conn, name, context):
+        check(name)
+
+    @sa.event.listens_for(sync_engine, "rollback_savepoint")
+    def _rollback(conn, name, context):
+        check(name)
 
 
 def _route_app_sessions(monkeypatch, m):
@@ -100,14 +164,15 @@ async def maker(request, monkeypatch, _test_databases):
     releases a SAVEPOINT and the whole test is rolled back at the end. Sessions that run
     concurrently (asyncio.gather, background loops) can't share one connection's SAVEPOINT stack,
     so tests doing that, or needing commits visible on other connections, are marked real_commit
-    and get a real engine on a freshly reset database instead.
+    and get a real engine on their own database, truncated per test, instead.
 
     Two differences from production to keep in mind: Postgres now() (server defaults like
     created_at) is fixed for the whole test, and a session opened inside another one's savepoint
-    loses its "committed" work if the outer session rolls back.
+    loses its "committed" work if the outer session rolls back. Sessions that overlap out of order
+    on the shared connection fail the test with ConcurrentSavepointSessions.
     """
     if request.node.get_closest_marker("real_commit"):
-        await _reset_schema(RC_URL)
+        await _truncate_all(RC_URL)
         eng = create_async_engine(RC_URL, poolclass=NullPool)
         m = async_sessionmaker(eng, expire_on_commit=False)
         _route_app_sessions(monkeypatch, m)
@@ -116,6 +181,8 @@ async def maker(request, monkeypatch, _test_databases):
         return
 
     eng = create_async_engine(TEST_URL, poolclass=NullPool)
+    violations: list[str] = []
+    _guard_savepoint_stack(eng.sync_engine, violations)
     async with eng.connect() as conn:
         outer = await conn.begin()
         m = async_sessionmaker(conn, expire_on_commit=False, join_transaction_mode="create_savepoint")
@@ -126,6 +193,8 @@ async def maker(request, monkeypatch, _test_databases):
             if outer.is_active:
                 await outer.rollback()
     await eng.dispose()
+    if violations:
+        pytest.fail(violations[0], pytrace=False)
 
 
 @pytest_asyncio.fixture
