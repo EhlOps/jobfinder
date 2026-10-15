@@ -1,0 +1,22 @@
+# local-path volumes are ReadWriteOnce per node; on this single node every pod can mount them.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: store
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-path-retain
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: claude-auth
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-path-retain
+  resources:
+    requests:
+      storage: 100Mi

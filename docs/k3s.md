@@ -11,7 +11,8 @@ Until the cutover (#47) production keeps running on compose; k3s runs alongside 
 - **SELinux:** enforcing, with the `k3s-selinux` policy.
 - **firewalld:** 10.42.0.0/16 (pods) and 10.43.0.0/16 (services) are sources in the `trusted` zone. Nothing else is opened; the API server (6443) and kubelet (10250) stay unreachable from outside because the `public` zone doesn't allow them.
 - **Secrets:** sealed-secrets controller in `kube-system`; `kubeseal` on the host. See `deploy/k8s/README.md` for sealing.
-- **Manifests:** `deploy/k8s/` (Kustomize base + overlays).
+- **Manifests:** `deploy/k8s/` (Kustomize base + overlays). CI renders and validates them (`.github/workflows/k8s.yml`).
+- **Storage:** k3s's local-path provisioner; stateful data uses the `local-path-retain` class (see Data services).
 
 Pinned versions live at the top of `deploy/k3s/install.sh` and in `manifests/sealed-secrets.yaml`. Upgrades are PRs that bump them.
 
@@ -84,6 +85,64 @@ sudo dnf remove -y k3s-selinux && sudo rm -f /usr/local/bin/kubeseal ~opc/.kube/
 ```
 
 Then check `curl -sI http://127.0.0.1:8180/` and `https://draw.ehlops.com/`.
+
+## Data services (#40)
+
+The base (`deploy/k8s/base/`) carries the stateful services; they run in staging (`jobfinder-staging`) today, and prod (`jobfinder`) gets them at the cutover (#47).
+
+| Object | What | Storage |
+|---|---|---|
+| StatefulSet + Service `postgres` | `postgres:16.15`, same major as compose; user and database `jobfinder` | PVC `data-postgres-0`, 20Gi |
+| StatefulSet + Service `valkey` | `valkey/valkey:8.1.10`, `--appendonly yes`, `noeviction`, no password; unused until #48 | PVC `data-valkey-0`, 1Gi |
+| PVC `store`, `claude-auth` | successors of the compose volumes, mounted by the app in #43 | 5Gi, 100Mi |
+| SealedSecret `postgres-credentials` | key `POSTGRES_PASSWORD`, random, sealed per namespace (`overlays/staging/sealed-secret-postgres.yaml`) | |
+| NetworkPolicy `postgres`, `valkey` | ingress only from same-namespace pods with the client label | |
+
+All volumes use the `local-path-retain` StorageClass (`deploy/k3s/manifests/local-path-retain.yaml`): local-path with `reclaimPolicy: Retain`, so deleting a PVC or the namespace leaves the data under `/var/lib/rancher/k3s/storage/` and a `Released` PV. Delete the PV (and that directory) by hand once you're sure. The pods run as non-root (uid 999) with all capabilities dropped.
+
+**Backups and restore are deferred** per the owner's comment on #40 (2026-10-15). Nothing backs up the k3s data yet; `deploy/backup.sh` still covers the compose production stack.
+
+### Connect
+
+From an app pod, in the same namespace, labelled for the policy:
+
+```yaml
+metadata:
+  labels:
+    jobfinder.io/postgres-client: "true"   # reach postgres:5432
+    jobfinder.io/valkey-client: "true"     # reach valkey:6379
+```
+
+```text
+DATABASE_URL=postgresql+asyncpg://jobfinder:$(POSTGRES_PASSWORD)@postgres:5432/jobfinder
+redis://valkey:6379/0          # valkey; the env var name is settled in #48
+```
+
+with `POSTGRES_PASSWORD` from `secretKeyRef: {name: postgres-credentials, key: POSTGRES_PASSWORD}` (Kubernetes expands `$(VAR)` in env values when `POSTGRES_PASSWORD` is defined earlier in the same `env:` list). Pods without the label, and pods in any other namespace (even labelled), are dropped by k3s's embedded network policy controller (kube-router; don't start k3s with `--disable-network-policy`).
+
+From the host, for a psql shell or a one-off check:
+
+```sh
+kubectl -n jobfinder-staging exec -it postgres-0 -- psql -U jobfinder -d jobfinder   # local socket, no policy involved
+kubectl -n jobfinder-staging exec -it valkey-0 -- valkey-cli
+kubectl -n jobfinder-staging port-forward svc/postgres 15432:5432                    # then psql -h 127.0.0.1 -p 15432
+kubectl -n jobfinder-staging get secret postgres-credentials -o jsonpath='{.data.POSTGRES_PASSWORD}' | base64 -d
+```
+
+### Apply and verify
+
+```sh
+kubectl apply -f deploy/k3s/manifests/local-path-retain.yaml   # once; install.sh also installs it
+kubectl apply -k deploy/k8s/overlays/staging
+kubectl -n jobfinder-staging rollout status sts/postgres
+kubectl -n jobfinder-staging rollout status sts/valkey
+kubectl -n jobfinder-staging get pods,pvc,networkpolicy
+```
+
+To check the policy, run a throwaway `postgres:16.15` pod with and without `jobfinder.io/postgres-client: "true"` and try `pg_isready -h postgres -t 5`: the labelled one answers `accepting connections`, the unlabelled one `no response`.
+
+**Rotate the password:** reseal (README, "Secrets"), apply, then set it inside the database too, since `POSTGRES_PASSWORD` only applies at `initdb`:
+`kubectl -n jobfinder-staging exec -it postgres-0 -- psql -U jobfinder -d jobfinder -c '\password jobfinder'`.
 
 ## Resources
 

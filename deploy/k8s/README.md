@@ -10,10 +10,13 @@ systemd Caddy stays the TLS edge on 80/443.
 ```
 deploy/k8s/
   base/                 # shared by every environment; never applied directly
-    kustomization.yaml  # common labels; placeholders for postgres/valkey (#40), app (#43)
+    kustomization.yaml  # common labels; placeholder for the app (#43)
     namespace.yaml      # Namespace `jobfinder`
+    postgres/           # #40: Postgres 16 StatefulSet, Service, NetworkPolicy
+    valkey/             # #40: valkey StatefulSet (AOF), Service, NetworkPolicy
+    storage/            # #40: PVCs store, claude-auth
   overlays/
-    staging/            # namespace `jobfinder-staging`
+    staging/            # namespace `jobfinder-staging`; sealed-secret-postgres.yaml
     prod/               # namespace `jobfinder` (the base default)
   hello/                # #38 smoke test: whoami behind Traefik at /healthz
 ```
@@ -33,6 +36,12 @@ immutable, so changing a common label later must not touch them.
 **Images.** GHCR images (`ghcr.io/ehlops/jobfinder-*`) are public, so no
 `imagePullSecret` is needed. Overlays will pin them by commit SHA with an
 `images:` block (#43).
+
+**Data services.** Postgres and valkey only accept pods in the same namespace
+labelled `jobfinder.io/postgres-client: "true"` / `jobfinder.io/valkey-client:
+"true"`. Each overlay must supply the Secret `postgres-credentials`
+(`POSTGRES_PASSWORD`) as a SealedSecret. Details and connection strings:
+`docs/k3s.md`, "Data services".
 
 ## Render and apply
 

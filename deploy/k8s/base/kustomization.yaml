@@ -15,7 +15,12 @@ labels:
 
 resources:
   - namespace.yaml
+  # #40. Each overlay must also supply the Secret `postgres-credentials` (key POSTGRES_PASSWORD)
+  # as a SealedSecret sealed for its namespace; see deploy/k8s/README.md.
+  - postgres/        # Postgres 16 StatefulSet, Service, NetworkPolicy (app pods only)
+  - valkey/          # valkey StatefulSet (AOF) for the task streams (#48)
+  - storage/         # PVCs: store, claude-auth (mounted by the app in #43)
+  # Backups and restore are deferred (owner, #40 comment of 2026-10-15); deploy/backup.sh
+  # still covers the compose production stack.
   # Placeholders for later issues (add the directories as they land):
-  # - postgres/        # #40: Postgres StatefulSet + PVC + pg_dump CronJob
-  # - valkey/          # #40: Valkey StatefulSet (AOF) for the task streams
   # - app/             # #43: api, scheduler, worker-io, worker-ai, renderer, web

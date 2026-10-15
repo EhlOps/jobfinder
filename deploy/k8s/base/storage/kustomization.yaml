@@ -1,0 +1,7 @@
+# Shared volumes (#40). `store` and `claude-auth` replace the compose volumes of the same names and
+# are mounted by the app (#43).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - pvcs.yaml

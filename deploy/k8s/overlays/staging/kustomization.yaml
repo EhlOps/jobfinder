@@ -9,13 +9,15 @@ namespace: jobfinder-staging
 
 resources:
   - ../../base
+  # postgres-credentials (POSTGRES_PASSWORD), sealed for jobfinder-staging (#40).
+  - sealed-secret-postgres.yaml
 
 labels:
   - pairs:
       app.kubernetes.io/instance: staging
 
 # Placeholders for later issues:
-# - #40/#43: sealed-secret.yaml, sealed for the jobfinder-staging namespace
+# - #43: the app's sealed secrets, sealed for the jobfinder-staging namespace
 #   (a SealedSecret only decrypts in the namespace it was sealed for).
 # - #43: `images:` entries pinning ghcr.io/ehlops/jobfinder-* to a commit SHA,
 #   and a configMapGenerator built from .env.defaults.
