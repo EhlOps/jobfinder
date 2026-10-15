@@ -1,12 +1,9 @@
 from datetime import UTC, datetime
 
-from sqlalchemy.ext.asyncio import async_sessionmaker
-
 from jobfinder.models import Company, Job
 
 
-async def _seed(engine):
-    maker = async_sessionmaker(engine, expire_on_commit=False)
+async def _seed(maker):
     async with maker() as db:
         bad = Company(
             name="BrokenCo", ats="greenhouse", slug="broken", enabled=False, consecutive_failures=5,
@@ -28,8 +25,8 @@ async def test_requires_admin(client, make_account):
     assert (await client.post("/api/admin/sources/1/enable")).status_code == 403
 
 
-async def test_rows_reflect_failures(client, engine, make_account):
-    await _seed(engine)
+async def test_rows_reflect_failures(client, maker, make_account):
+    await _seed(maker)
     await make_account("owner@x.com", admin=True)
     rows = (await client.get("/api/admin/sources")).json()
     assert [r["name"] for r in rows] == ["BrokenCo", "FineCo"]  # failing first
@@ -39,8 +36,8 @@ async def test_rows_reflect_failures(client, engine, make_account):
     assert ok["job_count"] == 1 and ok["origin"] == "seed" and ok["last_success_at"]
 
 
-async def test_enable_resets_counters(client, engine, make_account):
-    bad_id, _ = await _seed(engine)
+async def test_enable_resets_counters(client, maker, make_account):
+    bad_id, _ = await _seed(maker)
     await make_account("owner@x.com", admin=True)
     r = await client.post(f"/api/admin/sources/{bad_id}/enable")
     assert r.status_code == 200

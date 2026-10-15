@@ -1,8 +1,7 @@
 from datetime import UTC, datetime, timedelta
 
-import pytest_asyncio
+import pytest
 import sqlalchemy as sa
-from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from jobfinder import worker
 from jobfinder.config import get_settings
@@ -49,9 +48,7 @@ def test_scheduler_adds_weekly_coveted_score_when_enabled(monkeypatch):
     assert "day_of_week='sun'" in str(jobs["score_coveted"].trigger)
 
 
-async def test_scheduled_work_goes_through_the_queue_without_piling_up(engine, monkeypatch):
-    maker = async_sessionmaker(engine, expire_on_commit=False)
-    monkeypatch.setattr(worker, "SessionLocal", maker)
+async def test_scheduled_work_goes_through_the_queue_without_piling_up(maker):
     await worker.enqueue_scheduled("ingest_jobs")
     await worker.enqueue_scheduled("ingest_jobs")            # previous run still queued: not duplicated
     await worker.enqueue_scheduled("daily_emails")
@@ -69,12 +66,10 @@ def test_every_scheduled_kind_has_a_handler():
 NOW = datetime(2026, 6, 1, 12, 0, tzinfo=UTC)
 
 
-@pytest_asyncio.fixture
-async def maker(engine, monkeypatch):
-    m = async_sessionmaker(engine, expire_on_commit=False)
+@pytest.fixture(autouse=True)
+def planner_settings(monkeypatch):
     monkeypatch.setattr(get_settings(), "planner_max_per_tick", 3)
     monkeypatch.setattr(get_settings(), "planner_stagger_seconds", 120)
-    return m
 
 
 async def _setup(db, email, *, seen_ago=timedelta(hours=1), last_run_ago=timedelta(hours=10), version=1, changed=False):
@@ -242,8 +237,7 @@ async def test_adaptive_tick_that_changed_nothing_does_not_queue_the_planner(mak
         assert [t.kind for t in await _tasks(db)] == ["ingest_jobs"]
 
 
-async def test_last_seen_is_written_at_most_every_ten_minutes(authed, engine):
-    maker = async_sessionmaker(engine, expire_on_commit=False)
+async def test_last_seen_is_written_at_most_every_ten_minutes(authed, maker):
 
     async def seen():
         async with maker() as db:
@@ -256,7 +250,7 @@ async def test_last_seen_is_written_at_most_every_ten_minutes(authed, engine):
     assert await seen() == first
 
 
-async def test_admin_schedule_endpoint(authed, engine, maker, monkeypatch):
+async def test_admin_schedule_endpoint(authed, maker, monkeypatch):
     assert (await authed.get("/api/admin/schedule")).status_code == 403
     async with maker() as db:
         await db.execute(sa.update(User).where(User.email == "sam@example.com").values(is_admin=True))

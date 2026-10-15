@@ -5,7 +5,6 @@ from itertools import pairwise
 import httpx
 import pytest
 import sqlalchemy as sa
-from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from jobfinder.config import get_settings
 from jobfinder.ingest import runner, schedule, service
@@ -78,11 +77,6 @@ def _no_network(monkeypatch):
 
 
 @pytest.fixture
-def maker(engine):
-    return async_sessionmaker(engine, expire_on_commit=False)
-
-
-@pytest.fixture
 def clock(monkeypatch):
     state = {"now": T0}
     monkeypatch.setattr(schedule, "now", lambda: state["now"])
@@ -107,6 +101,7 @@ async def boards(maker):
         return {c.slug: c for c in (await db.scalars(sa.select(Company))).all()}
 
 
+@pytest.mark.real_commit
 async def test_due_selection_with_a_frozen_clock(maker, monkeypatch, clock):
     monkeypatch.setitem(service.ATS_FETCHERS, "greenhouse", returning(postings(100)))
     monkeypatch.setitem(service.ATS_FETCHERS, "lever", returning(postings(1, "lever")))

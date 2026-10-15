@@ -50,6 +50,9 @@ packages = ["jobfinder"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "real_commit: runs sessions concurrently or needs commits visible on other connections; gets a real engine on its own freshly reset database instead of a rolled-back transaction",
+]
 
 [tool.ruff]
 line-length = 100

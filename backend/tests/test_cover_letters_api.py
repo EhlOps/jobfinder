@@ -1,7 +1,6 @@
 import io
 
 import docx
-from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from jobfinder.letters.docx_export import build_docx, filename
 from jobfinder.models import Job, JobMatch
@@ -21,7 +20,7 @@ class FakeAI:
         return self.text
 
 
-async def setup(client, engine, *, background=True):
+async def setup(client, maker, *, background=True):
     """Sign up, give the user a profile, and create one scored match. Returns (match_id, job_id)."""
     global N
     N += 1
@@ -29,7 +28,7 @@ async def setup(client, engine, *, background=True):
     if background:
         await client.put("/api/profile/background", json={"name": "Jane Doe", "experience": [{"company": "Stripe"}]})
         await client.post("/api/profile/facts", json={"question": "Used Go?", "answer": "Yes"})
-    async with async_sessionmaker(engine, expire_on_commit=False)() as db:
+    async with maker() as db:
         job = Job(source="greenhouse", external_id=f"c{N}", company_name="Acme/Co", title="Backend Engineer (II)", url="https://x",
                   location="Boston", description_text="Build services", salary_min=150000, salary_max=200000, dedupe_hash=f"c{N}")
         db.add(job)
@@ -41,19 +40,19 @@ async def setup(client, engine, *, background=True):
         return m.id, job.id
 
 
-async def draft(client, engine, mid, ai=None, **body):
+async def draft(client, maker, mid, ai=None, **body):
     r = await client.post(f"/api/matches/{mid}/cover-letter", json=body)
     assert r.status_code == 202, r.text
-    await run_task(r.json()["task_id"], ai or FakeAI(), async_sessionmaker(engine, expire_on_commit=False))
+    await run_task(r.json()["task_id"], ai or FakeAI(), maker)
     return r.json()["task_id"]
 
 
-async def test_generate_flow_and_prompt_inputs(authed, engine):
-    mid, _ = await setup(authed, engine)
+async def test_generate_flow_and_prompt_inputs(authed, maker):
+    mid, _ = await setup(authed, maker)
     assert (await authed.get(f"/api/matches/{mid}/cover-letter")).json() == {"letter": None, "pending_task_id": None}
 
     ai = FakeAI()
-    tid = await draft(authed, engine, mid, ai, tone="warm", notes="mention Go")
+    tid = await draft(authed, maker, mid, ai, tone="warm", notes="mention Go")
     t = (await authed.get(f"/api/tasks/{tid}")).json()
     assert t["status"] == "done" and t["result"]["words"] > 3
 
@@ -68,8 +67,8 @@ async def test_generate_flow_and_prompt_inputs(authed, engine):
     assert st["letter"]["words"] == len(LETTER.split()) and st["letter"]["stale"] is False
 
 
-async def test_pending_task_is_reported_and_deduped(authed, engine):
-    mid, _ = await setup(authed, engine)
+async def test_pending_task_is_reported_and_deduped(authed, maker):
+    mid, _ = await setup(authed, maker)
     a = await authed.post(f"/api/matches/{mid}/cover-letter", json={"tone": "warm"})
     b = await authed.post(f"/api/matches/{mid}/cover-letter", json={"tone": "warm"})
     assert a.json()["task_id"] == b.json()["task_id"]                         # identical request: same task
@@ -78,9 +77,9 @@ async def test_pending_task_is_reported_and_deduped(authed, engine):
     assert (await authed.get(f"/api/matches/{mid}/cover-letter")).json()["pending_task_id"] == c.json()["task_id"]
 
 
-async def test_edit_then_redraft_needs_force(authed, engine):
-    mid, _ = await setup(authed, engine)
-    await draft(authed, engine, mid)
+async def test_edit_then_redraft_needs_force(authed, maker):
+    mid, _ = await setup(authed, maker)
+    await draft(authed, maker, mid)
     url = f"/api/matches/{mid}/cover-letter"
 
     same = await authed.put(url, json={"content": LETTER})
@@ -90,7 +89,7 @@ async def test_edit_then_redraft_needs_force(authed, engine):
     assert r.json()["content"] == "Dear team,\n\nMy own words.\n\nThanks,\nJane"
 
     assert (await authed.post(url, json={})).status_code == 409                # would overwrite edits
-    await draft(authed, engine, mid, FakeAI("Dear Acme,\n\nRedrafted."), force=True)
+    await draft(authed, maker, mid, FakeAI("Dear Acme,\n\nRedrafted."), force=True)
     st = (await authed.get(url)).json()["letter"]
     assert st["content"] == "Dear Acme,\n\nRedrafted." and st["edited"] is False
 
@@ -99,8 +98,8 @@ async def test_edit_then_redraft_needs_force(authed, engine):
     assert (await authed.put(url, json={"content": "x" * 10_001})).status_code == 422
 
 
-async def test_validation_and_prerequisites(authed, engine):
-    mid, _ = await setup(authed, engine)
+async def test_validation_and_prerequisites(authed, maker):
+    mid, _ = await setup(authed, maker)
     url = f"/api/matches/{mid}/cover-letter"
     assert (await authed.post(url, json={"tone": "shouty"})).status_code == 422
     assert (await authed.post(url, json={"notes": "x" * 501})).status_code == 422
@@ -108,14 +107,14 @@ async def test_validation_and_prerequisites(authed, engine):
     assert (await authed.get(url + "/download")).status_code == 404
 
 
-async def test_requires_profile(authed, engine):
-    mid, _ = await setup(authed, engine, background=False)
+async def test_requires_profile(authed, maker):
+    mid, _ = await setup(authed, maker, background=False)
     assert (await authed.post(f"/api/matches/{mid}/cover-letter", json={})).status_code == 422
 
 
-async def test_download_docx(authed, engine):
-    mid, _ = await setup(authed, engine)
-    await draft(authed, engine, mid)
+async def test_download_docx(authed, maker):
+    mid, _ = await setup(authed, maker)
+    await draft(authed, maker, mid)
     r = await authed.get(f"/api/matches/{mid}/cover-letter/download")
     assert r.status_code == 200 and r.headers["content-type"].startswith("application/vnd.openxmlformats")
     assert "Cover%20Letter%20-%20AcmeCo%20-%20Backend%20Engineer%20II.docx" in r.headers["content-disposition"]
@@ -137,10 +136,10 @@ def test_docx_survives_control_characters():
     assert [p.text for p in d.paragraphs] == ["Dear team, thanks", "Sincerely,Jane"]
 
 
-async def test_delete_and_flags_in_list(authed, engine):
-    mid, _ = await setup(authed, engine)
+async def test_delete_and_flags_in_list(authed, maker):
+    mid, _ = await setup(authed, maker)
     assert (await authed.get("/api/matches")).json()["items"][0]["has_cover_letter"] is False
-    await draft(authed, engine, mid)
+    await draft(authed, maker, mid)
     assert (await authed.get("/api/matches")).json()["items"][0]["has_cover_letter"] is True
     assert (await authed.get(f"/api/matches/{mid}")).json()["has_cover_letter"] is True
     assert (await authed.delete(f"/api/matches/{mid}/cover-letter")).status_code == 204
@@ -148,9 +147,9 @@ async def test_delete_and_flags_in_list(authed, engine):
     assert (await authed.get(f"/api/matches/{mid}")).json()["has_cover_letter"] is False
 
 
-async def test_letters_are_private_to_their_owner(authed, client, engine, make_account):
-    mid, _ = await setup(authed, engine)
-    await draft(authed, engine, mid)
+async def test_letters_are_private_to_their_owner(authed, client, maker, make_account):
+    mid, _ = await setup(authed, maker)
+    await draft(authed, maker, mid)
     await client.post("/api/auth/logout")
     await make_account("other@x.com", "password-1234")
     base = f"/api/matches/{mid}/cover-letter"
@@ -165,15 +164,15 @@ async def test_requires_login(client):
     assert (await client.get("/api/matches/1/cover-letter")).status_code == 401
 
 
-async def test_stale_flag_when_profile_changes_after_draft(authed, engine):
-    mid, _ = await setup(authed, engine)
-    await draft(authed, engine, mid)
+async def test_stale_flag_when_profile_changes_after_draft(authed, maker):
+    mid, _ = await setup(authed, maker)
+    await draft(authed, maker, mid)
     await authed.put("/api/profile/status", json={"target_roles": ["x"]})        # bumps the profile version
     assert (await authed.get(f"/api/matches/{mid}/cover-letter")).json()["letter"]["stale"] is True
 
 
-async def test_queue_dedupe_considers_payload(engine):
-    async with async_sessionmaker(engine, expire_on_commit=False)() as db:
+async def test_queue_dedupe_considers_payload(maker):
+    async with maker() as db:
         a = await queue.enqueue(db, "k", {"m": 1}, user_id=None, dedupe=True)
         assert (await queue.enqueue(db, "k", {"m": 1}, user_id=None, dedupe=True)).id == a.id
         assert (await queue.enqueue(db, "k", {"m": 2}, user_id=None, dedupe=True)).id != a.id

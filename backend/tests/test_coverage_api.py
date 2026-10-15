@@ -3,16 +3,10 @@ from datetime import UTC, datetime, timedelta
 import pytest
 import sqlalchemy as sa
 from security_payloads import SCRIPT_URLS, SQLI
-from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from jobfinder.models import Company, CovetedTarget, Job, Task
 
 BASE = "/api/admin/coverage"
-
-
-@pytest.fixture
-def maker(engine):
-    return async_sessionmaker(engine, expire_on_commit=False)
 
 
 async def _seed(maker):

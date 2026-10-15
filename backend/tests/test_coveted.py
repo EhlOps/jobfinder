@@ -4,7 +4,6 @@ import httpx
 import pytest
 import sqlalchemy as sa
 from factories import make_match, make_user
-from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from jobfinder.ingest import coveted, http_safety
 from jobfinder.ingest.coveted import (
@@ -23,11 +22,6 @@ GOOD = {"jobs": [
     {"id": 1, "title": "Robotics Engineer", "absolute_url": "https://boards.greenhouse.io/acme/jobs/1",
      "location": {"name": "Boston, MA"}},
 ]}
-
-
-@pytest.fixture
-def maker(engine):
-    return async_sessionmaker(engine, expire_on_commit=False)
 
 
 @pytest.fixture(autouse=True)

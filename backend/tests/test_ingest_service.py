@@ -4,7 +4,6 @@ from pathlib import Path
 import httpx
 import pytest
 import sqlalchemy as sa
-from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from jobfinder.ingest import runner, service
 from jobfinder.ingest.base import JobPosting
@@ -23,11 +22,6 @@ def _no_network_fetchers(monkeypatch):
 
     for ats in ATS_FETCHERS:
         monkeypatch.setitem(service.ATS_FETCHERS, ats, nothing)
-
-
-@pytest.fixture
-def maker(engine):
-    return async_sessionmaker(engine, expire_on_commit=False)
 
 
 def posting(i, title="Engineer", source="greenhouse", **kw):
@@ -210,6 +204,7 @@ async def test_404_is_not_retried(maker, monkeypatch):
         assert len(calls) == 1
 
 
+@pytest.mark.real_commit
 async def test_ingest_boards_isolates_failures(maker, monkeypatch):
     async def ok(client, slug, name):
         return [posting(1), posting(2)]
@@ -229,6 +224,7 @@ async def test_ingest_boards_isolates_failures(maker, monkeypatch):
     assert len(results) == len(BOARDS)
 
 
+@pytest.mark.real_commit
 async def test_ingest_boards_filters_by_ats_and_slug(maker, monkeypatch):
     async def ok(client, slug, name):
         return [posting(1)]
@@ -252,6 +248,7 @@ async def test_ashby_fixture_with_duplicates_end_to_end(maker):
 
 
 # ── runner / jobspy ──────────────────────────────────────────────────────
+@pytest.mark.real_commit
 async def test_run_ingest_summary(maker, monkeypatch):
     async def ok(client, slug, name):
         return [posting(1)]

@@ -1,17 +1,11 @@
 import httpx
 import pytest
 import sqlalchemy as sa
-from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from jobfinder.config import get_settings
 from jobfinder.ingest import service
 from jobfinder.models import Company, Job
 from tests.test_ingest_service import fake_fetcher, make_company, posting, status_error
-
-
-@pytest.fixture
-def maker(engine):
-    return async_sessionmaker(engine, expire_on_commit=False)
 
 
 @pytest.fixture(autouse=True)
@@ -48,6 +42,7 @@ async def test_board_disabled_after_n_failures(maker, monkeypatch):
         assert row.enabled is False and row.disabled_reason
 
 
+@pytest.mark.real_commit
 async def test_raising_fetcher_does_not_stop_the_run(maker, monkeypatch):
     async def boom(client, slug, name):
         raise RuntimeError("kaboom")
@@ -72,6 +67,7 @@ async def test_raising_fetcher_does_not_stop_the_run(maker, monkeypatch):
     assert rows["B"].last_success_at is not None
 
 
+@pytest.mark.real_commit
 async def test_unexpected_ingest_company_error_isolated(maker, monkeypatch):
     real = service.ingest_company
 

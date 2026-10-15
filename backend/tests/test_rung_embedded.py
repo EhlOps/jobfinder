@@ -4,7 +4,6 @@ import httpx
 import pytest
 import sqlalchemy as sa
 from security_payloads import PRIVATE_URLS, SCRIPT_URLS, SQLI
-from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from jobfinder.ingest import http_safety
 from jobfinder.ingest.resolve import resolve_link
@@ -35,11 +34,6 @@ def public_dns(monkeypatch):
         return host, PUBLIC_IP
 
     monkeypatch.setattr(http_safety, "resolve_public", fake)
-
-
-@pytest.fixture
-def maker(engine):
-    return async_sessionmaker(engine, expire_on_commit=False)
 
 
 def site(pages: dict[str, httpx.Response], seen: list | None = None):

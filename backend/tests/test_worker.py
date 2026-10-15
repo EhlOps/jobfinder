@@ -1,16 +1,15 @@
 import asyncio
 from datetime import UTC, datetime, timedelta
 
+import pytest
 import sqlalchemy as sa
-from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from jobfinder import worker
 from jobfinder.models import Task
 from jobfinder.scheduling import queue
 
 
-async def test_handler_that_breaks_the_session_ends_failed_not_running(engine, monkeypatch):
-    maker = async_sessionmaker(engine, expire_on_commit=False)
+async def test_handler_that_breaks_the_session_ends_failed_not_running(maker, monkeypatch):
 
     async def bad(db, ai, task):
         await db.execute(sa.text("select * from table_that_does_not_exist"))
@@ -25,13 +24,11 @@ async def test_handler_that_breaks_the_session_ends_failed_not_running(engine, m
         assert t.status == "failed" and "table_that_does_not_exist" in t.error and t.finished_at
 
 
-async def test_missing_task_is_a_noop(engine):
-    maker = async_sessionmaker(engine, expire_on_commit=False)
+async def test_missing_task_is_a_noop(maker):
     await worker.run_task(999999, None, maker)
 
 
-async def test_unknown_kind_fails_cleanly(engine):
-    maker = async_sessionmaker(engine, expire_on_commit=False)
+async def test_unknown_kind_fails_cleanly(maker):
     async with maker() as db:
         await queue.enqueue(db, "no_such_kind")
         t = await queue.claim(db)
@@ -40,8 +37,8 @@ async def test_unknown_kind_fails_cleanly(engine):
         assert (await db.get(Task, t.id)).status == "failed"
 
 
-async def test_heartbeat_refreshes_locked_at_while_handler_runs(engine, monkeypatch):
-    maker = async_sessionmaker(engine, expire_on_commit=False)
+@pytest.mark.real_commit
+async def test_heartbeat_refreshes_locked_at_while_handler_runs(maker, monkeypatch):
     monkeypatch.setattr(worker, "HEARTBEAT_SECONDS", 0.05)
     old = datetime.now(UTC) - timedelta(hours=1)
     seen = {}

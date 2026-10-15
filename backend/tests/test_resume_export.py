@@ -29,7 +29,7 @@ def _resume():
             ),
         ],
         projects=[
-            Project(name="Engine", description="Open-source <calculator>", url="github.com/ada/engine")
+            Project(name="Engine", description="Open-source <calculator>", url="github.com/ada/maker")
         ],
         education=[
             Education(school="Northeastern", degree="BS Computer Science", start="2018", end="2022", gpa="3.9")

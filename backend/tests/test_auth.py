@@ -54,15 +54,14 @@ async def test_login_is_rate_limited_per_ip(client, monkeypatch):
     assert (await client.post("/api/auth/login", json={"email": "u9@x.com", "password": "bad-password-1"})).status_code == 429
 
 
-async def test_only_a_hash_of_the_session_token_is_stored(client, make_account, engine):
+async def test_only_a_hash_of_the_session_token_is_stored(client, make_account, maker):
     import sqlalchemy as sa
-    from sqlalchemy.ext.asyncio import async_sessionmaker
 
     from jobfinder.models import Session
 
     await make_account("hash@x.com")
     raw = client.cookies.get("session")
-    async with async_sessionmaker(engine)() as db:
+    async with maker() as db:
         stored = (await db.scalars(sa.select(Session.token))).all()
     assert stored == [security.hash_session_token(raw)] and raw not in stored and len(stored[0]) == 64
     assert (await client.get("/api/auth/me")).status_code == 200
@@ -70,16 +69,14 @@ async def test_only_a_hash_of_the_session_token_is_stored(client, make_account, 
     assert (await client.get("/api/auth/me")).status_code == 401
 
 
-async def test_logout_removes_the_session_row_and_expired_ones_are_pruned(client, make_account, engine):
+async def test_logout_removes_the_session_row_and_expired_ones_are_pruned(client, make_account, maker):
     from datetime import UTC, datetime, timedelta
 
     import sqlalchemy as sa
-    from sqlalchemy.ext.asyncio import async_sessionmaker
 
     from jobfinder.models import Session, User
 
     await make_account("out@x.com")
-    maker = async_sessionmaker(engine, expire_on_commit=False)
     async with maker() as db:
         uid = (await db.scalars(sa.select(User.id))).one()
         db.add(Session(token="old" * 20, user_id=uid, expires_at=datetime.now(UTC) - timedelta(days=1)))

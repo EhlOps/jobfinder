@@ -1,17 +1,10 @@
-import pytest
 import sqlalchemy as sa
 from factories import make_match, make_question
-from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from jobfinder.models import Profile, ProfileFact, Task, User
 from jobfinder.notify import email as mail
 from jobfinder.notify.email import EmailError
 from jobfinder.notify.tokens import MAX_AGE, make_token
-
-
-@pytest.fixture
-def maker(engine):
-    return async_sessionmaker(engine, expire_on_commit=False)
 
 
 async def uid(client):

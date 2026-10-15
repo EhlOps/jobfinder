@@ -6,7 +6,6 @@ import pytest
 import sqlalchemy as sa
 from factories import make_user
 from security_payloads import PRIVATE_URLS, SCRIPT_URLS, SQLI
-from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from jobfinder.ingest import http_safety, resolve
 from jobfinder.ingest.discovery import board_from_url, boards_from_text
@@ -132,11 +131,6 @@ def test_sqli_in_path_does_not_change_the_fixed_board(payload):
     url = f"https://www.janestreet.com/join-jane-street/position/{payload}"
     assert board_from_url(url) in (("greenhouse", "janestreet"), None)
     assert refusal_for_url(f"https://www.amazon.jobs/en/jobs/{payload}") is not None
-
-
-@pytest.fixture
-def maker(engine):
-    return async_sessionmaker(engine, expire_on_commit=False)
 
 
 async def test_pasted_refused_link_never_reaches_a_rung_or_the_network(maker, monkeypatch):

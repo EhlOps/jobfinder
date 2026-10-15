@@ -2,7 +2,6 @@ import json
 
 import pytest
 from pydantic import ValidationError
-from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from jobfinder.ai.schemas import ResumeContact, TailoredResume
 from jobfinder.ai.tasks import AITasks
@@ -28,8 +27,7 @@ class FakeClaude:
         return self.reply
 
 
-async def seed(engine, tmp_path):
-    maker = async_sessionmaker(engine, expire_on_commit=False)
+async def seed(maker, tmp_path):
     store = DocumentStore(tmp_path / "store")
     async with maker() as db:
         user = await make_user(db)
@@ -40,8 +38,8 @@ async def seed(engine, tmp_path):
     return maker, store, user.id, match.id
 
 
-async def test_prompt_has_profile_facts_documents_and_posting(engine, tmp_path):
-    maker, store, uid, mid = await seed(engine, tmp_path)
+async def test_prompt_has_profile_facts_documents_and_posting(maker, tmp_path):
+    maker, store, uid, mid = await seed(maker, tmp_path)
     fake = FakeClaude()
     async with maker() as db:
         await service.tailor(db, AITasks(fake), store, uid, mid)
@@ -54,8 +52,8 @@ async def test_prompt_has_profile_facts_documents_and_posting(engine, tmp_path):
     assert "NEVER invent" in fake.systems[0] and "never invent experience, metrics or titles" in fake.systems[0]
 
 
-async def test_stored_as_resume_tagged_with_match_and_replaced_on_retailor(engine, tmp_path):
-    maker, store, uid, mid = await seed(engine, tmp_path)
+async def test_stored_as_resume_tagged_with_match_and_replaced_on_retailor(maker, tmp_path):
+    maker, store, uid, mid = await seed(maker, tmp_path)
     async with maker() as db:
         first = await service.tailor(db, AITasks(FakeClaude()), store, uid, mid)
         second = await service.tailor(db, AITasks(FakeClaude()), store, uid, mid)
@@ -65,15 +63,15 @@ async def test_stored_as_resume_tagged_with_match_and_replaced_on_retailor(engin
     assert len(store.list(uid, kind="resume")) == 2  # the uploaded resume is untouched
 
 
-async def test_tailored_output_is_not_fed_back_as_a_source(engine, tmp_path):
-    maker, store, uid, mid = await seed(engine, tmp_path)
+async def test_tailored_output_is_not_fed_back_as_a_source(maker, tmp_path):
+    maker, store, uid, mid = await seed(maker, tmp_path)
     async with maker() as db:
         await service.tailor(db, AITasks(FakeClaude()), store, uid, mid)
     assert [label for label, _ in service.source_documents(store, uid)] == ["cv.pdf"]
 
 
-async def test_unknown_match_and_missing_profile(engine, tmp_path):
-    maker, store, uid, mid = await seed(engine, tmp_path)
+async def test_unknown_match_and_missing_profile(maker, tmp_path):
+    maker, store, uid, mid = await seed(maker, tmp_path)
     async with maker() as db:
         with pytest.raises(ValueError, match="Match not found"):
             await service.tailor(db, AITasks(FakeClaude()), store, uid, mid + 999)
@@ -86,8 +84,8 @@ def test_schema_rejects_missing_sections():
             TailoredResume.model_validate({k: v for k, v in data.items() if k != section})
 
 
-async def test_edit_made_while_queued_survives_generation(engine, tmp_path):
-    maker, store, uid, mid = await seed(engine, tmp_path)
+async def test_edit_made_while_queued_survives_generation(maker, tmp_path):
+    maker, store, uid, mid = await seed(maker, tmp_path)
     async with maker() as db:
         first = await service.tailor(db, AITasks(FakeClaude()), store, uid, mid)
     store.set_tags(uid, first["document_id"], {**service.match_tags(mid), "edited": "1"})  # edited after enqueue
@@ -98,8 +96,8 @@ async def test_edit_made_while_queued_survives_generation(engine, tmp_path):
     assert [d.id for d in docs] == [first["document_id"]]
 
 
-async def test_forced_generation_replaces_edited_resume(engine, tmp_path):
-    maker, store, uid, mid = await seed(engine, tmp_path)
+async def test_forced_generation_replaces_edited_resume(maker, tmp_path):
+    maker, store, uid, mid = await seed(maker, tmp_path)
     async with maker() as db:
         first = await service.tailor(db, AITasks(FakeClaude()), store, uid, mid)
         store.set_tags(uid, first["document_id"], {**service.match_tags(mid), "edited": "1"})

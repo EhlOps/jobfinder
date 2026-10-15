@@ -5,7 +5,6 @@ from pathlib import Path
 import httpx
 import pytest
 import sqlalchemy as sa
-from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from jobfinder.config import get_settings
 from jobfinder.ingest import runner, service
@@ -14,11 +13,6 @@ from jobfinder.ingest.sources import usajobs
 from jobfinder.models import Job, Profile, User
 
 FIX = json.loads((Path(__file__).parent / "fixtures" / "usajobs_search.json").read_text())
-
-
-@pytest.fixture
-def maker(engine):
-    return async_sessionmaker(engine, expire_on_commit=False)
 
 
 @pytest.fixture(autouse=True)
