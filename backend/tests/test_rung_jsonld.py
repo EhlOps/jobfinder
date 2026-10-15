@@ -6,7 +6,6 @@ import httpx
 import pytest
 import sqlalchemy as sa
 from security_payloads import PRIVATE_URLS, SCRIPT_URLS, SQLI, XSS_TEXT
-from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from jobfinder.ingest import http_safety
 from jobfinder.ingest.resolve import resolve_link
@@ -34,11 +33,6 @@ def public_dns(monkeypatch):
         return host, "93.184.216.34"
 
     monkeypatch.setattr(http_safety, "resolve_public", fake)
-
-
-@pytest.fixture
-def maker(engine):
-    return async_sessionmaker(engine, expire_on_commit=False)
 
 
 def page_client(body: str, seen: list | None = None) -> httpx.AsyncClient:

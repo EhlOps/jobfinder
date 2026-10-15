@@ -5,7 +5,6 @@ import httpx
 import pytest
 import sqlalchemy as sa
 from security_payloads import SQLI, XSS_TEXT
-from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from jobfinder.ai.claude_code import AIError
 from jobfinder.ai.schemas import InducedRecipe
@@ -68,11 +67,6 @@ def public_dns(monkeypatch):
         return httpx.URL(url).host, "93.184.216.34"
 
     monkeypatch.setattr(http_safety, "resolve_public", fake)
-
-
-@pytest.fixture
-def maker(engine):
-    return async_sessionmaker(engine, expire_on_commit=False)
 
 
 def site(seen: list | None = None, jobs=JOBS, page=PAGE) -> httpx.AsyncClient:

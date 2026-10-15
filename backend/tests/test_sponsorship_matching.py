@@ -1,5 +1,4 @@
 import pytest
-from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from jobfinder.ai.schemas import MatchScore
 from jobfinder.ai.tasks import AITasks, load_prompt
@@ -73,8 +72,7 @@ async def test_candidate_data_has_sponsorship_block_only_when_relevant():
     assert "`sponsorship` block" in load_prompt("match")
 
 
-async def test_api_exposes_sponsorship_value(authed, engine):
-    maker = async_sessionmaker(engine, expire_on_commit=False)
+async def test_api_exposes_sponsorship_value(authed, maker):
     uid = await me(authed)
     plain = await add_match(maker, uid, "Plain Role", 50)
     refuses = await add_match(maker, uid, "Refuses Role", 60)

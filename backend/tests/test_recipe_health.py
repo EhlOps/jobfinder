@@ -3,7 +3,6 @@ from datetime import UTC, datetime, timedelta
 import httpx
 import pytest
 import sqlalchemy as sa
-from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from jobfinder.ingest import http_safety
 from jobfinder.ingest.recipes.health import (
@@ -143,11 +142,6 @@ RECIPE = {
     "kind": "json_api", "list": {"url": "https://careers.acme.com/api/jobs"}, "items": "$.jobs[*]",
     "fields": {"external_id": "$.id", "title": "$.title", "url": "https://careers.acme.com/jobs/{external_id}"},
 }
-
-
-@pytest.fixture
-def maker(engine):
-    return async_sessionmaker(engine, expire_on_commit=False)
 
 
 @pytest.fixture(autouse=True)

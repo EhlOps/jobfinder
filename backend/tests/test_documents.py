@@ -1,6 +1,7 @@
 import io
 
 import docx
+import pytest
 
 
 def _docx_bytes(text: str) -> bytes:
@@ -134,6 +135,7 @@ async def _parser_idle():
     raise AssertionError("parser slots never came back")
 
 
+@pytest.mark.real_commit
 async def test_slow_parse_times_out_without_blocking_the_api(authed, monkeypatch):
     import asyncio
     import time

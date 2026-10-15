@@ -4,7 +4,6 @@ from datetime import UTC, datetime
 import pytest
 import sqlalchemy as sa
 from factories import FakeAI, make_match, make_question, make_user, unknown
-from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from jobfinder.ai.claude_code import AIError
 from jobfinder.config import get_settings
@@ -14,11 +13,6 @@ from jobfinder.notify import email as mail
 from jobfinder.notify.email import EmailError
 from jobfinder.notify.tokens import read_token
 from jobfinder.worker import run_task
-
-
-@pytest.fixture
-def maker(engine):
-    return async_sessionmaker(engine, expire_on_commit=False)
 
 
 @pytest.fixture
@@ -188,6 +182,7 @@ async def test_matches_are_claimed_before_the_email_goes_out(maker, monkeypatch)
     assert seen["digested"] == at(9) and seen["last"] == at(9)
 
 
+@pytest.mark.real_commit
 async def test_concurrent_runs_send_one_email(maker, outbox):
     async with maker() as db:
         u = await make_user(db)

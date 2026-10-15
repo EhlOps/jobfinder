@@ -2,7 +2,6 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
-from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from jobfinder.config import get_settings
 from jobfinder.ingest import service
@@ -82,8 +81,8 @@ def test_never_fetched_come_before_stale():
     assert ids(select_boards([old, fresh], [], cap=1)) == [1]
 
 
-async def test_ingest_boards_uses_selection(engine, monkeypatch):
-    maker = async_sessionmaker(engine, expire_on_commit=False)
+@pytest.mark.real_commit
+async def test_ingest_boards_uses_selection(maker, monkeypatch):
     monkeypatch.setattr(get_settings(), "ingest_max_discovered_boards_per_run", 1)
     monkeypatch.setitem(service.ATS_FETCHERS, "greenhouse", fake_fetcher([posting(1)]))
     async with maker() as db:

@@ -1,13 +1,12 @@
 import asyncio
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy.ext.asyncio import async_sessionmaker
+import pytest
 
 from jobfinder.scheduling import queue
 
 
-async def test_enqueue_claim_complete(engine):
-    maker = async_sessionmaker(engine, expire_on_commit=False)
+async def test_enqueue_claim_complete(maker):
     async with maker() as db:
         t = await queue.enqueue(db, "k", {"a": 1})
         got = await queue.claim(db)
@@ -17,8 +16,8 @@ async def test_enqueue_claim_complete(engine):
         assert (got.status, got.result) == ("done", {"ok": True})
 
 
-async def test_concurrent_claims_never_return_same_task(engine):
-    maker = async_sessionmaker(engine, expire_on_commit=False)
+@pytest.mark.real_commit
+async def test_concurrent_claims_never_return_same_task(maker):
     async with maker() as db:
         for _ in range(5):
             await queue.enqueue(db, "k")
@@ -31,8 +30,7 @@ async def test_concurrent_claims_never_return_same_task(engine):
     assert len(claimed) == 5 and len({t.id for t in claimed}) == 5
 
 
-async def test_retry_backoff_then_permanent_failure(engine):
-    maker = async_sessionmaker(engine, expire_on_commit=False)
+async def test_retry_backoff_then_permanent_failure(maker):
     async with maker() as db:
         await queue.enqueue(db, "k")
         t = await queue.claim(db)
@@ -50,8 +48,7 @@ async def test_retry_backoff_then_permanent_failure(engine):
         assert t2.status == "failed"
 
 
-async def test_dedupe_and_reap(engine):
-    maker = async_sessionmaker(engine, expire_on_commit=False)
+async def test_dedupe_and_reap(maker):
     async with maker() as db:
         a = await queue.enqueue(db, "k", user_id=None, dedupe=True)
         b = await queue.enqueue(db, "k", user_id=None, dedupe=True)
@@ -64,12 +61,12 @@ async def test_dedupe_and_reap(engine):
         assert (await queue.claim(db)).id == a.id
 
 
-async def test_concurrent_dedupe_converges_on_one_task(engine):
+@pytest.mark.real_commit
+async def test_concurrent_dedupe_converges_on_one_task(maker):
     import sqlalchemy as sa
 
     from jobfinder.models import Task
 
-    maker = async_sessionmaker(engine, expire_on_commit=False)
 
     async def go():
         async with maker() as db:
@@ -81,8 +78,7 @@ async def test_concurrent_dedupe_converges_on_one_task(engine):
         assert await db.scalar(sa.select(sa.func.count()).select_from(Task)) == 1
 
 
-async def test_dedupe_distinguishes_payloads_and_frees_key_when_done(engine):
-    maker = async_sessionmaker(engine, expire_on_commit=False)
+async def test_dedupe_distinguishes_payloads_and_frees_key_when_done(maker):
     async with maker() as db:
         a = await queue.enqueue(db, "k", {"x": 1}, dedupe=True)
         b = await queue.enqueue(db, "k", {"x": 2}, dedupe=True)
@@ -94,16 +90,14 @@ async def test_dedupe_distinguishes_payloads_and_frees_key_when_done(engine):
         assert again.id not in (a.id, b.id) and again.status == "queued"
 
 
-async def test_non_dedupe_enqueue_still_makes_duplicates(engine):
-    maker = async_sessionmaker(engine, expire_on_commit=False)
+async def test_non_dedupe_enqueue_still_makes_duplicates(maker):
     async with maker() as db:
         a = await queue.enqueue(db, "ai_check")
         b = await queue.enqueue(db, "ai_check")
         assert a.id != b.id
 
 
-async def test_heartbeat_keeps_running_task_from_being_reaped(engine):
-    maker = async_sessionmaker(engine, expire_on_commit=False)
+async def test_heartbeat_keeps_running_task_from_being_reaped(maker):
     async with maker() as db:
         await queue.enqueue(db, "k")
         t = await queue.claim(db)
@@ -115,8 +109,7 @@ async def test_heartbeat_keeps_running_task_from_being_reaped(engine):
         assert t.status == "running"
 
 
-async def test_reap_fails_tasks_out_of_attempts_and_requeues_others(engine):
-    maker = async_sessionmaker(engine, expire_on_commit=False)
+async def test_reap_fails_tasks_out_of_attempts_and_requeues_others(maker):
     async with maker() as db:
         await queue.enqueue(db, "poison")
         await queue.enqueue(db, "fresh")
