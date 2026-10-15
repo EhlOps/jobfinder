@@ -1,0 +1,21 @@
+# Base layer shared by every environment. Overlays in ../overlays/ pull this
+# in and add environment-specific settings; apply an overlay, not the base.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: jobfinder
+
+# `labels` (not the deprecated `commonLabels`) without includeSelectors, so
+# selectors stay untouched: Deployment selectors are immutable, and changing
+# a common label later would otherwise force a delete-and-recreate.
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: jobfinder
+      app.kubernetes.io/managed-by: kustomize
+
+resources:
+  - namespace.yaml
+  # Placeholders for later issues (add the directories as they land):
+  # - postgres/        # #40: Postgres StatefulSet + PVC + pg_dump CronJob
+  # - valkey/          # #40: Valkey StatefulSet (AOF) for the task streams
+  # - app/             # #43: api, scheduler, worker-io, worker-ai, renderer, web

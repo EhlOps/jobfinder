@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: hello
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: hello
+    spec:
+      # whoami needs no API access; don't mount a token it can't use.
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        # The image is a static binary on scratch with no USER, so pick
+        # nobody explicitly.
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: whoami
+          # Pinned by tag so the smoke test doesn't change under us.
+          image: traefik/whoami:v1.10.3
+          # Non-root can't bind :80, so listen on an unprivileged port.
+          args: ["--port", "8080"]
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 5m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 32Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]

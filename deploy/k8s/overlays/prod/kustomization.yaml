@@ -1,0 +1,16 @@
+# Production: keeps the base namespace `jobfinder`.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+labels:
+  - pairs:
+      app.kubernetes.io/instance: prod
+
+# Placeholders for later issues:
+# - #40/#43: sealed-secret.yaml, sealed for the jobfinder namespace.
+# - #43: `images:` entries pinning ghcr.io/ehlops/jobfinder-* to a commit SHA,
+#   and a configMapGenerator built from .env.defaults.
+# - #47: cutover from compose; host Caddy then proxies to Traefik on :8280.

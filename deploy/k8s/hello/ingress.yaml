@@ -1,0 +1,21 @@
+# Routes /healthz on Traefik (127.0.0.1:8280, set up by deploy/k3s/) to
+# whoami, which answers 200 on any path. No host rule: the request comes
+# from curl on the node (or later from host Caddy), not a public hostname.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hello
+spec:
+  ingressClassName: traefik
+  rules:
+    - http:
+        paths:
+          # Exact, so this smoke test never shadows app routes that #43
+          # adds under the same Traefik entrypoint.
+          - path: /healthz
+            pathType: Exact
+            backend:
+              service:
+                name: hello
+                port:
+                  name: http
