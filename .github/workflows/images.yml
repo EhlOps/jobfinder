@@ -1,6 +1,8 @@
 # Builds the four arm64 images (the k3s host is aarch64) and publishes them to GHCR:
 #   ghcr.io/ehlops/jobfinder-{api,worker,renderer,web}:{sha-<short sha>,main|dev}
 # Pull requests build only (no push), to catch broken Dockerfiles before merge.
+# Pushes and PRs build only the images whose build context changed (backend/** -> api, worker,
+# renderer; frontend/** -> web); a change to this workflow, or a manual run, builds all four.
 #
 # One-time step for the owner: a package created by the first push starts out PRIVATE, even though
 # the repo is public. Open each package (github.com/EhlOps?tab=packages → jobfinder-<name> →
@@ -35,26 +37,67 @@ permissions:
   packages: write
 
 jobs:
+  # Decides which images to build. The build context of each Dockerfile is its whole directory
+  # (backend/ or frontend/), so a filter per directory covers everything that can change an image.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read  # paths-filter lists PR files through the API
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v7
+        if: github.event_name == 'push'  # PRs use the API; pushes diff locally
+
+      - uses: dorny/paths-filter@v4.0.3
+        id: filter
+        if: github.event_name != 'workflow_dispatch'
+        with:
+          # On a push, compare with the commit before the push (not the default branch).
+          base: ${{ github.event_name == 'push' && github.ref_name || '' }}
+          filters: |
+            backend:
+              - "backend/**"
+              - ".github/workflows/images.yml"
+            frontend:
+              - "frontend/**"
+              - ".github/workflows/images.yml"
+
+      - name: Build matrix
+        id: matrix
+        env:
+          ALL: ${{ github.event_name == 'workflow_dispatch' }}
+          BACKEND: ${{ steps.filter.outputs.backend }}
+          FRONTEND: ${{ steps.filter.outputs.frontend }}
+        run: |
+          entries=()
+          if [ "$ALL" = true ] || [ "$BACKEND" = true ]; then
+            entries+=('{"name":"api","context":"backend","dockerfile":"backend/Dockerfile"}')
+            # WITH_JOBSPY keeps its Dockerfile default (false)
+            entries+=('{"name":"worker","context":"backend","dockerfile":"backend/Dockerfile.worker"}')
+            entries+=('{"name":"renderer","context":"backend","dockerfile":"backend/Dockerfile.renderer"}')
+          fi
+          if [ "$ALL" = true ] || [ "$FRONTEND" = true ]; then
+            entries+=('{"name":"web","context":"frontend","dockerfile":"frontend/Dockerfile"}')
+          fi
+          matrix="[$(IFS=,; echo "${entries[*]}")]"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "Images to build: $matrix"
+
   build:
     name: build (${{ matrix.name }})
+    needs: changes
+    # An empty matrix is an error, so skip the job when nothing needs building. No branch protection
+    # requires these checks and no job depends on build, so a skipped build blocks nothing.
+    if: needs.changes.outputs.matrix != '[]'
     runs-on: ubuntu-24.04-arm  # native arm64: no QEMU emulation
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - name: api
-            context: backend
-            dockerfile: backend/Dockerfile
-          - name: worker  # WITH_JOBSPY keeps its Dockerfile default (false)
-            context: backend
-            dockerfile: backend/Dockerfile.worker
-          - name: renderer
-            context: backend
-            dockerfile: backend/Dockerfile.renderer
-          - name: web
-            context: frontend
-            dockerfile: frontend/Dockerfile
+        include: ${{ fromJSON(needs.changes.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v7
 
