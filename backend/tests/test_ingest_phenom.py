@@ -19,24 +19,17 @@ from jobfinder.ingest.sources.phenom import (
     parse_slug,
 )
 from jobfinder.ingest.validate import SLUG_RE
+from tests.fakes import PUBLIC_IP, fake_resolve_public
 
 FIX = Path(__file__).parent / "fixtures"
 HOST = "careers.mastercard.com"
 SLUG = "careers.mastercard.com__us__en"
 LIST = json.loads((FIX / "phenom_list.json").read_text())
 JOB_HTML = (FIX / "phenom_job.html").read_text()
-PUBLIC_IP = "93.184.216.34"
-
 
 @pytest.fixture(autouse=True)
 def public_dns(monkeypatch):
-    async def fake(url):
-        host = httpx.URL(url).host
-        if "internal" in host:
-            raise FetchError("URL points to a non-public address")
-        return host, PUBLIC_IP
-
-    monkeypatch.setattr(http_safety, "resolve_public", fake)
+    monkeypatch.setattr(http_safety, "resolve_public", fake_resolve_public(refuse_internal=True))
 
 
 def test_registered():

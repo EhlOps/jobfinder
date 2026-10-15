@@ -14,6 +14,7 @@ from jobfinder.ingest.recipes.html import (
     parse_document,
     select,
 )
+from tests.fakes import fake_resolve_public
 
 FIXTURES = Path(__file__).parent / "fixtures"
 LISTING = (FIXTURES / "recipe_listing.html").read_text()
@@ -34,10 +35,7 @@ def recipe(**over):
 
 @pytest.fixture(autouse=True)
 def public_dns(monkeypatch):
-    async def fake(url):
-        return httpx.URL(url).host, "93.184.216.34"
-
-    monkeypatch.setattr(http_safety, "resolve_public", fake)
+    monkeypatch.setattr(http_safety, "resolve_public", fake_resolve_public())
 
 
 def site(pages: dict[str, str], calls: list | None = None, robots: str | None = None):

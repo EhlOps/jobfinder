@@ -4,20 +4,13 @@ from security_payloads import PRIVATE_URLS
 
 from jobfinder.ingest import http_safety
 from jobfinder.ingest.http_safety import FetchError, assert_public_host, safe_fetch
-
-PUBLIC_IP = "93.184.216.34"
+from tests.fakes import PUBLIC_IP, fake_resolve_public
 
 
 @pytest.fixture
 def public_dns(monkeypatch):
     """Every name resolves to a public IP except ones containing 'internal' (-> 10.0.0.1, refused)."""
-    async def fake(url):
-        host = httpx.URL(url).host
-        if "internal" in host:
-            raise FetchError("URL points to a non-public address")
-        return host, PUBLIC_IP
-
-    monkeypatch.setattr(http_safety, "resolve_public", fake)
+    monkeypatch.setattr(http_safety, "resolve_public", fake_resolve_public(refuse_internal=True))
 
 
 def client_for(handler):

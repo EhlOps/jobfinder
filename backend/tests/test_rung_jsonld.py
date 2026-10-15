@@ -17,6 +17,7 @@ from jobfinder.ingest.resolve.rungs.jsonld import (
     posting_from_ld,
 )
 from jobfinder.models import Job, JobLink, Task
+from tests.fakes import fake_resolve_public
 
 FIX = Path(__file__).parent / "fixtures"
 LD_JOB = (FIX / "jsonld_job.html").read_text()
@@ -26,13 +27,7 @@ PAGE = "https://careers.acmerobotics.com/jobs/4021"
 
 @pytest.fixture(autouse=True)
 def public_dns(monkeypatch):
-    async def fake(url):
-        host = httpx.URL(url).host
-        if host in ("localhost", "0.0.0.0") or host.startswith(("127.", "10.", "192.168.", "169.254.", "::1")):
-            raise http_safety.FetchError("URL points to a non-public address")
-        return host, "93.184.216.34"
-
-    monkeypatch.setattr(http_safety, "resolve_public", fake)
+    monkeypatch.setattr(http_safety, "resolve_public", fake_resolve_public(refuse_private=True))
 
 
 def page_client(body: str, seen: list | None = None) -> httpx.AsyncClient:

@@ -1,5 +1,4 @@
 """Rung 4.5 without a browser: captured JSON -> json_api recipe, the rendered-DOM fallback, and the off switch."""
-import asyncio
 import json
 from pathlib import Path
 
@@ -21,7 +20,7 @@ from jobfinder.ingest.resolve.rungs.rendered import (
     rendered_html_recipe,
 )
 from jobfinder.models import Company, Task
-from jobfinder.scheduling import queue
+from tests.fakes import FakeRenderer, fake_resolve_public
 
 FIX = Path(__file__).parent / "fixtures" / "renderer"
 POST_URL = "https://careers.acme.com/us/en/job/R-10234/senior-robotics-engineer"
@@ -44,10 +43,7 @@ def enabled(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def public_dns(monkeypatch):
-    async def fake(url):
-        return httpx.URL(url).host, "93.184.216.34"
-
-    monkeypatch.setattr(http_safety, "resolve_public", fake)
+    monkeypatch.setattr(http_safety, "resolve_public", fake_resolve_public())
 
 
 def search_api(calls):
@@ -61,30 +57,6 @@ def search_api(calls):
         return httpx.Response(404)
 
     return httpx.AsyncClient(transport=httpx.MockTransport(handler))
-
-
-class FakeRenderer:
-    """Plays the renderer container: completes render_* tasks with canned results and records them."""
-
-    def __init__(self, maker, results):
-        self.maker, self.results, self.seen = maker, results, []
-
-    async def loop(self):
-        while True:
-            async with self.maker() as db:
-                t = await queue.claim(db, kind_prefix=queue.RENDER_PREFIX)
-                if t:
-                    self.seen.append((t.kind, t.payload))
-                    await queue.complete(db, t, self.results[t.kind])
-                    continue
-            await asyncio.sleep(0.01)
-
-    async def __aenter__(self):
-        self.task = asyncio.create_task(self.loop())
-        return self
-
-    async def __aexit__(self, *exc):
-        self.task.cancel()
 
 
 def test_rung_is_registered_between_listing_sniff_and_llm():

@@ -11,15 +11,13 @@ from jobfinder.ingest.discovery import board_from_url, boards_from_text, github_
 from jobfinder.ingest.discovery.robots import USER_AGENT, PoliteFetcher, RobotsDisallowed
 from jobfinder.models import Company
 from jobfinder.scheduling.handlers import HANDLERS
+from tests.fakes import fake_resolve_public
 
 
 @pytest.fixture(autouse=True)
 def public_dns(monkeypatch):
     """robots.txt is fetched through safe_fetch (IP-pinned): no real DNS in unit tests."""
-    async def fake(url):
-        return httpx.URL(url).host, "93.184.216.34"
-
-    monkeypatch.setattr(http_safety, "resolve_public", fake)
+    monkeypatch.setattr(http_safety, "resolve_public", fake_resolve_public())
 
 
 GH_GOOD = {"jobs": [{"id": 1, "title": "Engineer", "absolute_url": "https://x/1", "location": {"name": "Remote"}}]}

@@ -22,6 +22,7 @@ from jobfinder.ingest.sources.custom import (
 )
 from jobfinder.ingest.validate import SLUG_RE
 from jobfinder.models import JobLink, Task
+from tests.fakes import fake_resolve_public
 
 TERMS = Path(__file__).parents[1] / "jobfinder/ingest/sources/custom/TERMS.md"
 
@@ -163,10 +164,7 @@ async def test_pasted_refused_link_never_reaches_a_rung_or_the_network(maker, mo
 
 @pytest.fixture
 def public_dns(monkeypatch):
-    async def fake(url):
-        return httpx.URL(url).host, "93.184.216.34"
-
-    monkeypatch.setattr(http_safety, "resolve_public", fake)
+    monkeypatch.setattr(http_safety, "resolve_public", fake_resolve_public())
 
 
 async def test_safe_fetch_refuses_a_redirect_onto_a_refused_site(public_dns):

@@ -6,20 +6,12 @@ from security_payloads import PRIVATE_URLS
 from jobfinder.ingest import http_safety
 from jobfinder.ingest.discovery.robots import ROBOTS_MAX_BYTES, USER_AGENT, PoliteFetcher
 from jobfinder.ingest.resolve.ladder import ResolveContext
-
-PUBLIC_IP = "93.184.216.34"
+from tests.fakes import PUBLIC_IP, fake_resolve_public
 
 
 @pytest.fixture(autouse=True)
 def public_dns(monkeypatch):
-    async def fake(url):
-        host = httpx.URL(url).host
-        if "internal" in host or host in ("localhost", "0.0.0.0") or host.startswith(
-                ("127.", "10.", "192.168.", "169.254.", "::1")):
-            raise http_safety.FetchError("URL points to a non-public address")
-        return host, PUBLIC_IP
-
-    monkeypatch.setattr(http_safety, "resolve_public", fake)
+    monkeypatch.setattr(http_safety, "resolve_public", fake_resolve_public(refuse_internal=True, refuse_private=True))
 
 
 def recorder(routes: dict[str, httpx.Response], seen: list):

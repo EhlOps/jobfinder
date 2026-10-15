@@ -15,7 +15,8 @@ from jobfinder.ingest.resolve.rungs.llm import reinduce_company
 from jobfinder.ingest.service import ingest_company
 from jobfinder.models import AICall, Company, Job, Task
 from jobfinder.scheduling import handlers
-from tests.test_rung_llm import FakeClaude, induced
+from tests.fakes import FakeClaude, fake_resolve_public
+from tests.test_rung_llm import induced
 
 PAGE_URL = "https://careers.acme.com/jobs/4021"
 PAGE = '<html><body><h1>Careers</h1><script>window.__C = {"api": "/api/v2/jobs"}</script></body></html>'
@@ -33,10 +34,7 @@ def jobs(n: int) -> dict:
 
 @pytest.fixture(autouse=True)
 def public_dns(monkeypatch):
-    async def fake(url):
-        return httpx.URL(url).host, "93.184.216.34"
-
-    monkeypatch.setattr(http_safety, "resolve_public", fake)
+    monkeypatch.setattr(http_safety, "resolve_public", fake_resolve_public())
 
 
 def site(n_jobs: int) -> httpx.AsyncClient:

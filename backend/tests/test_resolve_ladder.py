@@ -12,6 +12,7 @@ from jobfinder.ingest.resolve.rungs import RUNGS
 from jobfinder.ingest.service import ingest_company
 from jobfinder.ingest.sources.detect import HTML_DETECTORS, detect_board
 from jobfinder.models import Company, Job, JobLink
+from tests.fakes import fake_resolve_public
 
 URL = "https://careers.acme.com/jobs/4021"
 API = {"jobs": [{"id": 4021, "title": "Robotics Engineer"}, {"id": 4022, "title": "Controls Engineer"}]}
@@ -23,10 +24,7 @@ RECIPE = {
 
 @pytest.fixture(autouse=True)
 def public_dns(monkeypatch):
-    async def fake(url):
-        return httpx.URL(url).host, "93.184.216.34"
-
-    monkeypatch.setattr(http_safety, "resolve_public", fake)
+    monkeypatch.setattr(http_safety, "resolve_public", fake_resolve_public())
 
 
 class Fixed:

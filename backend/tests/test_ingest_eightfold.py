@@ -21,6 +21,7 @@ from jobfinder.ingest.sources.eightfold import (
     parse_eightfold,
     parse_slug,
 )
+from tests.fakes import fake_resolve_public
 
 FIX = Path(__file__).parent / "fixtures"
 PCSX_LIST = json.loads((FIX / "eightfold_pcsx_search.json").read_text())
@@ -47,11 +48,7 @@ Allow: /static/gen
 @pytest.fixture(autouse=True)
 def public_dns(monkeypatch):
     """Every name resolves to a public IP except ones containing 'internal'; no real sleeping; fresh API cache."""
-    async def fake(url):
-        host = httpx.URL(url).host
-        if "internal" in host:
-            raise FetchError("URL points to a non-public address")
-        return host, "93.184.216.34"
+    fake = fake_resolve_public(refuse_internal=True)
 
     async def no_sleep(_s):
         return None

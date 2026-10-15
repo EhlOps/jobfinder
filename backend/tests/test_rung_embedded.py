@@ -11,12 +11,12 @@ from jobfinder.ingest.resolve.ladder import BoardHit, ResolveContext
 from jobfinder.ingest.resolve.rungs import RUNGS
 from jobfinder.ingest.resolve.rungs.embedded import EmbeddedRung, page_boards, pick_board
 from jobfinder.models import Company, Job, JobLink, Task
+from tests.fakes import fake_resolve_public
 
 FIX = Path(__file__).parent / "fixtures"
 GH_EMBED = (FIX / "careers_greenhouse_embed.html").read_text()
 LEVER_LINKS = (FIX / "careers_lever_links.html").read_text()
 PHENOM_JOB = (FIX / "phenom_job.html").read_text()
-PUBLIC_IP = "93.184.216.34"
 GH_JOBS = {"jobs": [
     {"id": 1, "title": "Robotics Engineer", "absolute_url": "https://boards.greenhouse.io/acmerobotics/jobs/1",
      "location": {"name": "Boston, MA"}},
@@ -27,13 +27,7 @@ GH_JOBS = {"jobs": [
 
 @pytest.fixture(autouse=True)
 def public_dns(monkeypatch):
-    async def fake(url):
-        host = httpx.URL(url).host
-        if host in ("localhost", "0.0.0.0") or host.startswith(("127.", "10.", "192.168.", "169.254.", "::1")):
-            raise http_safety.FetchError("URL points to a non-public address")
-        return host, PUBLIC_IP
-
-    monkeypatch.setattr(http_safety, "resolve_public", fake)
+    monkeypatch.setattr(http_safety, "resolve_public", fake_resolve_public(refuse_private=True))
 
 
 def site(pages: dict[str, httpx.Response], seen: list | None = None):

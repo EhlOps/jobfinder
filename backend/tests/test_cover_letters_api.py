@@ -6,18 +6,10 @@ from jobfinder.letters.docx_export import build_docx, filename
 from jobfinder.models import Job, JobMatch
 from jobfinder.scheduling import queue
 from jobfinder.worker import run_task
+from tests.fakes import FakeLetterAI
 
 LETTER = "Dear Acme hiring team,\n\nI built things.\n\nSincerely,\nJane Doe"
 N = 0
-
-
-class FakeAI:
-    def __init__(self, text=LETTER):
-        self.text, self.calls = text, []
-
-    async def cover_letter(self, **kw):
-        self.calls.append(kw)
-        return self.text
 
 
 async def setup(client, maker, *, background=True):
@@ -43,7 +35,7 @@ async def setup(client, maker, *, background=True):
 async def draft(client, maker, mid, ai=None, **body):
     r = await client.post(f"/api/matches/{mid}/cover-letter", json=body)
     assert r.status_code == 202, r.text
-    await run_task(r.json()["task_id"], ai or FakeAI(), maker)
+    await run_task(r.json()["task_id"], ai or FakeLetterAI(LETTER), maker)
     return r.json()["task_id"]
 
 
@@ -51,7 +43,7 @@ async def test_generate_flow_and_prompt_inputs(authed, maker):
     mid, _ = await setup(authed, maker)
     assert (await authed.get(f"/api/matches/{mid}/cover-letter")).json() == {"letter": None, "pending_task_id": None}
 
-    ai = FakeAI()
+    ai = FakeLetterAI(LETTER)
     tid = await draft(authed, maker, mid, ai, tone="warm", notes="mention Go")
     t = (await authed.get(f"/api/tasks/{tid}")).json()
     assert t["status"] == "done" and t["result"]["words"] > 3
@@ -89,7 +81,7 @@ async def test_edit_then_redraft_needs_force(authed, maker):
     assert r.json()["content"] == "Dear team,\n\nMy own words.\n\nThanks,\nJane"
 
     assert (await authed.post(url, json={})).status_code == 409                # would overwrite edits
-    await draft(authed, maker, mid, FakeAI("Dear Acme,\n\nRedrafted."), force=True)
+    await draft(authed, maker, mid, FakeLetterAI("Dear Acme,\n\nRedrafted."), force=True)
     st = (await authed.get(url)).json()["letter"]
     assert st["content"] == "Dear Acme,\n\nRedrafted." and st["edited"] is False
 

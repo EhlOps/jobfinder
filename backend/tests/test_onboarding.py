@@ -1,24 +1,8 @@
 import pytest
 
 from jobfinder.ai.claude_code import AIError
-from jobfinder.ai.schemas import Background, Experience, FollowupQuestion
 from jobfinder.worker import run_task
-
-
-class FakeAI:
-    def __init__(self):
-        self.extract_sources = None
-        self.fail_with: Exception | None = None
-
-    async def extract_profile(self, sources):
-        if self.fail_with:
-            raise self.fail_with
-        self.extract_sources = sources
-        return Background(summary="SWE", experience=[Experience(company="Acme", title="Intern", kind="internship")])
-
-    async def followup_questions(self, status, background, facts):
-        self.seen = (status, background, facts)
-        return [FollowupQuestion(question="Have you used Kubernetes?", why="Many roles ask for it")]
+from tests.fakes import FakeOnboardingAI
 
 
 async def test_extract_requires_something_to_read(authed):
@@ -34,7 +18,7 @@ async def test_extract_flow(authed, maker):
     assert (await authed.post("/api/onboarding/extract")).json()["task_id"] == tid  # deduped
     assert (await authed.get(f"/api/tasks/{tid}")).json()["status"] == "queued"
 
-    ai = FakeAI()
+    ai = FakeOnboardingAI()
     await run_task(tid, ai, maker)
     # not claimed by the worker loop in this test, so run_task's handler still works on a queued row
     t = (await authed.get(f"/api/tasks/{tid}")).json()
@@ -51,7 +35,7 @@ async def test_extract_ignores_tailored_resumes(authed, maker):
     get_store().put(uid, "resume", "Tailored resume - x.json", text='{"summary": "reworded"}',
                     content_type="application/json", tags=match_tags(7))
     tid = (await authed.post("/api/onboarding/extract")).json()["task_id"]
-    ai = FakeAI()
+    ai = FakeOnboardingAI()
     await run_task(tid, ai, maker)
     assert ai.extract_sources == [("resume.txt", "Intern at Acme")]
 
@@ -62,7 +46,7 @@ async def test_followups_flow(authed, maker):
     await authed.post("/api/profile/facts", json={"question": "q1", "answer": "a1"})
     tid = (await authed.post("/api/onboarding/followups")).json()["task_id"]
 
-    ai = FakeAI()
+    ai = FakeOnboardingAI()
     await run_task(tid, ai, maker)
     t = (await authed.get(f"/api/tasks/{tid}")).json()
     assert t["status"] == "done" and t["result"]["questions"][0]["question"].startswith("Have you used")
@@ -73,7 +57,7 @@ async def test_followups_flow(authed, maker):
 async def test_ai_errors_retry_only_when_retryable(authed, maker, exc, status):
     await authed.post("/api/documents", files={"file": ("r.txt", b"x", "text/plain")})
     tid = (await authed.post("/api/onboarding/extract")).json()["task_id"]
-    ai = FakeAI()
+    ai = FakeOnboardingAI()
     ai.fail_with = exc
     await run_task(tid, ai, maker)
     t = (await authed.get(f"/api/tasks/{tid}")).json()

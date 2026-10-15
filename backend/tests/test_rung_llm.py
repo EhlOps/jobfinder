@@ -19,6 +19,7 @@ from jobfinder.ingest.resolve.rungs.llm import LlmRung, endpoint_candidates
 from jobfinder.models import AICall, Company, Job, JobLink, Task
 from jobfinder.scheduling import handlers
 from tests.factories import make_user
+from tests.fakes import FakeClaude, fake_resolve_public
 
 PASTED = "https://careers.acme.com/jobs/4021"
 PAGE = """<html><head><title>Acme careers</title><style>.x{color:red}</style>
@@ -47,26 +48,9 @@ def induced(**over) -> InducedRecipe:
     return InducedRecipe.model_validate(base)
 
 
-class FakeClaude:
-    """Returns (or raises) each reply in turn and records every call."""
-
-    def __init__(self, *replies):
-        self.replies, self.calls = list(replies), []
-
-    async def run(self, prompt, *, system, model="sonnet", timeout_s=180, task="", output=None):
-        self.calls.append({"prompt": prompt, "system": system, "model": model, "task": task, "output": output})
-        reply = self.replies.pop(0)
-        if isinstance(reply, Exception):
-            raise reply
-        return reply
-
-
 @pytest.fixture(autouse=True)
 def public_dns(monkeypatch):
-    async def fake(url):
-        return httpx.URL(url).host, "93.184.216.34"
-
-    monkeypatch.setattr(http_safety, "resolve_public", fake)
+    monkeypatch.setattr(http_safety, "resolve_public", fake_resolve_public())
 
 
 def site(seen: list | None = None, jobs=JOBS, page=PAGE) -> httpx.AsyncClient:

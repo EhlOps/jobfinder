@@ -11,6 +11,7 @@ from jobfinder.ingest import runner, schedule, service
 from jobfinder.ingest.base import JobPosting
 from jobfinder.ingest.sources import ATS_FETCHERS
 from jobfinder.models import Company, Job
+from tests.fakes import FakeClock
 
 LIMITS = {"base": 360, "min_minutes": 60, "max_minutes": 10080}
 T0 = datetime(2026, 10, 14, 12, 0, tzinfo=UTC)
@@ -78,9 +79,9 @@ def _no_network(monkeypatch):
 
 @pytest.fixture
 def clock(monkeypatch):
-    state = {"now": T0}
-    monkeypatch.setattr(schedule, "now", lambda: state["now"])
-    return state
+    c = FakeClock(T0)
+    monkeypatch.setattr(schedule, "now", c)
+    return c
 
 
 def postings(n, source="greenhouse"):
@@ -120,9 +121,9 @@ async def test_due_selection_with_a_frozen_clock(maker, monkeypatch, clock):
     assert b["hot"].next_fetch_at >= T0 + timedelta(minutes=90)
 
     assert await service.ingest_boards(maker) == []  # nothing is due straight away
-    clock["now"] = T0 + timedelta(minutes=110)  # past the tier-1 slot (90 min + up to 20% jitter)
+    clock.now = T0 + timedelta(minutes=110)  # past the tier-1 slot (90 min + up to 20% jitter)
     assert [r.company for r in await service.ingest_boards(maker)] == ["Hot"]
-    clock["now"] = T0 + timedelta(days=1)  # Quiet's 18h slot has passed too
+    clock.now = T0 + timedelta(days=1)  # Quiet's 18h slot has passed too
     assert sorted(r.company for r in await service.ingest_boards(maker)) == ["Hot", "Quiet"]
 
 
@@ -138,8 +139,8 @@ async def test_failure_backoff_pushes_next_fetch_out(maker, monkeypatch, clock):
     for _ in range(4):
         await service.ingest_boards(maker)
         dead = (await boards(maker))["dead"]
-        gaps.append(dead.next_fetch_at - clock["now"])
-        clock["now"] = dead.next_fetch_at
+        gaps.append(dead.next_fetch_at - clock.now)
+        clock.now = dead.next_fetch_at
     # a young tier-1 board = 90 min, doubled per consecutive failure; its jitter is a fixed share on top
     minutes = [g.total_seconds() / 60 for g in gaps]
     assert 180 <= minutes[0] < 180 * 1.2
@@ -156,7 +157,7 @@ async def test_churn_counts_postings_after_the_backlog(maker, monkeypatch, clock
     async with maker() as db:  # pretend that backlog arrived a month ago
         await db.execute(sa.update(Job).values(first_seen_at=sa.func.now() - timedelta(days=30)))
         await db.commit()
-    clock["now"] = T0 + timedelta(days=1)
+    clock.now = T0 + timedelta(days=1)
     await service.ingest_boards(maker, all_boards=True)
     assert (await boards(maker))["old"].fetch_interval_minutes == 10080  # nothing new for a week: weekly
     monkeypatch.setitem(service.ATS_FETCHERS, "greenhouse", returning(postings(263)))  # 63 new
@@ -182,10 +183,10 @@ async def test_empty_guard_still_schedules_the_board(maker, monkeypatch, clock):
         await db.commit()
     await service.ingest_boards(maker)
     monkeypatch.setitem(service.ATS_FETCHERS, "greenhouse", returning([]))
-    clock["now"] = T0 + timedelta(days=2)
+    clock.now = T0 + timedelta(days=2)
     [st] = await service.ingest_boards(maker)
     assert st.error.startswith("empty response")
-    assert (await boards(maker))["flaky"].next_fetch_at > clock["now"]
+    assert (await boards(maker))["flaky"].next_fetch_at > clock.now
 
 
 async def test_explicit_slug_or_ats_bypasses_the_due_check(maker, clock):

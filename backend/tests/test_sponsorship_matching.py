@@ -5,16 +5,8 @@ from jobfinder.ai.tasks import AITasks, load_prompt
 from jobfinder.api.profile import derive_needs_sponsorship
 from jobfinder.matching.service import sponsorship_info
 from jobfinder.models import Company, Job, JobMatch
+from tests.fakes import FakeClaude
 from tests.test_matches_api import add_match, me
-
-
-class FakeClaude:
-    def __init__(self):
-        self.prompts = []
-
-    async def run(self, prompt, *, system, output=None, model=None, task="", timeout_s=180):
-        self.prompts.append(prompt)
-        return MatchScore()
 
 
 def job(desc="About the role"):
@@ -61,7 +53,7 @@ def test_sponsorship_info_only_when_needed():
 
 
 async def test_candidate_data_has_sponsorship_block_only_when_relevant():
-    fake = FakeClaude()
+    fake = FakeClaude(default=MatchScore())
     ai = AITasks(fake)
     args = ({"target_roles": ["x"]}, {}, [], {"title": "Engineer", "description": "d"})
     await ai.score_match(*args)

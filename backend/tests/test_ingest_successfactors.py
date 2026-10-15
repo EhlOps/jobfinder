@@ -24,21 +24,18 @@ from jobfinder.ingest.sources.successfactors import (
     parse_total,
 )
 from jobfinder.ingest.validate import SLUG_RE
+from tests.fakes import PUBLIC_IP, fake_resolve_public
 
 FIX = Path(__file__).parent / "fixtures"
 SEARCH = (FIX / "successfactors_ey_search.html").read_text()
 DETAIL = (FIX / "successfactors_ey_detail.html").read_text()
 HOST, SLUG, BASE = "careers.ey.com", "careers.ey.com__ey", "https://careers.ey.com/ey"
-PUBLIC_IP = "93.184.216.34"
 ROBOTS = "User-agent: *\nDisallow: /services/\nDisallow: /applybutton/\n"
 
 
 @pytest.fixture
 def public_dns(monkeypatch):
-    async def fake(url):
-        return httpx.URL(url).host, PUBLIC_IP
-
-    monkeypatch.setattr(http_safety, "resolve_public", fake)
+    monkeypatch.setattr(http_safety, "resolve_public", fake_resolve_public())
 
 
 def _row(jid: str, title: str, href: str | None = None, location: str = "Zurich, CH", date: str = "") -> str:

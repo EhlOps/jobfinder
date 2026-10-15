@@ -16,6 +16,7 @@ from jobfinder.ingest.recipes.health import (
 )
 from jobfinder.ingest.service import ingest_company
 from jobfinder.models import Company, Job
+from tests.fakes import fake_resolve_public
 
 T0 = datetime(2026, 10, 1, tzinfo=UTC)
 
@@ -146,10 +147,7 @@ RECIPE = {
 
 @pytest.fixture(autouse=True)
 def public_dns(monkeypatch):
-    async def fake(url):
-        return httpx.URL(url).host, "93.184.216.34"
-
-    monkeypatch.setattr(http_safety, "resolve_public", fake)
+    monkeypatch.setattr(http_safety, "resolve_public", fake_resolve_public())
 
 
 def api(responses):

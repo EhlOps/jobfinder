@@ -4,30 +4,15 @@ import pytest
 import sqlalchemy as sa
 
 from jobfinder.ai.claude_code import AIError
-from jobfinder.ai.schemas import MatchScore, Unknown
+from jobfinder.ai.schemas import MatchScore
 from jobfinder.config import get_settings
 from jobfinder.ingest.base import dedupe_hash
 from jobfinder.matching import service
 from jobfinder.models import Company, Job, JobMatch, Profile, User
+from tests.fakes import FakeScoringAI
 
 STATUS = {"target_roles": ["Backend Engineer"], "target_locations": ["Boston"], "is_new_grad": True,
           "salary_min": 100000, "needs_visa_sponsorship": False}
-
-
-class FakeAI:
-    """score_match returns a canned score by job title; titles can be told to fail."""
-
-    def __init__(self, scores=None, errors=None):
-        self.scores, self.errors, self.calls = scores or {}, errors or {}, []
-
-    async def score_match(self, status, background, facts, job, dossier=None, stage_info=None, sponsorship=None):
-        self.calls.append(job["title"])
-        if (err := self.errors.get(job["title"])) is not None:
-            raise err
-        return MatchScore(
-            score=self.scores.get(job["title"], 80), confidence=0.9, reasons=["fits"], gaps=["k8s"],
-            unknowns=[Unknown(question="Used Kafka?", why="job needs it")],
-        )
 
 
 @pytest.fixture(autouse=True)
@@ -76,7 +61,7 @@ async def test_scores_candidates_and_applies_hard_filters(maker):
         await make_job(db, "Backend Engineer III", salary_max=80000, salary_currency="USD")      # pay below floor
         await make_job(db, "Backend Engineer IV", description_text="Unable to provide visa sponsorship.")  # fine: user needs none
         await make_job(db, "Backend Engineer V", is_active=False)                                # closed
-        ai = FakeAI()
+        ai = FakeScoringAI()
         out = await service.match_user(db, ai, u.id)
         assert sorted(ai.calls) == ["Backend Engineer", "Backend Engineer IV"]
         got = await matches(db)
@@ -94,12 +79,12 @@ async def test_entry_level_candidate_is_not_scored_against_experienced_roles(mak
         await make_job(db, "Backend Engineer", description_text="Great intro role. 1+ years of experience helpful.")
         await make_job(db, "Backend Engineer B", description_text="Requires 5+ years of experience building services.")
         await make_job(db, "Backend Engineer C", description_text="3-5 years of professional engineering experience")
-        ai = FakeAI()
+        ai = FakeScoringAI()
         await service.match_user(db, ai, u.id)
         assert ai.calls == ["Backend Engineer"]
         # a senior candidate sees them
         u2 = await make_user(db, {**STATUS, "is_new_grad": False, "seniority": ["senior"]}, email="s@x.com")
-        ai2 = FakeAI()
+        ai2 = FakeScoringAI()
         await service.match_user(db, ai2, u2.id)
         assert "Backend Engineer B" in ai2.calls
 
@@ -109,7 +94,7 @@ async def test_visa_filter_only_applies_when_candidate_needs_sponsorship(maker):
         u = await make_user(db, {**STATUS, "needs_visa_sponsorship": True})
         await make_job(db, "Backend Engineer", description_text="No visa sponsorship available.")
         await make_job(db, "Backend Engineer B", description_text="We sponsor visas.")
-        ai = FakeAI()
+        ai = FakeScoringAI()
         await service.match_user(db, ai, u.id)
         assert ai.calls == ["Backend Engineer B"]
 
@@ -119,7 +104,7 @@ async def test_budget_limits_scoring_and_reports_pending(maker):
         u = await make_user(db)
         for i in range(5):
             await make_job(db, f"Backend Engineer {i}")
-        ai = FakeAI()
+        ai = FakeScoringAI()
         out = await service.match_user(db, ai, u.id, budget=2)
         assert len(ai.calls) == 2 and out["scored"] == 2 and out["pending"] == 3
         # the rolling-24h budget counts what was already scored
@@ -142,7 +127,7 @@ async def test_per_user_budget_overrides_default_and_can_be_turned_off(maker):
         u.match_budget = 2
         await db.commit()
         assert await service.remaining_budget(db, u.id) == 2
-        ai = FakeAI()
+        ai = FakeScoringAI()
         out = await service.match_user(db, ai, u.id)
         assert out["scored"] == 2 and out["pending"] == 2
         u.match_budget_enabled = False
@@ -160,7 +145,7 @@ async def test_best_prefilter_candidates_are_scored_first(maker):
         await make_job(db, "Backend Engineer, Payments", description_text="spreadsheets")
         await make_job(db, "Backend Engineer", description_text="python go postgres kafka")
         await make_job(db, "Backend Engineer, Infra", description_text="python only")
-        ai = FakeAI()
+        ai = FakeScoringAI()
         await service.match_user(db, ai, u.id, budget=2)
         assert ai.calls == ["Backend Engineer", "Backend Engineer, Infra"]   # most skill overlap first
 
@@ -171,7 +156,7 @@ async def test_already_matched_and_duplicate_postings_are_not_rescored(maker):
         h = dedupe_hash("Acme", "Backend Engineer", "Boston, MA")
         await make_job(db, "Backend Engineer", dedupe_hash=h)
         await make_job(db, "Backend Engineer", dedupe_hash=h)       # same posting on another requisition
-        ai = FakeAI()
+        ai = FakeScoringAI()
         await service.match_user(db, ai, u.id)
         assert len(ai.calls) == 1
         await make_job(db, "Backend Engineer", dedupe_hash=h)       # a third copy shows up later
@@ -183,7 +168,7 @@ async def test_profile_change_rescoring_keeps_status_and_skips_dismissed(maker):
     async with maker() as db:
         u = await make_user(db, version=1)
         saved, new_good, dismissed, new_poor = [await make_job(db, t) for t in ("Backend Engineer S", "Backend Engineer N", "Backend Engineer D", "Backend Engineer P")]
-        ai = FakeAI({"Backend Engineer P": 30})
+        ai = FakeScoringAI({"Backend Engineer P": 30})
         await service.match_user(db, ai, u.id)
         statuses = {saved.id: "saved", dismissed.id: "dismissed"}
         for jid, st in statuses.items():
@@ -192,7 +177,7 @@ async def test_profile_change_rescoring_keeps_status_and_skips_dismissed(maker):
 
         (await db.get(Profile, u.id)).version = 2
         await db.commit()
-        ai2 = FakeAI({"Backend Engineer S": 95})
+        ai2 = FakeScoringAI({"Backend Engineer S": 95})
         out = await service.match_user(db, ai2, u.id)
         # saved first, then by score; low scores are refreshed too (answers often fill the gap); dismissed is left alone
         assert ai2.calls == ["Backend Engineer S", "Backend Engineer N", "Backend Engineer P"] and out["scored"] == 3
@@ -207,14 +192,14 @@ async def test_rate_limit_mid_run_keeps_progress_and_reraises(maker):
         u = await make_user(db)
         for t in ("Backend Engineer A", "Backend Engineer B", "Backend Engineer C", "Backend Engineer D"):
             await make_job(db, t)  # equal scores: the newest job (D) is scored first, so A and B are the second batch
-        ai = FakeAI(errors={"Backend Engineer A": AIError("rate_limited", "usage limit"), "Backend Engineer B": AIError("rate_limited", "usage limit")})
+        ai = FakeScoringAI(errors={"Backend Engineer A": AIError("rate_limited", "usage limit"), "Backend Engineer B": AIError("rate_limited", "usage limit")})
         with pytest.raises(AIError) as e:
             await service.match_user(db, ai, u.id)
         assert e.value.retryable
         assert len(await matches(db)) == 2                           # first batch survived
         assert (await db.get(Profile, u.id)).match_summary["scored"] == 2
         # the retry continues where it left off
-        ai2 = FakeAI()
+        ai2 = FakeScoringAI()
         out = await service.match_user(db, ai2, u.id)
         assert out["scored"] == 2 and len(await matches(db)) == 4
 
@@ -224,7 +209,7 @@ async def test_unparseable_answer_is_skipped_not_fatal(maker):
         u = await make_user(db)
         for t in ("Backend Engineer A", "Backend Engineer B"):
             await make_job(db, t)
-        ai = FakeAI(errors={"Backend Engineer A": AIError("bad_output", "junk")})
+        ai = FakeScoringAI(errors={"Backend Engineer A": AIError("bad_output", "junk")})
         out = await service.match_user(db, ai, u.id)
         assert out["scored"] == 1 and out["failed"] == 1 and set(await matches(db)) == {"Backend Engineer B"}
 
@@ -233,7 +218,7 @@ async def test_no_profile_or_empty_profile_does_nothing(maker):
     async with maker() as db:
         u = await make_user(db, status={})
         await make_job(db)
-        ai = FakeAI()
+        ai = FakeScoringAI()
         out = await service.match_user(db, ai, u.id)
         assert ai.calls == [] and "skipped" in out
         assert (await service.match_user(db, ai, 9999))["scored"] == 0
@@ -249,7 +234,7 @@ async def test_company_data_feeds_prefilter_and_prompt(maker):
 
         seen = {}
 
-        class SpyAI(FakeAI):
+        class SpyAI(FakeScoringAI):
             async def score_match(self, status, background, facts, job, dossier=None, stage_info=None):
                 seen.update(job)
                 return await super().score_match(status, background, facts, job)
@@ -262,12 +247,12 @@ async def test_rescoring_resets_questions_collected(maker):
     async with maker() as db:
         u = await make_user(db, version=1)
         job = await make_job(db, "Backend Engineer")
-        await service.match_user(db, FakeAI(), u.id)
+        await service.match_user(db, FakeScoringAI(), u.id)
         await db.execute(sa.update(JobMatch).values(questions_collected=True))
         await db.commit()
         (await db.get(Profile, u.id)).version = 2
         await db.commit()
-        await service.match_user(db, FakeAI(), u.id)
+        await service.match_user(db, FakeScoringAI(), u.id)
         m = (await db.scalars(sa.select(JobMatch).where(JobMatch.job_id == job.id))).one()
         assert m.profile_version == 2 and m.questions_collected is False       # new assessment -> look at its unknowns again
 
@@ -293,7 +278,7 @@ async def test_candidates_are_light_batched_and_hydrated_in_order(maker, monkeyp
 async def test_requirement_checks_drive_the_stored_score_and_persist(maker):
     from jobfinder.ai.schemas import RequirementCheck
 
-    class ReqAI(FakeAI):
+    class ReqAI(FakeScoringAI):
         async def score_match(self, status, background, facts, job, dossier=None, stage_info=None):
             return MatchScore(
                 score=99, confidence=0.99, hire_verdict="maybe", recruiter_take="Promising; Kafka unconfirmed.",
@@ -328,11 +313,11 @@ async def test_student_sees_internships_not_new_grad_roles_until_final_year(make
         u = await make_user(db, status=_status(graduation_date=far))
         await make_job(db, "Backend Engineer Intern", seniority="intern")
         await make_job(db, "Backend Engineer, New Grad", seniority="new_grad")
-        await service.match_user(db, FakeAI(), u.id)
+        await service.match_user(db, FakeScoringAI(), u.id)
         assert set(await matches(db)) == {"Backend Engineer Intern"}
         (await db.get(Profile, u.id)).status = _status(graduation_date=soon)
         await db.commit()
-        await service.match_user(db, FakeAI(), u.id)
+        await service.match_user(db, FakeScoringAI(), u.id)
         assert set(await matches(db)) == {"Backend Engineer Intern", "Backend Engineer, New Grad"}
     assert prefilter.career_stage(_status(graduation_date=soon)) == "final_year"
 
@@ -343,7 +328,7 @@ async def test_postings_with_other_graduation_windows_are_skipped(maker):
         await make_job(db, "Backend Engineer, New Grad A", seniority="new_grad", description_text="Python. Open to graduating between Dec 2026 and Jun 2027.")
         await make_job(db, "Backend Engineer, New Grad B", seniority="new_grad", description_text="Python. Class of 2029 only.")
         await make_job(db, "Backend Engineer, New Grad C", seniority="new_grad", description_text="Python Postgres.")
-        await service.match_user(db, FakeAI(), u.id)
+        await service.match_user(db, FakeScoringAI(), u.id)
         assert set(await matches(db)) == {"Backend Engineer, New Grad A", "Backend Engineer, New Grad C"}
 
 
@@ -352,7 +337,7 @@ async def test_early_career_roles_rank_first_for_a_graduating_student(maker):
         u = await make_user(db, status=_status(graduation_date="2027-05", seniority=["new_grad", "mid"]))
         await make_job(db, "Backend Engineer", seniority="mid", description_text="Python Postgres")
         await make_job(db, "Backend Engineer, New Grad", seniority="new_grad", description_text="Python Postgres")
-        ai = FakeAI()
+        ai = FakeScoringAI()
         await service.match_user(db, ai, u.id, budget=1)
         assert ai.calls == ["Backend Engineer, New Grad"]
 
@@ -360,7 +345,7 @@ async def test_early_career_roles_rank_first_for_a_graduating_student(maker):
 async def test_scorer_is_told_the_career_stage_only_for_students(maker):
     seen = {}
 
-    class SpyAI(FakeAI):
+    class SpyAI(FakeScoringAI):
         async def score_match(self, status, background, facts, job, dossier=None, stage_info=None):
             seen[job["title"]] = stage_info
             return await super().score_match(status, background, facts, job)
