@@ -61,9 +61,9 @@ jobs:
       - name: Ruff
         run: uv run ruff check .
 
-      # Serial for now; switches to `-n auto` once the per-worker fixture rewrite (#37) lands.
+      # One database per xdist worker, built once; each test rolls back (tests/conftest.py).
       - name: Tests
-        run: uv run pytest
+        run: uv run pytest -n auto
 
       # Report-only until #53 makes the import contracts blocking.
       - name: Import contracts
