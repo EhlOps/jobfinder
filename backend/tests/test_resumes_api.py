@@ -2,7 +2,6 @@ import io
 
 import docx
 import sqlalchemy as sa
-from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from jobfinder.ai.claude_code import AIError
 from jobfinder.ai.schemas import Experience, ResumeContact, TailoredResume
@@ -22,29 +21,29 @@ def _resume(skills):
     )
 
 
-async def setup(client, engine):
-    mid, job_id = await _setup(client, engine)
-    async with async_sessionmaker(engine, expire_on_commit=False)() as db:
+async def setup(client, maker):
+    mid, job_id = await _setup(client, maker)
+    async with maker() as db:
         job = await db.get(Job, job_id)
         job.description_text = "We use Go, Kubernetes and Terraform every day."
         await db.commit()
     return mid
 
 
-async def generate(client, engine, mid, ai=None, **body):
+async def generate(client, maker, mid, ai=None, **body):
     r = await client.post(BASE.format(mid), json=body)
     assert r.status_code == 202, r.text
-    await run_task(r.json()["task_id"], ai or FakeTailorAI(_resume(["Go"])), async_sessionmaker(engine, expire_on_commit=False))
+    await run_task(r.json()["task_id"], ai or FakeTailorAI(_resume(["Go"])), maker)
     return r.json()["task_id"]
 
 
-async def test_generate_edit_download_flow(authed, engine):
-    mid = await setup(authed, engine)
+async def test_generate_edit_download_flow(authed, maker):
+    mid = await setup(authed, maker)
     url = BASE.format(mid)
     assert (await authed.get(url)).json() == {"resume": None, "pending_task_id": None}
 
     ai = FakeTailorAI(_resume(["Go"]))
-    tid = await generate(authed, engine, mid, ai)
+    tid = await generate(authed, maker, mid, ai)
     assert (await authed.get(f"/api/tasks/{tid}")).json()["status"] == "done"
     assert ai.calls[0]["job"]["company"] == "Acme/Co" and "salary" not in ai.calls[0]["job"]
 
@@ -80,52 +79,52 @@ async def test_generate_edit_download_flow(authed, engine):
     assert (await authed.get(url + "/download")).status_code == 404
 
 
-async def test_edited_resume_needs_force_to_regenerate(authed, engine):
-    mid = await setup(authed, engine)
+async def test_edited_resume_needs_force_to_regenerate(authed, maker):
+    mid = await setup(authed, maker)
     url = BASE.format(mid)
-    await generate(authed, engine, mid)
+    await generate(authed, maker, mid)
     content = (await authed.get(url)).json()["resume"]["content"]
     content["summary"] = "My own words."
     await authed.put(url, json={"content": content})
     assert (await authed.post(url, json={})).status_code == 409
 
-    await generate(authed, engine, mid, FakeTailorAI(_resume(["Rust"])), force=True)
+    await generate(authed, maker, mid, FakeTailorAI(_resume(["Rust"])), force=True)
     r = (await authed.get(url)).json()["resume"]
     assert r["edited"] is False and r["content"]["skills"] == ["Rust"]
 
 
-async def test_pending_task_and_dedupe(authed, engine):
-    mid = await setup(authed, engine)
+async def test_pending_task_and_dedupe(authed, maker):
+    mid = await setup(authed, maker)
     url = BASE.format(mid)
     a = (await authed.post(url, json={})).json()["task_id"]
     assert (await authed.post(url, json={})).json()["task_id"] == a
     assert (await authed.get(url)).json()["pending_task_id"] == a
 
 
-async def test_edit_needs_a_resume_and_generate_needs_a_profile(authed, engine):
-    mid, _ = await _setup(authed, engine, background=False)
+async def test_edit_needs_a_resume_and_generate_needs_a_profile(authed, maker):
+    mid, _ = await _setup(authed, maker, background=False)
     url = BASE.format(mid)
     assert (await authed.post(url, json={})).status_code == 422
     assert (await authed.put(url, json={"content": _resume(["Go"]).model_dump()})).status_code == 404
     assert (await authed.put(url, json={"content": {"summary": "x"}})).status_code == 422
 
 
-async def test_claude_failure_fails_task_and_keeps_resume(authed, engine):
-    mid = await setup(authed, engine)
+async def test_claude_failure_fails_task_and_keeps_resume(authed, maker):
+    mid = await setup(authed, maker)
     url = BASE.format(mid)
-    await generate(authed, engine, mid)
+    await generate(authed, maker, mid)
     r = await authed.post(url, json={"force": True})
     ai = FakeTailorAI(error=AIError("auth", "Claude is not connected"))
-    await run_task(r.json()["task_id"], ai, async_sessionmaker(engine, expire_on_commit=False))
-    async with async_sessionmaker(engine)() as db:
+    await run_task(r.json()["task_id"], ai, maker)
+    async with maker() as db:
         status = await db.scalar(sa.select(Task.status).where(Task.id == r.json()["task_id"]))
     assert status in ("failed", "queued")
     assert (await authed.get(url)).json()["resume"]["content"]["skills"] == ["Go"]  # old resume survives
 
 
-async def test_resumes_are_private_to_their_owner(authed, client, engine, make_account):
-    mid = await setup(authed, engine)
-    await generate(authed, engine, mid)
+async def test_resumes_are_private_to_their_owner(authed, client, maker, make_account):
+    mid = await setup(authed, maker)
+    await generate(authed, maker, mid)
     await client.post("/api/auth/logout")
     await make_account("other@x.com", "password-1234")
     base = BASE.format(mid)

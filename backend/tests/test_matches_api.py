@@ -1,7 +1,5 @@
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy.ext.asyncio import async_sessionmaker
-
 from jobfinder.models import Job, JobMatch, Task
 
 N = 0
@@ -29,8 +27,7 @@ async def me(client):
     return (await client.get("/api/auth/me")).json()["id"]
 
 
-async def test_list_filters_sort_counts(authed, engine):
-    maker = async_sessionmaker(engine, expire_on_commit=False)
+async def test_list_filters_sort_counts(authed, maker):
     uid = await me(authed)
     await authed.put("/api/profile/status", json={"target_roles": ["x"]})   # profile version becomes 2
     await add_match(maker, uid, "Backend Engineer", 90, workplace="remote", company="Stripe", posted_days_ago=10, version=2)
@@ -68,16 +65,14 @@ async def test_list_filters_sort_counts(authed, engine):
     assert (await authed.get("/api/matches", params={"status": "bogus"})).status_code == 422
 
 
-async def test_detail_includes_description_and_unknowns(authed, engine):
-    maker = async_sessionmaker(engine, expire_on_commit=False)
+async def test_detail_includes_description_and_unknowns(authed, maker):
     mid = await add_match(maker, await me(authed), "Backend Engineer", 88)
     d = (await authed.get(f"/api/matches/{mid}")).json()
     assert d["description"] == "About Backend Engineer" and d["unknowns"] == [{"question": "q?", "why": "w"}]
     assert d["reasons"] == ["r1"] and d["gaps"] == ["g1"] and d["job"]["url"].startswith("https://x/")
 
 
-async def test_set_status_and_ownership(authed, client, engine, make_account):
-    maker = async_sessionmaker(engine, expire_on_commit=False)
+async def test_set_status_and_ownership(authed, client, maker, make_account):
     mid = await add_match(maker, await me(authed), "Backend Engineer", 88)
     r = await authed.patch(f"/api/matches/{mid}", json={"status": "saved"})
     assert r.status_code == 200 and r.json()["status"] == "saved"
@@ -97,19 +92,18 @@ async def test_requires_login(client):
     assert (await client.post("/api/matches/refresh")).status_code == 401
 
 
-async def test_refresh_requires_profile_then_enqueues_once(authed, engine):
+async def test_refresh_requires_profile_then_enqueues_once(authed, maker):
     assert (await authed.post("/api/matches/refresh")).status_code == 422
     await authed.put("/api/profile/status", json={"target_roles": ["Backend Engineer"]})
     r = await authed.post("/api/matches/refresh")
     assert r.status_code == 202
     assert (await authed.post("/api/matches/refresh")).json()["task_id"] == r.json()["task_id"]
-    async with async_sessionmaker(engine)() as db:
+    async with maker() as db:
         t = await db.get(Task, r.json()["task_id"])
         assert t.kind == "match_user" and t.status == "queued"
 
 
-async def test_non_http_job_urls_never_reach_the_client(authed, engine):
-    maker = async_sessionmaker(engine, expire_on_commit=False)
+async def test_non_http_job_urls_never_reach_the_client(authed, maker):
     uid = await me(authed)
     mids = [await add_match(maker, uid, f"Job {i}", 90 - i) for i in range(3)]
     async with maker() as db:
@@ -122,8 +116,7 @@ async def test_non_http_job_urls_never_reach_the_client(authed, engine):
     assert (await authed.get(f"/api/matches/{mids[0]}")).json()["job"]["url"] == ""
 
 
-async def test_early_career_filter_and_stage_in_summary(authed, engine):
-    maker = async_sessionmaker(engine, expire_on_commit=False)
+async def test_early_career_filter_and_stage_in_summary(authed, maker):
     uid = await me(authed)
     await authed.put("/api/profile/status", json={"graduation_date": "2030-05"})
     await add_match(maker, uid, "Backend Engineer", 90)
@@ -138,8 +131,7 @@ async def test_early_career_filter_and_stage_in_summary(authed, engine):
     assert everything["total"] == 6 and everything["summary"]["career_stage"] == "student"
 
 
-async def test_tab_counts_honour_filters(authed, engine):
-    maker = async_sessionmaker(engine, expire_on_commit=False)
+async def test_tab_counts_honour_filters(authed, maker):
     uid = await me(authed)
     await add_match(maker, uid, "Backend Engineer", 90, workplace="remote")
     await add_match(maker, uid, "Backend Engineer Intern", 80, workplace="remote")

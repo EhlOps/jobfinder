@@ -6,7 +6,6 @@ import httpx
 import pytest
 import sqlalchemy as sa
 from security_payloads import PRIVATE_URLS, SCRIPT_URLS, SQLI, XSS_TEXT
-from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from jobfinder.ingest import http_safety
 from jobfinder.ingest.resolve import resolve_link
@@ -29,11 +28,6 @@ PAGE = "https://careers.acmerobotics.com/jobs/4021"
 @pytest.fixture(autouse=True)
 def public_dns(monkeypatch):
     monkeypatch.setattr(http_safety, "resolve_public", fake_resolve_public(refuse_private=True))
-
-
-@pytest.fixture
-def maker(engine):
-    return async_sessionmaker(engine, expire_on_commit=False)
 
 
 def page_client(body: str, seen: list | None = None) -> httpx.AsyncClient:

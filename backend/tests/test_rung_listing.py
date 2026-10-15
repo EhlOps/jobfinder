@@ -6,7 +6,6 @@ import pytest
 import sqlalchemy as sa
 from factories import make_user
 from security_payloads import PRIVATE_URLS
-from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from jobfinder.ingest import http_safety
 from jobfinder.ingest.recipes import Recipe, run_recipe
@@ -264,11 +263,6 @@ async def test_unfetchable_page_still_tries_listing_pages():
 
 
 # ── through the resolver and ingest ───────────────────────────────────────
-@pytest.fixture
-def maker(engine):
-    return async_sessionmaker(engine, expire_on_commit=False)
-
-
 async def test_paste_resolves_to_recipe_board_and_goes_active(maker):
     site = json_site()
     async with maker() as db, site.client() as c:

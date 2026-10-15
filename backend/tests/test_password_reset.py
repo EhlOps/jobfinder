@@ -3,7 +3,6 @@ from datetime import UTC, datetime
 
 import pytest
 import sqlalchemy as sa
-from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from jobfinder.auth.security import hash_session_token
 from jobfinder.config import Settings, get_settings
@@ -20,8 +19,8 @@ def token_in(sent) -> str:
     return re.search(r"#token=(\S+)", sent[-1][2]).group(1)
 
 
-async def _user(engine, email):
-    async with async_sessionmaker(engine, expire_on_commit=False)() as db:
+async def _user(maker, email):
+    async with maker() as db:
         return (await db.scalars(sa.select(User).where(User.email == email))).one()
 
 
@@ -40,16 +39,16 @@ async def test_active_account_gets_reset_subject(client, make_account, sent_mail
     assert sent_mail[0][1] == "Reset your JobFinder password"
 
 
-async def test_confirm_activates_pending_row_and_signs_in(client, make_account, sent_mail, engine):
+async def test_confirm_activates_pending_row_and_signs_in(client, make_account, sent_mail, maker):
     await make_account("new@x.com", pending=True)
     await client.post(REQ, json={"email": "new@x.com"})
     r = await client.post(CONF, json={"token": token_in(sent_mail), "password": NEW_PW, "timezone": "America/New_York"})
     assert r.status_code == 200 and r.json()["timezone"] == "America/New_York"
     assert (await client.get("/api/auth/me")).json()["email"] == "new@x.com"
-    u = await _user(engine, "new@x.com")
+    u = await _user(maker, "new@x.com")
     assert (u.digest_hour, u.digest_enabled, u.question_emails_enabled, u.is_admin) == (8, True, True, False)
     assert u.activated_at and u.password_hash
-    async with async_sessionmaker(engine)() as db:
+    async with maker() as db:
         p = await db.get(Profile, u.id)
         assert p.status == {} and p.background == {} and p.version == 1
     assert (await client.post("/api/auth/logout")).status_code == 204
@@ -72,17 +71,17 @@ async def test_link_is_single_use(client, make_account, sent_mail):
     assert again.status_code == 400
 
 
-async def test_confirm_ends_other_sessions(client, make_account, sent_mail, engine):
+async def test_confirm_ends_other_sessions(client, make_account, sent_mail, maker):
     await make_account("sess@x.com")
     await client.post("/api/auth/logout")
     await client.post("/api/auth/login", json={"email": "sess@x.com", "password": "correct-horse-battery"})
     await client.post(REQ, json={"email": "sess@x.com"})
-    u = await _user(engine, "sess@x.com")
-    async with async_sessionmaker(engine)() as db:
+    u = await _user(maker, "sess@x.com")
+    async with maker() as db:
         before = (await db.scalars(sa.select(Session.token).where(Session.user_id == u.id))).all()
     assert before
     await client.post(CONF, json={"token": token_in(sent_mail), "password": NEW_PW})
-    async with async_sessionmaker(engine)() as db:
+    async with maker() as db:
         after = (await db.scalars(sa.select(Session.token).where(Session.user_id == u.id))).all()
     assert len(after) == 1 and after[0] not in before
 
@@ -93,32 +92,32 @@ async def test_bad_tokens_get_one_generic_error(client, bad):
     assert r.status_code == 400 and "invalid or has expired" in r.json()["detail"]
 
 
-async def test_wrong_purpose_token_is_rejected(client, make_account, engine):
+async def test_wrong_purpose_token_is_rejected(client, make_account, maker):
     await make_account("wp@x.com", pending=True)
-    u = await _user(engine, "wp@x.com")
+    u = await _user(maker, "wp@x.com")
     r = await client.post(CONF, json={"token": make_token("questions", u.id), "password": NEW_PW})
     assert r.status_code == 400
 
 
-async def test_expired_link_is_rejected(client, make_account, engine, monkeypatch):
+async def test_expired_link_is_rejected(client, make_account, maker, monkeypatch):
     await make_account("exp@x.com", pending=True)
-    u = await _user(engine, "exp@x.com")
+    u = await _user(maker, "exp@x.com")
     tok = make_password_token(u.id, None)
     monkeypatch.setattr(get_settings(), "password_link_ttl_minutes", -1)
     assert (await client.post(CONF, json={"token": tok, "password": NEW_PW})).status_code == 400
 
 
-async def test_password_change_invalidates_outstanding_links(client, make_account, engine):
+async def test_password_change_invalidates_outstanding_links(client, make_account, maker):
     await make_account("chg@x.com", login=False)
-    u = await _user(engine, "chg@x.com")
+    u = await _user(maker, "chg@x.com")
     old = make_password_token(u.id, u.password_hash)
     assert (await client.post(CONF, json={"token": old, "password": NEW_PW})).status_code == 200
     assert (await client.post(CONF, json={"token": old, "password": "yet-another-password"})).status_code == 400
 
 
-async def test_password_rules(client, make_account, engine):
+async def test_password_rules(client, make_account, maker):
     await make_account("rules@x.com", pending=True)
-    u = await _user(engine, "rules@x.com")
+    u = await _user(maker, "rules@x.com")
     tok = make_password_token(u.id, None)
     assert (await client.post(CONF, json={"token": tok, "password": "short"})).status_code == 422
     assert (await client.post(CONF, json={"token": tok, "password": "x" * 257})).status_code == 422
@@ -160,23 +159,23 @@ async def test_email_failure_does_not_change_the_response(client, make_account, 
     assert (await client.post(REQ, json={"email": "down@x.com"})).status_code == 202
 
 
-async def test_pending_user_cannot_hold_a_session(client, make_account, engine):
+async def test_pending_user_cannot_hold_a_session(client, make_account, maker):
     await make_account("pend@x.com", pending=True)
-    u = await _user(engine, "pend@x.com")
-    async with async_sessionmaker(engine)() as db:
+    u = await _user(maker, "pend@x.com")
+    async with maker() as db:
         db.add(Session(token=hash_session_token("t" * 43), user_id=u.id, expires_at=datetime(2999, 1, 1, tzinfo=UTC)))
         await db.commit()
     client.cookies.set("session", "t" * 43)
     assert (await client.get("/api/auth/me")).status_code == 401
 
 
-async def test_pending_users_get_no_daily_email_or_matching(client, make_account, engine):
+async def test_pending_users_get_no_daily_email_or_matching(client, make_account, maker):
     from jobfinder.notify import daily
     from jobfinder.scheduling import planner
     from tests.factories import make_user
 
     await make_account("pend@x.com", pending=True)
-    async with async_sessionmaker(engine, expire_on_commit=False)() as db:
+    async with maker() as db:
         await make_user(db, "live@x.com")
         due = await daily.due_users(db, datetime(2026, 1, 1, 8, 5, tzinfo=UTC))
         assert [u.email for u in due] == ["live@x.com"]
@@ -204,13 +203,11 @@ def test_fingerprint_empty_for_pending():
     assert tokens.password_fingerprint("abc") != tokens.password_fingerprint("abd")
 
 
-async def test_cli_add_list_and_reset_link(engine, monkeypatch, capsys):
+async def test_cli_add_list_and_reset_link(maker, monkeypatch, capsys):
     import argparse
 
     from jobfinder import cli
-    from jobfinder import db as dbmod
 
-    monkeypatch.setattr(dbmod, "SessionLocal", async_sessionmaker(engine, expire_on_commit=False))
     ns = argparse.Namespace(email="  New@X.com ")
     assert await cli.add_user(ns) == 0
     assert await cli.add_user(ns) == 1  # already exists
@@ -222,13 +219,11 @@ async def test_cli_add_list_and_reset_link(engine, monkeypatch, capsys):
     assert await cli.reset_link_cmd(argparse.Namespace(email="no@x.com")) == 1
 
 
-async def test_cli_grant_and_revoke_admin(engine, monkeypatch, capsys):
+async def test_cli_grant_and_revoke_admin(maker, monkeypatch, capsys):
     import argparse
 
     from jobfinder import cli
-    from jobfinder import db as dbmod
 
-    monkeypatch.setattr(dbmod, "SessionLocal", async_sessionmaker(engine, expire_on_commit=False))
     ns = argparse.Namespace(email=" Boss@X.com ")
     assert await cli.add_user(ns) == 0
     assert await cli.set_admin(ns, True) == 0

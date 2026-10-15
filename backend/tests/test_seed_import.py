@@ -30,42 +30,40 @@ def test_data_file_is_valid_and_deduped():
         assert isinstance(r["industry"], str) and r["sponsors_visas"] in (True, False, None), r
 
 
-async def _import(engine, rows) -> int:
-    async with engine.begin() as conn:
-        return await conn.run_sync(lambda c: m0021.import_rows(c, rows))
+async def _import(db, rows) -> int:
+    conn = await db.connection()
+    return await conn.run_sync(lambda c: m0021.import_rows(c, rows))
 
 
-async def _companies(engine) -> dict:
-    async with engine.connect() as conn:
-        res = await conn.execute(sa.select(Company.ats, Company.slug, Company.prestige_tier,
-                                           Company.origin, Company.enabled))
-        return {(r.ats, r.slug): r for r in res}
+async def _companies(db) -> dict:
+    res = await db.execute(sa.select(Company.ats, Company.slug, Company.prestige_tier,
+                                     Company.origin, Company.enabled))
+    return {(r.ats, r.slug): r for r in res}
 
 
-async def test_import_fills_empty_table_and_is_idempotent(engine):
+async def test_import_fills_empty_table_and_is_idempotent(db):
     rows = m0021.load_rows()
-    assert await _import(engine, rows) == SEED_COUNT
-    got = await _companies(engine)
+    assert await _import(db, rows) == SEED_COUNT
+    got = await _companies(db)
     assert len(got) == SEED_COUNT
     assert all(r.origin == "seed" and r.enabled for r in got.values())
     stripe = got[("greenhouse", "stripe")]
     assert stripe.prestige_tier == next(r["prestige_tier"] for r in rows if r["slug"] == "stripe")
-    assert await _import(engine, rows) == 0
-    assert len(await _companies(engine)) == SEED_COUNT
+    assert await _import(db, rows) == 0
+    assert len(await _companies(db)) == SEED_COUNT
 
 
-async def test_import_keeps_existing_rows_and_restores_missing(engine):
+async def test_import_keeps_existing_rows_and_restores_missing(db):
     rows = m0021.load_rows()
     first, second = rows[0], rows[1]
-    async with engine.begin() as conn:
-        # an existing deployment: the sync already wrote these; an admin re-tiered one and the
-        # other was deleted; a user-added board sits alongside
-        await conn.execute(sa.insert(Company).values(
-            name="Edited", ats=first["ats"], slug=first["slug"], prestige_tier=1, origin="seed"))
-        await conn.execute(sa.insert(Company).values(
-            name="Mine", ats="greenhouse", slug="not-in-seed", origin="user"))
-    assert await _import(engine, rows) == SEED_COUNT - 1
-    got = await _companies(engine)
+    # an existing deployment: the sync already wrote these; an admin re-tiered one and the
+    # other was deleted; a user-added board sits alongside
+    await db.execute(sa.insert(Company).values(
+        name="Edited", ats=first["ats"], slug=first["slug"], prestige_tier=1, origin="seed"))
+    await db.execute(sa.insert(Company).values(
+        name="Mine", ats="greenhouse", slug="not-in-seed", origin="user"))
+    assert await _import(db, rows) == SEED_COUNT - 1
+    got = await _companies(db)
     assert len(got) == SEED_COUNT + 1
     assert got[(first["ats"], first["slug"])].prestige_tier == 1  # not clobbered
     assert (second["ats"], second["slug"]) in got

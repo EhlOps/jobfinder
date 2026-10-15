@@ -4,9 +4,7 @@ from pathlib import Path
 
 import httpx
 import pytest
-from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from jobfinder import db as dbmod
 from jobfinder import renderer
 from jobfinder.config import get_settings
 from jobfinder.ingest import http_safety
@@ -33,12 +31,9 @@ def load(name):
     return json.loads((FIX / name).read_text())
 
 
-@pytest.fixture
-def maker(engine, monkeypatch):
-    m = async_sessionmaker(engine, expire_on_commit=False)
-    monkeypatch.setattr(dbmod, "SessionLocal", m)
+@pytest.fixture(autouse=True)
+def fast_poll(monkeypatch):
     monkeypatch.setattr(renderer, "POLL_S", 0.01)
-    return m
 
 
 @pytest.fixture
@@ -115,6 +110,7 @@ def test_offset_without_size_steps_by_the_sample_length():
     assert pagination_for("https://x.com/api/search?start=0") == {"kind": "none"}
 
 
+@pytest.mark.real_commit
 async def test_captured_json_becomes_validated_recipe(maker, enabled):
     calls = []
     async with FakeRenderer(maker, {"render_capture": load("capture_post_search.json")}) as fake, \
@@ -129,6 +125,7 @@ async def test_captured_json_becomes_validated_recipe(maker, enabled):
     assert calls[0]["from"] == 0 and calls[0]["ddoKey"] == "refineSearch"  # the captured body, replayed
 
 
+@pytest.mark.real_commit
 async def test_recipe_that_misses_the_pasted_job_is_not_used(maker, enabled):
     other = "https://careers.acme.com/us/en/job/R-99999/not-in-the-results"
     async with FakeRenderer(maker, {"render_capture": load("capture_post_search.json")}), \
@@ -141,6 +138,7 @@ async def test_recipe_that_misses_the_pasted_job_is_not_used(maker, enabled):
     assert [u for u, _ in ctx.json_samples] == ["https://careers.acme.com/widgets/config"]
 
 
+@pytest.mark.real_commit
 async def test_truncated_capture_is_refetched_safely(maker, enabled):
     cap = load("capture_post_search.json")
     search = cap["json_responses"][1]
@@ -183,6 +181,7 @@ def dom_items():
     ] + [{"external_id": "javascript:alert(1)", "title": "x", "url": "javascript:alert(1)"}]}
 
 
+@pytest.mark.real_commit
 async def test_dom_only_site_gets_a_rendered_html_recipe(maker, enabled):
     results = {"render_capture": load("capture_dom_only.json"), "render_list": dom_items()}
     async with FakeRenderer(maker, results) as fake, httpx.AsyncClient() as client:
@@ -199,6 +198,7 @@ async def test_dom_only_site_gets_a_rendered_html_recipe(maker, enabled):
     assert ok
 
 
+@pytest.mark.real_commit
 async def test_rendered_html_boards_are_capped(maker, enabled, monkeypatch):
     monkeypatch.setattr(get_settings(), "renderer_max_rendered_boards", 1)
     async with maker() as db:

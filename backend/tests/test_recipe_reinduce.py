@@ -5,7 +5,6 @@ from datetime import UTC, datetime
 import httpx
 import pytest
 import sqlalchemy as sa
-from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from jobfinder.ai.claude_code import AIError
 from jobfinder.ai.tasks import AITasks
@@ -36,11 +35,6 @@ def jobs(n: int) -> dict:
 @pytest.fixture(autouse=True)
 def public_dns(monkeypatch):
     monkeypatch.setattr(http_safety, "resolve_public", fake_resolve_public())
-
-
-@pytest.fixture
-def maker(engine):
-    return async_sessionmaker(engine, expire_on_commit=False)
 
 
 def site(n_jobs: int) -> httpx.AsyncClient:

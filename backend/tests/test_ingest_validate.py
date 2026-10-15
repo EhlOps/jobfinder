@@ -1,7 +1,6 @@
 import httpx
 import pytest
 import sqlalchemy as sa
-from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from jobfinder.ingest.validate import add_board, validate_board
 from jobfinder.models import Company
@@ -20,11 +19,6 @@ def respond(status=200, json=None, content=None):
         return httpx.Response(status, json=json)
 
     return handler
-
-
-@pytest.fixture
-def maker(engine):
-    return async_sessionmaker(engine, expire_on_commit=False)
 
 
 async def test_valid_board():

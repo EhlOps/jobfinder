@@ -2,7 +2,6 @@ import httpx
 import pytest
 import sqlalchemy as sa
 from factories import make_user
-from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from jobfinder.ingest import http_safety, resolve
 from jobfinder.ingest.base import JobPosting
@@ -21,11 +20,6 @@ RECIPE = {
     "kind": "json_api", "list": {"url": "https://careers.acme.com/api/jobs"}, "items": "$.jobs[*]",
     "fields": {"external_id": "$.id", "title": "$.title", "url": "https://careers.acme.com/jobs/{external_id}"},
 }
-
-
-@pytest.fixture
-def maker(engine):
-    return async_sessionmaker(engine, expire_on_commit=False)
 
 
 @pytest.fixture(autouse=True)

@@ -1,17 +1,7 @@
 import argparse
 
-import pytest
-from sqlalchemy.ext.asyncio import async_sessionmaker
-
-from jobfinder import cli, db
+from jobfinder import cli
 from jobfinder.models import Company
-
-
-@pytest.fixture
-def maker(engine, monkeypatch):
-    m = async_sessionmaker(engine, expire_on_commit=False)
-    monkeypatch.setattr(db, "SessionLocal", m)
-    return m
 
 
 def ns(**kw):

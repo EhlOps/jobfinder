@@ -3,7 +3,6 @@ import asyncio
 import httpx
 import pytest
 import sqlalchemy as sa
-from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from jobfinder import worker
 from jobfinder.config import get_settings
@@ -188,11 +187,6 @@ async def test_hn_source_picks_latest_thread_and_unescapes():
         boards = await hn_hiring.fetch(PoliteFetcher(c))
     assert boards == [("greenhouse", "acme"), ("ashby", "beta")]
     assert "/api/v1/items/3" in asked
-
-
-@pytest.fixture
-def maker(engine):
-    return async_sessionmaker(engine, expire_on_commit=False)
 
 
 def router(boards: dict[str, httpx.Response], md: str):

@@ -1,16 +1,9 @@
-import pytest
 import sqlalchemy as sa
 from factories import make_match, make_user
-from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from jobfinder.models import JobMatch, Profile, ProfileFact, Task
 from jobfinder.profile import interview
 from tests.fakes import FakeAuditAI
-
-
-@pytest.fixture
-def maker(engine):
-    return async_sessionmaker(engine, expire_on_commit=False)
 
 
 async def test_audit_stores_dossier_questions_and_queues_matching(maker):

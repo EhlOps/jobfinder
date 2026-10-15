@@ -1,7 +1,6 @@
 import os
 
 import sqlalchemy as sa
-from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from jobfinder.ai import credentials
 from jobfinder.ai.claude_code import AIError
@@ -12,25 +11,25 @@ from tests.fakes import FakePingAI
 TOKEN = "sk-ant-oat01-" + "z" * 40
 
 
-async def _set_admin(engine, email, value):
-    async with async_sessionmaker(engine)() as db:
+async def _set_admin(maker, email, value):
+    async with maker() as db:
         await db.execute(sa.update(User).where(User.email == email).values(is_admin=value))
         await db.commit()
 
 
-async def test_admin_only_via_db_flag(client, make_account, engine):
+async def test_admin_only_via_db_flag(client, make_account, maker):
     await make_account("first@x.com")
     assert (await client.get("/api/auth/me")).json()["is_admin"] is False  # being first or logging in never grants it
     assert (await client.get("/api/ai/status")).status_code == 200
     assert (await client.put("/api/admin/ai/token", json={"token": TOKEN})).status_code == 403
-    await _set_admin(engine, "first@x.com", True)  # what grant-admin does; no re-login needed
+    await _set_admin(maker, "first@x.com", True)  # what grant-admin does; no re-login needed
     assert (await client.get("/api/auth/me")).json()["is_admin"] is True
 
 
-async def test_admin_revoked_when_flag_cleared(client, make_account, engine):
+async def test_admin_revoked_when_flag_cleared(client, make_account, maker):
     await make_account("owner@x.com", admin=True)
     assert (await client.get("/api/auth/me")).json()["is_admin"] is True
-    await _set_admin(engine, "owner@x.com", False)
+    await _set_admin(maker, "owner@x.com", False)
     assert (await client.get("/api/auth/me")).json()["is_admin"] is False
     assert (await client.post("/api/admin/ai/check")).status_code == 403
 
@@ -73,9 +72,8 @@ async def test_invalid_token_is_rejected_without_saving(client, make_account):
     assert TOKEN not in (await client.put("/api/admin/ai/token", json={"token": "bad token " + TOKEN})).text
 
 
-async def test_status_reports_last_call(client, engine, make_account):
+async def test_status_reports_last_call(client, maker, make_account):
     await make_account("owner@x.com", admin=True)
-    maker = async_sessionmaker(engine, expire_on_commit=False)
     async with maker() as db:
         db.add(AICall(task="extract_profile", model="sonnet", duration_ms=5, ok=False, error_kind="auth"))
         await db.commit()
@@ -83,9 +81,8 @@ async def test_status_reports_last_call(client, engine, make_account):
     assert last["ok"] is False and last["error_kind"] == "auth" and last["at"]
 
 
-async def test_check_task_reports_success_and_real_error(client, engine, make_account):
+async def test_check_task_reports_success_and_real_error(client, maker, make_account):
     await make_account("owner@x.com", admin=True)
-    maker = async_sessionmaker(engine, expire_on_commit=False)
 
     tid = (await client.post("/api/admin/ai/check")).json()["task_id"]
     assert (await client.post("/api/admin/ai/check")).json()["task_id"] == tid  # deduped while pending

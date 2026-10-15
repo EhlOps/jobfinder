@@ -2,7 +2,6 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 import sqlalchemy as sa
-from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from jobfinder.ai.claude_code import AIError
 from jobfinder.ai.schemas import MatchScore
@@ -14,11 +13,6 @@ from tests.fakes import FakeScoringAI
 
 STATUS = {"target_roles": ["Backend Engineer"], "target_locations": ["Boston"], "is_new_grad": True,
           "salary_min": 100000, "needs_visa_sponsorship": False}
-
-
-@pytest.fixture
-def maker(engine):
-    return async_sessionmaker(engine, expire_on_commit=False)
 
 
 @pytest.fixture(autouse=True)
@@ -263,12 +257,11 @@ async def test_rescoring_resets_questions_collected(maker):
         assert m.profile_version == 2 and m.questions_collected is False       # new assessment -> look at its unknowns again
 
 
-async def test_candidates_are_light_batched_and_hydrated_in_order(engine, monkeypatch):
+async def test_candidates_are_light_batched_and_hydrated_in_order(maker, monkeypatch):
     """Descriptions are loaded BATCH at a time and only the jobs that get scored are loaded in full."""
     svc = service
     monkeypatch.setattr(svc, "BATCH", 2)
     monkeypatch.setattr(get_settings(), "match_min_prefilter", 0.0)
-    maker = async_sessionmaker(engine, expire_on_commit=False)
     async with maker() as db:
         u = await make_user(db, status={"target_roles": ["Backend Engineer"]})
         for n in range(5):

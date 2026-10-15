@@ -1,7 +1,6 @@
 import pytest
 import sqlalchemy as sa
 from factories import make_match, make_question, make_user, unknown
-from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from jobfinder.ai.claude_code import AIError
 from jobfinder.ai.schemas import Consolidated, ConsolidatedQuestion
@@ -9,11 +8,6 @@ from jobfinder.config import get_settings
 from jobfinder.models import ClarifyingQuestion, JobMatch, Profile, ProfileFact, Task
 from jobfinder.questions import service
 from tests.fakes import FakeQuestionsAI
-
-
-@pytest.fixture
-def maker(engine):
-    return async_sessionmaker(engine, expire_on_commit=False)
 
 
 async def collected(db):

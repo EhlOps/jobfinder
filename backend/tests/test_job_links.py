@@ -4,7 +4,6 @@ import httpx
 import pytest
 import sqlalchemy as sa
 from security_payloads import SQLI
-from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from jobfinder.config import get_settings
 from jobfinder.ingest import resolve
@@ -20,11 +19,6 @@ GOOD = {"jobs": [
     {"id": 124, "title": "Controls Engineer", "absolute_url": "https://boards.greenhouse.io/acme/jobs/124",
      "location": {"name": "Remote"}},
 ]}
-
-
-@pytest.fixture
-def maker(engine):
-    return async_sessionmaker(engine, expire_on_commit=False)
 
 
 def client_for(handler):

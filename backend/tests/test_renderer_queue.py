@@ -3,17 +3,11 @@ bounded time for them."""
 import asyncio
 
 import pytest
-from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from jobfinder import renderer
 from jobfinder.models import Task
 from jobfinder.renderer import RenderError, request_render
 from jobfinder.scheduling import queue
-
-
-@pytest.fixture
-def maker(engine):
-    return async_sessionmaker(engine, expire_on_commit=False)
 
 
 async def test_main_worker_never_claims_render_tasks(maker):
@@ -59,6 +53,7 @@ async def fake_renderer(maker, results: dict, *, fail: str | None = None):
         await asyncio.sleep(0.01)
 
 
+@pytest.mark.real_commit
 async def test_request_render_returns_the_result(maker, monkeypatch):
     monkeypatch.setattr(renderer, "POLL_S", 0.01)
     bg = asyncio.create_task(fake_renderer(maker, {"render_capture": {"final_url": "https://a.example/"}}))
@@ -70,6 +65,7 @@ async def test_request_render_returns_the_result(maker, monkeypatch):
     assert got == {"final_url": "https://a.example/"}
 
 
+@pytest.mark.real_commit
 async def test_request_render_reports_failure(maker, monkeypatch):
     monkeypatch.setattr(renderer, "POLL_S", 0.01)
     bg = asyncio.create_task(fake_renderer(maker, {}, fail="Blocked: URL points to a non-public address"))
