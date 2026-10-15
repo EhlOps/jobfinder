@@ -1,0 +1,71 @@
+name: backend
+
+on:
+  pull_request:
+    branches: [main, dev]
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend.yml"
+  push:
+    branches: [main, dev]
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend.yml"
+
+concurrency:
+  group: backend-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:16  # same image as docker-compose.yml
+        env:
+          POSTGRES_USER: jobfinder
+          POSTGRES_PASSWORD: jobfinder
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U jobfinder"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # tests/conftest.py creates the test database from this admin URL and sets DATABASE_URL,
+      # SECRET_KEY and PUBLIC_BASE_URL itself. No .env is needed.
+      TEST_ADMIN_URL: postgresql+asyncpg://jobfinder:jobfinder@localhost:5432/postgres
+      UV_PYTHON: "3.11"  # matches the python:3.11 base of the Dockerfiles
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.3.0  # setup-uv stopped publishing floating major tags after v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      # Default dev group only: the opt-in jobspy and renderer (Playwright) extras are not
+      # installed, and the suite must pass without them.
+      - name: Install
+        run: uv sync --frozen
+
+      - name: Ruff
+        run: uv run ruff check .
+
+      # Serial for now; switches to `-n auto` once the per-worker fixture rewrite (#37) lands.
+      - name: Tests
+        run: uv run pytest
+
+      # Report-only until #53 makes the import contracts blocking.
+      - name: Import contracts
+        continue-on-error: true
+        run: uv run lint-imports

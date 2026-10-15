@@ -57,3 +57,39 @@ line-length = 100
 [tool.ruff.lint]
 # Deliberate broad catches: a bad upload/URL/task must not take down a request or the worker.
 ignore = ["BLE001"]
+
+# Report-only architecture contracts: CI runs lint-imports with continue-on-error until #53 makes
+# them blocking. They describe the package as it is today; #53 replaces them with the layer rules.
+[tool.importlinter]
+root_package = "jobfinder"
+
+[[tool.importlinter.contracts]]
+name = "Only the app factory (main) imports the HTTP routers"
+type = "forbidden"
+source_modules = [
+  "jobfinder.ai",
+  "jobfinder.auth",
+  "jobfinder.cli",
+  "jobfinder.config",
+  "jobfinder.db",
+  "jobfinder.ingest",
+  "jobfinder.letters",
+  "jobfinder.matching",
+  "jobfinder.models",
+  "jobfinder.notify",
+  "jobfinder.profile",
+  "jobfinder.questions",
+  "jobfinder.renderer",
+  "jobfinder.resumes",
+  "jobfinder.scheduling",
+  "jobfinder.storage",
+  "jobfinder.worker",
+]
+forbidden_modules = ["jobfinder.api"]
+
+[[tool.importlinter.contracts]]
+name = "The api package does not import the Claude CLI client directly"
+type = "forbidden"
+source_modules = ["jobfinder.api"]
+forbidden_modules = ["jobfinder.ai.claude_code"]
+allow_indirect_imports = true
