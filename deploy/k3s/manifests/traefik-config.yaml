@@ -1,0 +1,18 @@
+# Overrides for k3s's bundled Traefik (#38). Host Caddy owns 80/443 and is the TLS edge, so Traefik
+# is reachable on 127.0.0.1:8280 only, plain HTTP. Caddy proxies to it from the cutover (#47) on.
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: traefik
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    service:
+      type: ClusterIP        # servicelb is disabled; a LoadBalancer would sit pending
+    ports:
+      web:
+        hostPort: 8280
+        hostIP: 127.0.0.1    # never 0.0.0.0
+      websecure:
+        expose:
+          default: false     # TLS ends at host Caddy
