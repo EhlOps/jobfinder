@@ -14,7 +14,9 @@ on:
 
 concurrency:
   group: backend-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # Only PRs cancel superseded runs. On a push the group falls back to github.ref, so cancelling
+  # would drop CI for the earlier commit when main/dev gets two pushes in quick succession.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
