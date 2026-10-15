@@ -25,9 +25,9 @@ The script is idempotent. It prints the status of the compose site, the api and 
 
 1. Installs `container-selinux` and the `k3s-selinux` policy. No el10 build exists yet, so it uses the el9 RPM, which only needs `container-selinux` (shipped by OL10).
 2. Writes `/etc/rancher/k3s/config.yaml` (`write-kubeconfig-mode: 0600`, `selinux: true`, `disable: [servicelb]`) and copies `deploy/k3s/manifests/*.yaml` into `/var/lib/rancher/k3s/server/manifests/`, which k3s applies automatically.
-3. Installs k3s at the pinned version (skipped if already at it).
+3. Installs k3s at the pinned version (skipped if already at it). If k3s was already running and the binary version or `config.yaml` changed, it restarts k3s so the change takes effect (`systemctl enable --now` alone is a no-op on a running unit).
 4. Adds the cluster CIDRs to firewalld's `trusted` zone, runtime and permanent, **without** `firewall-cmd --reload` (a reload can drop Docker's rules for the running compose stack).
-5. Copies the kubeconfig to `~opc/.kube/config` (0600) and installs `kubeseal`.
+5. Copies the kubeconfig to `~opc/.kube/k3s.yaml` (0600; `~/.kube/config` is never touched) and installs `kubeseal`.
 6. Waits for the node, Traefik and the sealed-secrets controller.
 
 ## Verify
@@ -49,7 +49,7 @@ Gotchas this script already handles (keep them if you change it):
 - **SELinux label.** With the installer's RPM step skipped it doesn't relabel either, and `/usr/local/bin/k3s` keeps `user_tmp_t`, which systemd can't execute ("Permission denied" in `journalctl -u k3s`). The script runs `restorecon` before starting k3s.
 - **Traefik bind address.** The chart reuses `ports.web.hostIP` as the in-pod entrypoint address, so Traefik would listen only on the pod's loopback and refuse the DNAT'd traffic. `additionalArguments` re-binds the entrypoint to `:8000` inside the pod.
 - **Rolling update on one node.** The new Traefik pod can't bind hostPort 8280 while the old one runs, so the strategy is `maxSurge: 0`.
-- **kubectl as opc.** k3s's bundled kubectl ignores `~/.kube/config`; `/etc/profile.d/k3s-kubeconfig.sh` sets `KUBECONFIG` for non-root logins.
+- **kubectl as opc.** k3s's bundled kubectl ignores `~/.kube/config`; `/etc/profile.d/k3s-kubeconfig.sh` sets `KUBECONFIG=~/.kube/k3s.yaml:~/.kube/config` for non-root logins that don't already set `KUBECONFIG`. The k3s context comes first, so it's current; other contexts in `~/.kube/config` stay available. After the first install, log in again (or `export KUBECONFIG=~/.kube/k3s.yaml`).
 - **sudo PATH.** `secure_path` omits `/usr/local/bin`; the script prepends it.
 
 If 8280 doesn't answer, check that the Traefik pod has `hostPort 8280` with `hostIP 127.0.0.1`
@@ -79,7 +79,8 @@ for c in 10.42.0.0/16 10.43.0.0/16; do
   sudo firewall-cmd --zone=trusted --remove-source=$c
   sudo firewall-cmd --permanent --zone=trusted --remove-source=$c
 done
-sudo dnf remove -y k3s-selinux && sudo rm -f /usr/local/bin/kubeseal ~opc/.kube/config
+sudo dnf remove -y k3s-selinux && sudo rm -f /usr/local/bin/kubeseal ~opc/.kube/k3s.yaml \
+  /etc/profile.d/k3s-kubeconfig.sh
 ```
 
 Then check `curl -sI http://127.0.0.1:8180/` and `https://draw.ehlops.com/`.

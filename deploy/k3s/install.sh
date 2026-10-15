@@ -41,6 +41,9 @@ rpm -q k3s-selinux
 
 log "k3s config and auto-deployed manifests"
 install -d -m 0755 /etc/rancher/k3s /var/lib/rancher/k3s/server/manifests
+# k3s reads config.yaml only at start; remember it so a change restarts a running server below.
+# Manifests need no restart: k3s watches that directory.
+config_before="$(sha256sum /etc/rancher/k3s/config.yaml 2>/dev/null || true)"
 cat > /etc/rancher/k3s/config.yaml <<'EOF'
 # Managed by deploy/k3s/install.sh
 write-kubeconfig-mode: "0600"
@@ -49,9 +52,12 @@ disable:
   - servicelb   # no klipper-lb: it would bind 80/443 on the host, which belong to host Caddy
 EOF
 install -m 0600 "$here"/manifests/*.yaml /var/lib/rancher/k3s/server/manifests/
+config_changed=false
+[[ "$(sha256sum /etc/rancher/k3s/config.yaml)" == "$config_before" ]] || config_changed=true
 
 log "k3s $K3S_VERSION"
-if [[ "$(k3s --version 2>/dev/null | head -1)" != *"$K3S_VERSION"* ]]; then
+version_before="$(k3s --version 2>/dev/null | head -1 || true)"
+if [[ "$version_before" != *"$K3S_VERSION"* ]]; then
     # The policy RPM is already installed above; the installer's own repo has no el10 entry.
     # INSTALL_K3S_SKIP_START: with the RPM step skipped the installer also skips relabelling, and the binary
     # keeps the user_tmp_t label it was downloaded with, which systemd (init_t) may not execute.
@@ -59,6 +65,12 @@ if [[ "$(k3s --version 2>/dev/null | head -1)" != *"$K3S_VERSION"* ]]; then
         INSTALL_K3S_SKIP_START=true sh -s - server
 fi
 restorecon -R /usr/local/bin/k3s /etc/rancher /var/lib/rancher
+# `enable --now` is a no-op on a running unit, so an upgrade or config change would leave the old server up.
+if systemctl is-active --quiet k3s \
+    && { $config_changed || [[ "$(k3s --version | head -1)" != "$version_before" ]]; }; then
+    echo "  binary or config changed: restarting k3s"
+    systemctl restart k3s
+fi
 systemctl enable --now k3s
 
 log "firewalld: trust cluster CIDRs (runtime + permanent, no reload)"
@@ -73,11 +85,18 @@ log "kubeconfig for $KUBE_USER"
 home="$(getent passwd "$KUBE_USER" | cut -d: -f6)"
 install -d -m 0700 -o "$KUBE_USER" -g "$KUBE_USER" "$home/.kube"
 for _ in $(seq 60); do [[ -s /etc/rancher/k3s/k3s.yaml ]] && break; sleep 2; done
-install -m 0600 -o "$KUBE_USER" -g "$KUBE_USER" /etc/rancher/k3s/k3s.yaml "$home/.kube/config"
+# A dedicated file, so other contexts in ~/.kube/config are never clobbered.
+install -m 0600 -o "$KUBE_USER" -g "$KUBE_USER" /etc/rancher/k3s/k3s.yaml "$home/.kube/k3s.yaml"
 # k3s's bundled kubectl ignores ~/.kube/config and falls back to the root-only /etc/rancher/k3s/k3s.yaml.
+# KUBECONFIG lists k3s.yaml first (its context is current) with ~/.kube/config merged in; a KUBECONFIG
+# the user already set is left alone.
 cat > /etc/profile.d/k3s-kubeconfig.sh <<'EOF'
 # Managed by deploy/k3s/install.sh
-if [ "$(id -u)" -ne 0 ] && [ -r "$HOME/.kube/config" ]; then export KUBECONFIG="$HOME/.kube/config"; fi
+if [ "$(id -u)" -ne 0 ] && [ -z "${KUBECONFIG:-}" ] && [ -r "$HOME/.kube/k3s.yaml" ]; then
+    KUBECONFIG="$HOME/.kube/k3s.yaml"
+    if [ -r "$HOME/.kube/config" ]; then KUBECONFIG="$KUBECONFIG:$HOME/.kube/config"; fi
+    export KUBECONFIG
+fi
 EOF
 
 log "kubeseal $KUBESEAL_VERSION"
