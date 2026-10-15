@@ -24,8 +24,8 @@ TEST_DB = os.environ.get("TEST_DB", "jobfinder_test")
 # One database per xdist worker ("master" when not distributed), so workers never share rows.
 TEST_DB_NAME = f"{TEST_DB}_{os.environ.get('PYTEST_XDIST_WORKER', 'master')}"
 # real_commit tests get a database of their own, emptied per test, so their commits can't leak.
-# The app's own engine points there too: code that slips past the test session (e.g. run_task's
-# import-time default session_factory) never sees the test's rows and can't commit into the
+# The app's own engine points there too: code that slips past the test session (anything that
+# reached the process's default context) never sees the test's rows and can't commit into the
 # shared database; whatever it writes is wiped by the next real_commit test's truncate.
 RC_DB_NAME = f"{TEST_DB_NAME}_rc"
 # Postgres silently truncates longer names, which would break the "does it exist" check.
@@ -39,9 +39,10 @@ os.environ["SECRET_KEY"] = "test-secret-key-0123456789-abcdefghijklmnop"
 os.environ["PUBLIC_BASE_URL"] = "http://test"
 
 from jobfinder import db as dbmod
-from jobfinder import worker
-from jobfinder.db import Base, get_db
-from jobfinder.main import app
+from jobfinder.api.app import create_app
+from jobfinder.core.config import get_settings
+from jobfinder.core.context import build_context
+from jobfinder.core.db import Base
 
 
 async def _drop_leaked_connections(name):
@@ -86,7 +87,7 @@ async def _create_databases():
             if not exists:
                 await conn.execute(sa.text(f'create database "{name}"'))
     await admin.dispose()
-    # Both, up front: the app's own SessionLocal points at the rc database, so a plain test that
+    # Both, up front: the app's own db.SessionLocal points at the rc database, so a plain test that
     # reaches it before any real_commit test has run on this worker still finds a current schema.
     await _reset_schema(TEST_URL)
     await _reset_schema(RC_URL)
@@ -151,9 +152,8 @@ def _guard_savepoint_stack(sync_engine, violations):
 
 
 def _route_app_sessions(monkeypatch, m):
-    # App code outside a request (worker, CLI, renderer, scheduler) opens SessionLocal itself.
+    # App code outside a request (worker, CLI, renderer, scheduler) opens db.SessionLocal itself.
     monkeypatch.setattr(dbmod, "SessionLocal", m)
-    monkeypatch.setattr(worker, "SessionLocal", m)
 
 
 @pytest_asyncio.fixture
@@ -205,25 +205,19 @@ async def db(maker):
 
 @pytest_asyncio.fixture
 async def client(maker, tmp_path, monkeypatch):
-    from jobfinder.config import get_settings
-
+    """The real app (create_app) on a context whose sessions are the test's."""
     monkeypatch.setattr(get_settings(), "store_dir", str(tmp_path / "store"))
-
-    async def override_db():
-        async with maker() as s:
-            yield s
-
-    app.dependency_overrides[get_db] = override_db
+    bind = maker.kw["bind"]  # the savepoint-mode connection, or the real_commit engine
+    ctx = build_context(get_settings(), engine=getattr(bind, "engine", bind), sessions=maker)
+    app = create_app(ctx=ctx)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         yield c
-    app.dependency_overrides.clear()
+    await ctx.http.aclose()  # the maker fixture owns the engine
 
 
 @pytest.fixture(autouse=True)
 def isolated_claude_auth(tmp_path, monkeypatch):
     """Never let a test read or write a real credentials directory."""
-    from jobfinder.config import get_settings
-
     s = get_settings()
     monkeypatch.setattr(s, "claude_auth_dir", str(tmp_path / "claude-auth"))
     monkeypatch.setattr(s, "claude_code_oauth_token", "")

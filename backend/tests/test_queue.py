@@ -3,6 +3,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from jobfinder.core.config import get_settings
 from jobfinder.scheduling import queue
 
 
@@ -38,7 +39,7 @@ async def test_retry_backoff_then_permanent_failure(maker):
         assert t.status == "queued" and t.run_after > datetime.now(UTC) + timedelta(seconds=20)
         assert await queue.claim(db) is None  # not due yet
 
-        t.attempts = queue.MAX_ATTEMPTS
+        t.attempts = get_settings().task_max_attempts
         await queue.fail(db, t, "still failing", retry=True)
         assert t.status == "failed" and t.finished_at
 
@@ -114,7 +115,7 @@ async def test_reap_fails_tasks_out_of_attempts_and_requeues_others(maker):
         await queue.enqueue(db, "poison")
         await queue.enqueue(db, "fresh")
         poison, fresh = await queue.claim(db), await queue.claim(db)
-        poison.attempts = queue.MAX_ATTEMPTS
+        poison.attempts = get_settings().task_max_attempts
         for t in (poison, fresh):
             t.locked_at = datetime.now(UTC) - timedelta(hours=1)
         await db.commit()

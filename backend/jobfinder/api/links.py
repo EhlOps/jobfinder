@@ -4,8 +4,7 @@ from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, HttpUrl
 
-from jobfinder.auth.security import current_user
-from jobfinder.models import User
+from jobfinder.api.deps import CurrentUser
 from jobfinder.profile.github import GitHubError, fetch_github_summary
 from jobfinder.profile.web_page import FetchError, fetch_page_text
 from jobfinder.storage.documents import DocumentMeta, DocumentStore, NotFound, get_store
@@ -16,7 +15,6 @@ router = APIRouter(prefix="/api/links", tags=["links"])
 NO_FETCH = {"linkedin", "x"}
 
 Store = Annotated[DocumentStore, Depends(get_store)]
-CurrentUser = Annotated[User, Depends(current_user)]
 
 
 class LinkIn(BaseModel):

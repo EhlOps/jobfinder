@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from jobfinder.ai.claude_code import AIError
 from jobfinder.ai.tasks import AITasks
-from jobfinder.config import get_settings
+from jobfinder.core.config import settings
 from jobfinder.ingest.base import JobPosting, safe_http_url
 from jobfinder.ingest.http_safety import JSON_TYPES, FetchError, safe_fetch
 from jobfinder.ingest.recipes import Recipe, RecipeError, run_recipe, validate_recipe
@@ -120,7 +120,7 @@ class LlmRung:
     order = 5.0
 
     async def run(self, ctx: ResolveContext) -> RecipeHit | None:
-        if not ctx.allow_llm or not get_settings().resolver_llm_enabled:
+        if not ctx.allow_llm or not settings.resolver_llm_enabled:
             return None
         if ctx.ai is None:
             ctx.note("llm: no AI available")
@@ -138,7 +138,7 @@ class LlmRung:
             recipe, postings, why = await induce(
                 ctx.ai, ctx.client, page_url=page.url, page_html=page.text, samples=samples,
                 pasted_url=ctx.url, domain=domain, check=lambda ps: validate_recipe(ps, ctx.url),
-                provenance={"induced_by": "llm", "model": get_settings().recipe_model, "validated_with": ctx.url},
+                provenance={"induced_by": "llm", "model": settings.recipe_model, "validated_with": ctx.url},
                 note=lambda m: ctx.note(f"llm: {m}"),
             )
         except AIError as e:
@@ -175,7 +175,7 @@ async def reinduce_company(db: AsyncSession, ai: AITasks, company_id: int,
     company = await db.get(Company, company_id)
     if company is None or company.ats != "recipe":
         return {"skipped": "not a recipe board"}
-    if not get_settings().resolver_llm_enabled:
+    if not settings.resolver_llm_enabled:
         return {"skipped": "llm disabled"}
     if not health.needs_reinduce(company):
         return {"skipped": "not due", "state": company.recipe_state}
@@ -217,7 +217,7 @@ async def reinduce_company(db: AsyncSession, ai: AITasks, company_id: int,
                 ai, client, page_url=page.url if page else ctx.url, page_html=page.text if page else "",
                 samples=samples, pasted_url=validated_with, domain=company.slug, check=check, previous=old,
                 failure=failure,
-                provenance={"induced_by": "llm", "model": get_settings().recipe_model,
+                provenance={"induced_by": "llm", "model": settings.recipe_model,
                             "validated_with": validated_with, "reinduced_after": failure[:300]},
             )
         except AIError as e:  # not the site's fault: leave the board degraded and try again later

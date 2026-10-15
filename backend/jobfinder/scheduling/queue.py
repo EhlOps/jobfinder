@@ -2,23 +2,25 @@
 import hashlib
 import json
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 
 from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from jobfinder.core.clock import utcnow
+from jobfinder.core.config import settings
 from jobfinder.models import Task
 
 log = logging.getLogger("jobfinder.queue")
-MAX_ATTEMPTS = 3
-STUCK_AFTER = timedelta(minutes=5)  # the worker heartbeats every minute while a task runs
+# Retry policy from settings: TASK_MAX_ATTEMPTS, TASK_BACKOFF_SECONDS (x4 per attempt) and
+# TASK_STUCK_AFTER_MINUTES (the worker heartbeats every TASK_HEARTBEAT_SECONDS while a task runs).
 ACTIVE = ("queued", "running")
 RENDER_PREFIX = "render_"  # tasks for the opt-in browser container (jobfinder.renderer), never the worker
 
 
 def _now() -> datetime:
-    return datetime.now(UTC)
+    return utcnow()
 
 
 def dedupe_key(kind: str, user_id: int | None, payload: dict) -> str:
@@ -93,9 +95,10 @@ async def complete(db: AsyncSession, task: Task, result: dict) -> None:
 
 async def fail(db: AsyncSession, task: Task, error: str, *, retry: bool) -> None:
     task.error = error[:2000]
-    if retry and task.attempts < MAX_ATTEMPTS:
+    if retry and task.attempts < settings.task_max_attempts:
         task.status = "queued"
-        task.run_after = _now() + timedelta(seconds=30 * 4 ** (task.attempts - 1))  # 30s, 2m, 8m
+        backoff = settings.task_backoff_seconds * 4 ** (task.attempts - 1)  # 30s, 2m, 8m by default
+        task.run_after = _now() + timedelta(seconds=backoff)
     else:
         task.status, task.finished_at = "failed", _now()
     await db.commit()
@@ -110,10 +113,11 @@ async def heartbeat(db: AsyncSession, task_id: int) -> None:
 async def reap_stuck(db: AsyncSession) -> int:
     """Recover tasks whose worker died mid-run: requeue them, or fail them once they used all their attempts.
     Returns the number requeued."""
-    stale = (Task.status == "running", Task.locked_at < _now() - STUCK_AFTER)
+    attempts = settings.task_max_attempts
+    stale = (Task.status == "running", Task.locked_at < _now() - timedelta(minutes=settings.task_stuck_after_minutes))
     failed = await db.execute(
-        update(Task).where(*stale, Task.attempts >= MAX_ATTEMPTS)
-        .values(status="failed", finished_at=_now(), error=f"worker stopped responding during {MAX_ATTEMPTS} attempts")
+        update(Task).where(*stale, Task.attempts >= attempts)
+        .values(status="failed", finished_at=_now(), error=f"worker stopped responding during {attempts} attempts")
     )
     requeued = await db.execute(update(Task).where(*stale).values(status="queued"))
     await db.commit()

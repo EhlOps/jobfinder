@@ -12,11 +12,11 @@ from urllib.robotparser import RobotFileParser
 
 import httpx
 
+from jobfinder.core.http import USER_AGENT
 from jobfinder.ingest.discovery.robots import ROBOTS_TOKEN, can_fetch
 from jobfinder.profile import web_page
 from jobfinder.renderer.guard import Resolver
 
-USER_AGENT = "JobFinder/0.1 (+personal job search)"
 ROBOTS_MAX_BYTES = 500_000
 # Hop-by-hop or recomputed headers: never forwarded from the browser, never handed back to it.
 _DROP_REQUEST = {"host", "content-length", "connection", "keep-alive", "transfer-encoding", "te", "upgrade",

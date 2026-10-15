@@ -1,33 +1,19 @@
-import hashlib
-import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
-from argon2 import PasswordHasher
-from argon2.exceptions import InvalidHashError, VerificationError
 from fastapi import Cookie, Depends, HTTPException
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
-from jobfinder.config import get_settings
-from jobfinder.db import get_db
+from jobfinder.core.config import settings
+from jobfinder.core.db import DbSession
+from jobfinder.core.security import hash_password, new_token, verify_password
+from jobfinder.core.security import hash_token as hash_session_token
 from jobfinder.models import Session, User
 
 COOKIE_NAME = "session"
 SEEN_EVERY = timedelta(minutes=10)
-_hasher = PasswordHasher()
-
-
-def hash_password(password: str) -> str:
-    return _hasher.hash(password)
-
-
-def verify_password(password_hash: str, password: str) -> bool:
-    try:
-        return _hasher.verify(password_hash, password)
-    except (VerificationError, InvalidHashError):
-        return False
 
 
 async def hash_password_async(password: str) -> str:
@@ -49,18 +35,12 @@ async def verify_or_dummy(password_hash: str | None, password: str) -> bool:
     return await run_in_threadpool(verify_password, password_hash, password)
 
 
-def hash_session_token(token: str) -> str:
-    """Only this digest is stored, so a leaked sessions table can't be used to sign in. The token is
-    256 bits of randomness, so a plain SHA-256 is enough (no salt or slow hash needed)."""
-    return hashlib.sha256(token.encode()).hexdigest()
-
-
 async def create_session(db: AsyncSession, user_id: int) -> str:
     """Creates the session and returns the raw token for the cookie (the database keeps only its hash)."""
-    token = secrets.token_urlsafe(32)
+    token = new_token()
     db.add(Session(
         token=hash_session_token(token), user_id=user_id,
-        expires_at=datetime.now(UTC) + timedelta(days=get_settings().session_ttl_days),
+        expires_at=datetime.now(UTC) + timedelta(days=settings.session_ttl_days),
     ))
     await db.commit()
     return token
@@ -72,7 +52,7 @@ async def prune_sessions(db: AsyncSession) -> None:
 
 
 async def current_user(
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: DbSession,
     session: Annotated[str | None, Cookie(alias=COOKIE_NAME)] = None,
 ) -> User:
     if session:

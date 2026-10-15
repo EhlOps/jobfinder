@@ -10,6 +10,8 @@ import re
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 
+from jobfinder.core.text import tokens
+
 # ── seniority ────────────────────────────────────────────────────────────
 # Levels (as inferred from titles) acceptable for each level the candidate selects. Jobs whose
 # level couldn't be inferred (None) are always acceptable.
@@ -337,20 +339,13 @@ def _skill_pattern(skill: str) -> re.Pattern[str]:
     return re.compile(rf"(?<![a-z0-9]){re.escape(skill)}(?![a-z0-9])")
 
 
-_TOKEN = re.compile(r"[a-z0-9+#.]+")
-
-
-def _tokens(s: str) -> set[str]:
-    return {t.strip(".") for t in _TOKEN.findall(s.lower()) if t.strip(".")}
-
-
 def title_similarity(title: str, roles: list[str]) -> float:
     if not roles:
         return 0.5  # nothing to compare against: neutral
-    tt = _tokens(title)
+    tt = tokens(title)
     best = 0.0
     for role in roles:
-        rt = _tokens(role)
+        rt = tokens(role)
         if rt:
             best = max(best, len(rt & tt) / len(rt))
     return best

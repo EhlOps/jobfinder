@@ -14,7 +14,7 @@ from datetime import UTC, date, datetime
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from jobfinder.config import get_settings
+from jobfinder.core.config import settings
 from jobfinder.ingest.base import (
     JobPosting,
     clip,
@@ -83,7 +83,7 @@ def parse_jobspy_rows(rows: list[dict]) -> list[JobPosting]:
 
 async def build_queries(db: AsyncSession, limit: int | None = None) -> list[JobQuery]:
     """Distinct (role, location) pairs from all users' targets, capped."""
-    limit = limit or get_settings().jobspy_max_queries
+    limit = limit or settings.jobspy_max_queries
     seen: dict[JobQuery, None] = {}
     for (status,) in (await db.execute(sa.select(Profile.status))).all():
         roles = (status or {}).get("target_roles") or []
@@ -108,7 +108,7 @@ def _scrape(query: JobQuery, results: int) -> list[dict]:
 
 
 async def fetch_jobspy(queries: list[JobQuery], results_per_query: int | None = None) -> list[JobPosting]:
-    n = results_per_query or get_settings().jobspy_results_per_query
+    n = results_per_query or settings.jobspy_results_per_query
     postings: list[JobPosting] = []
     for i, q in enumerate(queries):
         if i:

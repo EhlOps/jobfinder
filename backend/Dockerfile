@@ -19,6 +19,8 @@ WORKDIR /app
 COPY pyproject.toml uv.lock* ./
 RUN uv sync --locked --no-dev --no-install-project
 
+# Every setting's default; the app reads it from the working directory (/app).
+COPY .env.defaults ./
 COPY jobfinder ./jobfinder
 COPY alembic.ini ./
 COPY alembic ./alembic
@@ -33,4 +35,4 @@ USER jobfinder
 EXPOSE 8000
 ENTRYPOINT ["docker-entrypoint.sh"]
 # Call uvicorn directly: `uv run` would try to re-sync as a non-root user and fail.
-CMD ["uvicorn", "jobfinder.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]
+CMD ["uvicorn", "jobfinder.api.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]

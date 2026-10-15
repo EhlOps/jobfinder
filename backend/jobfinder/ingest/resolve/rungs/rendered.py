@@ -15,7 +15,7 @@ from urllib.parse import urljoin, urlsplit
 
 from pydantic import ValidationError
 
-from jobfinder.config import get_settings
+from jobfinder.core.config import settings
 from jobfinder.ingest.http_safety import JSON_TYPES, FetchError, safe_fetch
 from jobfinder.ingest.recipes import Recipe, RecipeError, run_recipe, validate_recipe
 from jobfinder.ingest.recipes.rendered import count_rendered_boards, run_rendered
@@ -86,7 +86,7 @@ class RenderedRung:
     order = 4.5
 
     async def run(self, ctx: ResolveContext) -> RecipeHit | None:
-        if not get_settings().renderer_enabled:
+        if not settings.renderer_enabled:
             return None
         from jobfinder.ingest.resolve import registrable_domain
         from jobfinder.renderer import CAPTURE, RenderError, RenderUnavailable, request_render
@@ -204,7 +204,7 @@ class RenderedRung:
         if data is None:
             ctx.note(f"rendered: {why}")
             return None
-        cap = get_settings().renderer_max_rendered_boards
+        cap = settings.renderer_max_rendered_boards
         if await count_rendered_boards() >= cap:
             ctx.note(f"rendered: the cap of {cap} browser-rendered boards is reached")
             return None

@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Protocol
 
-from jobfinder.matching.prefilter import _tokens
+from jobfinder.core.text import tokens
 
 _EPOCH = datetime.min.replace(tzinfo=UTC)
 
@@ -41,15 +41,15 @@ class Target:
 
 
 def _one_score(board: BoardLike, t: Target) -> float:
-    industry = _tokens(board.industry or "")
+    industry = tokens(board.industry or "")
     score = 0.0
-    if industry and any(industry & _tokens(i) for i in t.industries):
+    if industry and any(industry & tokens(i) for i in t.industries):
         score += 2.0
     if board.size and board.size in t.sizes:
         score += 1.0
     if t.roles:
-        words = _tokens(f"{board.name} {board.industry or ''}")
-        if words and any(_tokens(r) & words for r in t.roles):
+        words = tokens(f"{board.name} {board.industry or ''}")
+        if words and any(tokens(r) & words for r in t.roles):
             score += 1.0
     return score
 

@@ -22,7 +22,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
-from jobfinder.config import get_settings
+from jobfinder.core.config import settings
 
 ID_RE = re.compile(r"^doc_[0-9a-f]{22}$")
 TAG_KEY_RE = re.compile(r"^[a-z0-9_.-]{1,40}$")
@@ -225,4 +225,4 @@ class DocumentStore:
 
 
 def get_store() -> DocumentStore:
-    return DocumentStore(Path(get_settings().store_dir))
+    return DocumentStore(Path(settings.store_dir))

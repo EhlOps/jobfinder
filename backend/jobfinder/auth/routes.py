@@ -6,7 +6,6 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from fastapi import APIRouter, BackgroundTasks, Cookie, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import delete, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from jobfinder.auth import ratelimit
 from jobfinder.auth.security import (
@@ -17,8 +16,9 @@ from jobfinder.auth.security import (
     hash_session_token,
     verify_or_dummy,
 )
-from jobfinder.config import get_settings
-from jobfinder.db import get_db
+from jobfinder.core.config import settings
+from jobfinder.core.db import DbSession
+from jobfinder.core.urls import public_link
 from jobfinder.models import Profile, Session, User
 from jobfinder.notify import email as mail
 from jobfinder.notify.tokens import (
@@ -70,7 +70,7 @@ def _valid_zone(name: str | None) -> str:
 
 
 def _set_cookie(resp: Response, token: str) -> None:
-    s = get_settings()
+    s = settings
     resp.set_cookie(
         COOKIE_NAME,
         token,
@@ -87,12 +87,12 @@ def client_ip(request: Request) -> str:
 
 
 def reset_link(user: User) -> str:
-    base = get_settings().public_base_url.rstrip("/")
-    return f"{base}/reset-password#token={make_password_token(user.id, user.password_hash)}"
+    token = make_password_token(user.id, user.password_hash)
+    return public_link(settings.public_base_url, f"/reset-password#token={token}")
 
 
 async def _send_link(email: str, pending: bool, link: str) -> None:
-    ttl = get_settings().password_link_ttl_minutes
+    ttl = settings.password_link_ttl_minutes
     subject = "Set your JobFinder password" if pending else "Reset your JobFinder password"
     text = f"Use this link to {'set' if pending else 'reset'} your password. It works once and expires in {ttl} minutes.\n\n{link}\n\nIf you didn't ask for this, ignore this email."
     html = f'<p>Use this link to {"set" if pending else "reset"} your password. It works once and expires in {ttl} minutes.</p><p><a href="{link}">{"Set" if pending else "Reset"} your password</a></p><p>If you didn\'t ask for this, ignore this email.</p>'
@@ -103,8 +103,8 @@ async def _send_link(email: str, pending: bool, link: str) -> None:
 
 
 @router.post("/login", response_model=UserOut)
-async def login(body: LoginBody, request: Request, resp: Response, db: Annotated[AsyncSession, Depends(get_db)]):
-    s = get_settings()
+async def login(body: LoginBody, request: Request, resp: Response, db: DbSession):
+    s = settings
     email, ip = body.email.lower(), client_ip(request)
     window = s.login_failure_window_minutes * 60
     if (
@@ -125,10 +125,10 @@ async def login(body: LoginBody, request: Request, resp: Response, db: Annotated
 
 @router.post("/password-reset/request", status_code=202)
 async def request_link(
-    body: LinkRequest, request: Request, background: BackgroundTasks, db: Annotated[AsyncSession, Depends(get_db)]
+    body: LinkRequest, request: Request, background: BackgroundTasks, db: DbSession
 ):
     """Same answer whether or not the address exists; only existing rows get mail."""
-    s = get_settings()
+    s = settings
     email, ip = body.email.lower(), client_ip(request)
     limited = (
         await ratelimit.count_since(db, "link_ip", ip, 3600) >= s.link_requests_per_ip_hour
@@ -146,7 +146,7 @@ async def request_link(
 
 
 @router.post("/password-reset/confirm", response_model=UserOut)
-async def confirm_reset(body: ConfirmBody, resp: Response, db: Annotated[AsyncSession, Depends(get_db)]):
+async def confirm_reset(body: ConfirmBody, resp: Response, db: DbSession):
     try:
         uid, fp = read_password_token(body.token)
     except InvalidToken:
@@ -172,7 +172,7 @@ async def confirm_reset(body: ConfirmBody, resp: Response, db: Annotated[AsyncSe
 @router.post("/logout", status_code=204)
 async def logout(
     resp: Response,
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: DbSession,
     session: Annotated[str | None, Cookie(alias=COOKIE_NAME)] = None,
 ):
     if session:

@@ -11,8 +11,8 @@ import sys
 from jobfinder.renderer import CAPTURE, LIST
 
 log = logging.getLogger("jobfinder.renderer")
-POLL_SECONDS = 2
-CONCURRENCY = 2  # browser contexts at once; each is capped in time and bytes (fits the 1.5 GB limit)
+# RENDERER_CONCURRENCY: browser contexts at once; each is capped in time and bytes (fits the 1.5 GB
+# limit). RENDERER_POLL_SECONDS: how often an idle renderer looks for work.
 
 
 async def handle(renderer, kind: str, payload: dict) -> dict:
@@ -45,18 +45,20 @@ async def run_task(task_id: int, renderer, session_factory) -> None:
 
 
 async def serve() -> None:
+    from jobfinder.core.config import settings
     from jobfinder.db import SessionLocal
     from jobfinder.renderer.browser import Renderer
     from jobfinder.scheduling import queue
 
+    concurrency = settings.renderer_concurrency
     renderer = Renderer()
     running: set[asyncio.Task] = set()
-    log.info("renderer started; claiming %s* tasks, %d at a time", queue.RENDER_PREFIX, CONCURRENCY)
+    log.info("renderer started; claiming %s* tasks, %d at a time", queue.RENDER_PREFIX, concurrency)
     try:
         while True:
             running = {t for t in running if not t.done()}
             claimed = None
-            if len(running) < CONCURRENCY:
+            if len(running) < concurrency:
                 try:
                     async with SessionLocal() as db:
                         claimed = await queue.claim(db, kind_prefix=queue.RENDER_PREFIX)
@@ -65,7 +67,7 @@ async def serve() -> None:
             if claimed:
                 running.add(asyncio.create_task(run_task(claimed.id, renderer, SessionLocal)))
                 continue
-            await asyncio.sleep(POLL_SECONDS if len(running) < CONCURRENCY else 0.5)
+            await asyncio.sleep(settings.renderer_poll_seconds if len(running) < concurrency else 0.5)
     finally:
         await renderer.close()
 
@@ -86,7 +88,10 @@ async def capture_cli(url: str, as_json: bool) -> int:
 
 
 def main(argv: list[str]) -> int:
-    logging.basicConfig(level=logging.INFO)
+    from jobfinder.core import logging as core_logging
+    from jobfinder.core.config import settings
+
+    core_logging.configure(settings.log_level)
     if not argv:
         asyncio.run(serve())
         return 0

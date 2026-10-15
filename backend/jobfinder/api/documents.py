@@ -5,8 +5,8 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from fastapi.responses import FileResponse, PlainTextResponse
 from pydantic import BaseModel
 
-from jobfinder.auth.security import current_user
-from jobfinder.models import User
+from jobfinder.api.deps import CurrentUser
+from jobfinder.core.config import settings
 from jobfinder.profile.resume_parse import ALLOWED_EXTENSIONS, ParserBusy, extract_text_async
 from jobfinder.storage.documents import (
     MATCH_TAG,
@@ -20,7 +20,6 @@ from jobfinder.storage.documents import (
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
-MAX_BYTES = 10 * 1024 * 1024
 KINDS = {"resume", "portfolio", "other"}
 CONTENT_TYPES = {
     ".pdf": "application/pdf",
@@ -30,7 +29,6 @@ CONTENT_TYPES = {
 }
 
 Store = Annotated[DocumentStore, Depends(get_store)]
-CurrentUser = Annotated[User, Depends(current_user)]
 
 
 class DocumentOut(BaseModel):
@@ -88,9 +86,10 @@ async def upload_document(
     ext = Path(file.filename or "").suffix.lower()
     if ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(415, f"Unsupported file type; allowed: {sorted(ALLOWED_EXTENSIONS)}")
-    data = await file.read(MAX_BYTES + 1)
-    if len(data) > MAX_BYTES:
-        raise HTTPException(413, "File too large (10MB max)")
+    limit = settings.upload_max_bytes
+    data = await file.read(limit + 1)
+    if len(data) > limit:
+        raise HTTPException(413, f"File too large ({limit // 2**20}MB max)")
     try:
         text = await extract_text_async(data, ext)
     except ParserBusy:

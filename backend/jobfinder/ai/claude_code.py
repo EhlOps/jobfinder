@@ -22,7 +22,7 @@ from typing import Literal, TypeVar, overload
 from pydantic import BaseModel, ValidationError
 
 from jobfinder.ai import credentials
-from jobfinder.config import get_settings
+from jobfinder.core.config import settings
 
 T = TypeVar("T", bound=BaseModel)
 Model = Literal["haiku", "sonnet", "opus"]
@@ -97,7 +97,7 @@ class ClaudeCode:
         max_concurrency: int | None = None,
         recorder: Recorder | None = None,
     ):
-        s = get_settings()
+        s = settings
         self._bin = claude_bin or s.claude_bin
         self._scratch = scratch_dir or s.claude_scratch_dir
         self._token = s.claude_code_oauth_token if oauth_token is None else oauth_token

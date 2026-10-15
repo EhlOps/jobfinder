@@ -1,12 +1,10 @@
-from typing import Annotated, Any
+from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from jobfinder.auth.security import current_user
-from jobfinder.db import get_db
-from jobfinder.models import Task, User
+from jobfinder.api.deps import CurrentUser, DbSession
+from jobfinder.models import Task
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
@@ -24,8 +22,8 @@ class TaskOut(BaseModel):
 @router.get("/{task_id}", response_model=TaskOut)
 async def get_task(
     task_id: int,
-    user: Annotated[User, Depends(current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    user: CurrentUser,
+    db: DbSession,
 ):
     task = await db.get(Task, task_id)
     if not task or task.user_id != user.id:

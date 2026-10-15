@@ -14,7 +14,8 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import ARRAY, insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from jobfinder.config import get_settings
+from jobfinder.core.config import settings
+from jobfinder.core.http import USER_AGENT
 from jobfinder.ingest import schedule
 from jobfinder.ingest.base import JobPosting, safe_http_url
 from jobfinder.ingest.recipes import RecipeUnavailable
@@ -149,7 +150,7 @@ def _record_failure(company: Company, error: str) -> bool:
     Returns True when this failure auto-disabled the board."""
     company.last_error = error
     company.consecutive_failures = (company.consecutive_failures or 0) + 1
-    limit = get_settings().ingest_max_consecutive_failures
+    limit = settings.ingest_max_consecutive_failures
     if company.enabled and limit > 0 and company.consecutive_failures >= limit:
         company.enabled = False
         company.disabled_reason = f"auto-disabled after {company.consecutive_failures} consecutive failures: {error}"[:500]
@@ -159,7 +160,7 @@ def _record_failure(company: Company, error: str) -> bool:
 
 async def _schedule_next(db: AsyncSession, company: Company, *, failed: bool = False) -> None:
     """Set the board's adaptive interval and next slot (ingest.schedule); no-op when that's off."""
-    s = get_settings()
+    s = settings
     if not s.adaptive_schedule_enabled:
         return
     at = schedule.now()
@@ -173,7 +174,7 @@ async def _schedule_next(db: AsyncSession, company: Company, *, failed: bool = F
             )
         ) or 0
     if first is None or first > since:  # younger than the window: at least the base cadence
-        new_jobs = max(new_jobs, schedule.CHURN_PIVOT)
+        new_jobs = max(new_jobs, s.ingest_churn_pivot)
     interval = schedule.board_interval(
         new_jobs, schedule.effective_tier(company.coveted_tier, company.origin),
         base=s.ingest_base_interval_minutes, min_minutes=s.ingest_min_interval_minutes,
@@ -236,7 +237,7 @@ def _recipe_run(company: Company, n_postings: int, error: str | None = None) -> 
 
 async def _queue_reinduce(db: AsyncSession, company_id: int) -> None:
     """Queue the LLM self-heal for a degraded recipe board (after the run is committed: enqueue commits)."""
-    if not get_settings().resolver_llm_enabled:
+    if not settings.resolver_llm_enabled:
         return
     from jobfinder.scheduling import queue
 
@@ -315,7 +316,7 @@ async def ingest_boards(
             q = q.where(Company.ats == ats)
         if slug:
             q = q.where(Company.slug == slug)
-        if get_settings().adaptive_schedule_enabled and not (ats or slug or all_boards):
+        if settings.adaptive_schedule_enabled and not (ats or slug or all_boards):
             q = q.where(sa.or_(Company.next_fetch_at.is_(None), Company.next_fetch_at <= schedule.now()))
         boards = list((await db.scalars(q)).all())
         if not slug:  # an explicit board is always fetched; otherwise cap the discovered ones
@@ -323,12 +324,12 @@ async def ingest_boards(
                 sa.select(Profile.status).join(User, User.id == Profile.user_id).where(User.activated_at.is_not(None))
             )).all()
             boards = select_boards(
-                boards, [Target.from_status(s) for s in statuses], get_settings().ingest_max_discovered_boards_per_run
+                boards, [Target.from_status(s) for s in statuses], settings.ingest_max_discovered_boards_per_run
             )
         ids = [b.id for b in boards]
 
-    sem = asyncio.Semaphore(concurrency or get_settings().ingest_concurrency)
-    headers = {"User-Agent": "JobFinder/0.1 (+personal job search)"}
+    sem = asyncio.Semaphore(concurrency or settings.ingest_concurrency)
+    headers = {"User-Agent": USER_AGENT}
 
     async with httpx.AsyncClient(timeout=30, follow_redirects=True, headers=headers) as client:
         async def one(company_id: int) -> IngestStats:

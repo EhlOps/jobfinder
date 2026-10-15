@@ -67,13 +67,14 @@ ignore = ["BLE001"]
 root_package = "jobfinder"
 
 [[tool.importlinter.contracts]]
-name = "Only the app factory (main) imports the HTTP routers"
+name = "Only the app factory (api.app, and the jobfinder.main shim) imports the HTTP routers"
 type = "forbidden"
 source_modules = [
   "jobfinder.ai",
   "jobfinder.auth",
   "jobfinder.cli",
   "jobfinder.config",
+  "jobfinder.core",
   "jobfinder.db",
   "jobfinder.ingest",
   "jobfinder.letters",
@@ -96,3 +97,29 @@ type = "forbidden"
 source_modules = ["jobfinder.api"]
 forbidden_modules = ["jobfinder.ai.claude_code"]
 allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "core imports nothing else from jobfinder"
+type = "forbidden"
+source_modules = ["jobfinder.core"]
+forbidden_modules = [
+  "jobfinder.ai",
+  "jobfinder.api",
+  "jobfinder.auth",
+  "jobfinder.cli",
+  "jobfinder.config",
+  "jobfinder.db",
+  "jobfinder.ingest",
+  "jobfinder.letters",
+  "jobfinder.main",
+  "jobfinder.matching",
+  "jobfinder.models",
+  "jobfinder.notify",
+  "jobfinder.profile",
+  "jobfinder.questions",
+  "jobfinder.renderer",
+  "jobfinder.resumes",
+  "jobfinder.scheduling",
+  "jobfinder.storage",
+  "jobfinder.worker",
+]

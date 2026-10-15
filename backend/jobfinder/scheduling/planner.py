@@ -14,7 +14,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from jobfinder.config import get_settings
+from jobfinder.core.config import settings
 from jobfinder.matching.service import BUDGET_WINDOW, STALE_STATUSES, UNLIMITED, sync_career_stage
 from jobfinder.models import AICall, Job, JobMatch, PlannerState, Profile, Task, User
 from jobfinder.scheduling import queue
@@ -61,7 +61,7 @@ def _parse(ts: str | None) -> datetime | None:
 def min_gap(seen_ago: timedelta) -> timedelta:
     """Idle users are looked at less often."""
     if seen_ago <= ACTIVE_WITHIN:
-        return timedelta(hours=get_settings().planner_min_interval_hours)
+        return timedelta(hours=settings.planner_min_interval_hours)
     return RECENT_GAP if seen_ago <= IDLE_AFTER else IDLE_GAP
 
 
@@ -70,7 +70,7 @@ async def backoff_until(db: AsyncSession, now: datetime) -> datetime | None:
     last = (await db.execute(sa.select(AICall).order_by(AICall.id.desc()).limit(1))).scalar_one_or_none()
     if last is None or last.error_kind not in BACKOFF_ERRORS:
         return None
-    until = last.created_at + timedelta(minutes=get_settings().planner_backoff_minutes)
+    until = last.created_at + timedelta(minutes=settings.planner_backoff_minutes)
     return until if until > now else None
 
 
@@ -148,7 +148,7 @@ async def _views(db: AsyncSession, now: datetime) -> list[UserView]:
                 )
             ).all()
         )
-    defaults = get_settings().match_daily_llm_budget
+    defaults = settings.match_daily_llm_budget
     out = []
     for user, profile, state in rows:
         if user.match_budget_enabled is False:
@@ -183,7 +183,7 @@ def assess(v: UserView, now: datetime) -> bool:
         v.reason = "stale"
     if v.left <= 0:
         v.skip, v.reason = "budget exhausted", ""
-        v.next_due_at = max(due, now + timedelta(minutes=get_settings().planner_interval_minutes))
+        v.next_due_at = max(due, now + timedelta(minutes=settings.planner_interval_minutes))
         return False
     if due > now:
         v.skip, v.reason = "ran recently" if v.seen_ago <= ACTIVE_WITHIN else "inactive user, throttled", ""
@@ -226,7 +226,7 @@ async def _save_state(db: AsyncSession, views: list[UserView], now: datetime, pl
 
 async def plan(db: AsyncSession, now: datetime | None = None) -> dict:
     now = now or datetime.now(UTC)
-    s = get_settings()
+    s = settings
     until = await backoff_until(db, now)
     if until:
         return {"skipped": "rate_limited", "until": until.isoformat()}

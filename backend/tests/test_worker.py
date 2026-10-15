@@ -5,6 +5,7 @@ import pytest
 import sqlalchemy as sa
 
 from jobfinder import worker
+from jobfinder.core.config import get_settings
 from jobfinder.models import Task
 from jobfinder.scheduling import queue
 
@@ -39,7 +40,7 @@ async def test_unknown_kind_fails_cleanly(maker):
 
 @pytest.mark.real_commit
 async def test_heartbeat_refreshes_locked_at_while_handler_runs(maker, monkeypatch):
-    monkeypatch.setattr(worker, "HEARTBEAT_SECONDS", 0.05)
+    monkeypatch.setattr(get_settings(), "task_heartbeat_seconds", 0.05)
     old = datetime.now(UTC) - timedelta(hours=1)
     seen = {}
 

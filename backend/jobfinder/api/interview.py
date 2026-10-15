@@ -1,18 +1,15 @@
 """'Strengthen my profile': the recruiter-style audit, its next questions, and answering them."""
-from typing import Annotated, Any
+from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from jobfinder.auth.security import current_user
-from jobfinder.db import get_db
-from jobfinder.models import Profile, User
+from jobfinder.api.deps import CurrentUser, DbSession
+from jobfinder.models import Profile
 from jobfinder.profile import interview
 from jobfinder.scheduling import queue
 
 router = APIRouter(prefix="/api/profile/interview", tags=["interview"])
-DB = Annotated[AsyncSession, Depends(get_db)]
 
 
 class InterviewOut(BaseModel):
@@ -39,12 +36,12 @@ class TaskRef(BaseModel):
 
 
 @router.get("", response_model=InterviewOut)
-async def read_interview(user: Annotated[User, Depends(current_user)], db: DB):
+async def read_interview(user: CurrentUser, db: DbSession):
     return interview.view(await db.get(Profile, user.id))
 
 
 @router.post("/refresh", response_model=TaskRef, status_code=202)
-async def refresh(user: Annotated[User, Depends(current_user)], db: DB):
+async def refresh(user: CurrentUser, db: DbSession):
     profile = await db.get(Profile, user.id)
     if not profile or not (profile.background or profile.status):
         raise HTTPException(422, "Set up your profile first")
@@ -53,5 +50,5 @@ async def refresh(user: Annotated[User, Depends(current_user)], db: DB):
 
 
 @router.post("/answers")
-async def answer(body: AnswersIn, user: Annotated[User, Depends(current_user)], db: DB):
+async def answer(body: AnswersIn, user: CurrentUser, db: DbSession):
     return await interview.answer(db, user.id, [a.model_dump() for a in body.answers])

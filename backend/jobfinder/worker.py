@@ -6,31 +6,31 @@ from datetime import UTC, datetime, timedelta
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
+from jobfinder import db as dbmod
 from jobfinder.ai.claude_code import AIError, CallRecord, ClaudeCode
 from jobfinder.ai.tasks import AITasks
 from jobfinder.auth import ratelimit
 from jobfinder.auth.security import prune_sessions
-from jobfinder.config import get_settings
-from jobfinder.db import SessionLocal
+from jobfinder.core import logging as core_logging
+from jobfinder.core.config import settings
 from jobfinder.models import AICall, Task
 from jobfinder.scheduling import queue
 from jobfinder.scheduling.handlers import HANDLERS
 
 log = logging.getLogger("jobfinder.worker")
-POLL_SECONDS = 2
-HEARTBEAT_SECONDS = 60  # keep locked_at fresh while a task runs (queue.STUCK_AFTER is 5 minutes)
-REAP_SECONDS = 60
+# Loop timings come from settings: WORKER_POLL_SECONDS, TASK_HEARTBEAT_SECONDS (keeps locked_at fresh
+# while a task runs; must stay well under TASK_STUCK_AFTER_MINUTES) and WORKER_REAP_SECONDS.
 
 
 async def record_call(rec: CallRecord) -> None:
-    async with SessionLocal() as db:
+    async with dbmod.SessionLocal() as db:
         db.add(AICall(**rec.__dict__))
         await db.commit()
 
 
 async def _heartbeat_loop(task_id: int, session_factory) -> None:
     while True:
-        await asyncio.sleep(HEARTBEAT_SECONDS)
+        await asyncio.sleep(settings.task_heartbeat_seconds)
         try:
             async with session_factory() as db:
                 await queue.heartbeat(db, task_id)
@@ -49,7 +49,8 @@ async def _fail(session_factory, task_id: int, error: str, *, retry: bool) -> No
         log.exception("could not record failure of task %s; the reaper will recover it", task_id)
 
 
-async def run_task(task_id: int, ai: AITasks, session_factory=SessionLocal) -> None:
+async def run_task(task_id: int, ai: AITasks, session_factory=None) -> None:
+    session_factory = session_factory or dbmod.SessionLocal
     async with session_factory() as db:
         task = await db.get(Task, task_id)
         if task is None:
@@ -82,13 +83,13 @@ def _log_task_exception(t: asyncio.Task) -> None:
 
 async def enqueue_scheduled(kind: str) -> None:
     """Scheduled work goes through the same queue as everything else (retries, one at a time via dedupe)."""
-    async with SessionLocal() as db:
+    async with dbmod.SessionLocal() as db:
         await queue.enqueue(db, kind, dedupe=True)
     log.info("scheduled %s", kind)
 
 
 def make_scheduler() -> AsyncIOScheduler:
-    s = get_settings()
+    s = settings
     scheduler = AsyncIOScheduler(timezone="UTC")
     # adaptive cadence: tick often, each run fetches only the boards that are due (ingest.schedule)
     every = (
@@ -117,15 +118,15 @@ def make_scheduler() -> AsyncIOScheduler:
 
 
 async def main() -> None:
-    logging.basicConfig(level=logging.INFO)
+    core_logging.configure(settings.log_level)
     ai = AITasks(ClaudeCode(recorder=record_call))
-    limit = get_settings().ai_max_concurrency
+    limit = settings.ai_max_concurrency
     running: set[asyncio.Task] = set()
-    if get_settings().scheduler_enabled:
+    if settings.scheduler_enabled:
         make_scheduler().start()
-        if get_settings().discovery_enabled:
+        if settings.discovery_enabled:
             log.info("board discovery scheduled weekly (Sunday 04:30 UTC)")
-        s = get_settings()
+        s = settings
         ingest = (
             f"adaptive (tick every {s.ingest_tick_minutes}m)" if s.adaptive_schedule_enabled
             else f"every {s.ingest_interval_hours}h"
@@ -138,10 +139,10 @@ async def main() -> None:
     last_reap = 0.0
     while True:
         running = {t for t in running if not t.done()}
-        if time.monotonic() - last_reap >= REAP_SECONDS:
+        if time.monotonic() - last_reap >= settings.worker_reap_seconds:
             last_reap = time.monotonic()
             try:
-                async with SessionLocal() as db:
+                async with dbmod.SessionLocal() as db:
                     await queue.reap_stuck(db)
                     await ratelimit.prune(db)
                 await prune_sessions(db)
@@ -149,14 +150,14 @@ async def main() -> None:
                 log.exception("maintenance tick failed")
         claimed = None
         if len(running) < limit:
-            async with SessionLocal() as db:
+            async with dbmod.SessionLocal() as db:
                 claimed = await queue.claim(db, exclude_prefix=queue.RENDER_PREFIX)
         if claimed:
             t = asyncio.create_task(run_task(claimed.id, ai))
             t.add_done_callback(_log_task_exception)
             running.add(t)
             continue  # look for more work immediately
-        await asyncio.sleep(POLL_SECONDS)
+        await asyncio.sleep(settings.worker_poll_seconds)
 
 
 def run() -> None:

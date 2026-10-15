@@ -29,6 +29,8 @@ WORKDIR /app
 COPY pyproject.toml uv.lock* ./
 RUN uv sync --locked --no-dev --no-install-project --extra renderer --python /usr/bin/python3
 
+# Every setting's default; the app reads it from the working directory (/app).
+COPY .env.defaults ./
 COPY jobfinder ./jobfinder
 RUN uv sync --locked --no-dev --extra renderer --python /usr/bin/python3 \
     && python -c "import playwright, sys; print('playwright ok', sys.version)" \

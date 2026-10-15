@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from jobfinder.ai.claude_code import AIError
 from jobfinder.ai.schemas import MatchScore, verdict_for
 from jobfinder.ai.tasks import AITasks
-from jobfinder.config import get_settings
+from jobfinder.core.config import settings
 from jobfinder.matching import prefilter as pf
 from jobfinder.matching.scoring import finalize
 from jobfinder.models import ClarifyingQuestion, Company, Job, JobMatch, Profile, ProfileFact, User
@@ -54,7 +54,7 @@ async def remaining_budget(db: AsyncSession, user_id: int) -> int:
     user = await db.get(User, user_id)
     if user is not None and user.match_budget_enabled is False:
         return UNLIMITED
-    limit = user.match_budget if user is not None and user.match_budget is not None else get_settings().match_daily_llm_budget
+    limit = user.match_budget if user is not None and user.match_budget is not None else settings.match_daily_llm_budget
     used = await db.scalar(
         sa.select(sa.func.count()).select_from(JobMatch).where(
             JobMatch.user_id == user_id, JobMatch.scored_at >= datetime.now(UTC) - BUDGET_WINDOW
@@ -99,7 +99,7 @@ async def find_candidates(db: AsyncSession, user_id: int, profile: Profile) -> l
     place = pf.place_prefs(status)
     skills = pf.profile_skills(background)
     needs_sponsorship = status.get("needs_visa_sponsorship") is True
-    threshold = get_settings().match_min_prefilter
+    threshold = settings.match_min_prefilter
 
     matched_jobs = sa.select(JobMatch.job_id).where(JobMatch.user_id == user_id)
     matched_hashes = (
@@ -284,7 +284,7 @@ async def match_user(db: AsyncSession, ai: AITasks, user_id: int, *, budget: int
     stale = await find_stale(db, user_id, version)
     work: list[tuple[Job, Company | None, float, bool]] = [(j, c, m.prefilter_score, True) for m, j, c in stale][:left]
     candidates = await find_candidates(db, user_id, profile)
-    total_work, batch_size = len(stale) + len(candidates), max(1, get_settings().ai_max_concurrency)
+    total_work, batch_size = len(stale) + len(candidates), max(1, settings.ai_max_concurrency)
     work += await hydrate(db, candidates[: max(0, left - len(work))])
 
     scored = failed = 0

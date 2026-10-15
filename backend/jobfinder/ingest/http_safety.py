@@ -13,11 +13,11 @@ from urllib.parse import urljoin, urlparse
 
 import httpx
 
+from jobfinder.core.http import USER_AGENT
 from jobfinder.ingest.discovery.robots import PoliteFetcher
 from jobfinder.ingest.sources.custom import refusal_for_url
 from jobfinder.profile.web_page import FetchError, resolve_public
 
-USER_AGENT = "JobFinder/0.1 (+personal job search)"
 MAX_BYTES = 2_000_000
 MAX_REDIRECTS = 4
 DEADLINE_S = 20.0

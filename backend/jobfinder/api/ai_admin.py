@@ -1,24 +1,20 @@
 """Connect Claude from the web app: the admin pastes the token from `claude setup-token`."""
 from datetime import UTC, datetime, timedelta
-from typing import Annotated, Literal
+from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jobfinder.ai import credentials
-from jobfinder.auth.security import current_user, require_admin
-from jobfinder.config import get_settings
-from jobfinder.db import get_db
+from jobfinder.api.deps import AdminUser, CurrentUser, DbSession
+from jobfinder.core.config import settings
 from jobfinder.matching.service import UNLIMITED, remaining_budget
 from jobfinder.models import AICall, Company, Job, PlannerState, Profile, Task, User
 from jobfinder.scheduling import planner, queue
 
 router = APIRouter(tags=["ai"])
-
-DB = Annotated[AsyncSession, Depends(get_db)]
-Admin = Annotated[User, Depends(require_admin)]
 
 
 class LastCall(BaseModel):
@@ -42,7 +38,7 @@ class TaskRef(BaseModel):
 
 
 @router.get("/api/ai/status", response_model=AiStatus)
-async def ai_status(_: Annotated[User, Depends(current_user)], db: DB):
+async def ai_status(_: CurrentUser, db: DbSession):
     """Any signed-in user may see whether the AI is connected (never the token itself)."""
     src = credentials.source()
     row = (await db.execute(select(AICall).order_by(AICall.id.desc()).limit(1))).scalar_one_or_none()
@@ -51,7 +47,7 @@ async def ai_status(_: Annotated[User, Depends(current_user)], db: DB):
 
 
 @router.put("/api/admin/ai/token", response_model=TaskRef, status_code=202)
-async def set_token(body: TokenIn, admin: Admin, db: DB):
+async def set_token(body: TokenIn, admin: AdminUser, db: DbSession):
     try:
         credentials.write_token(body.token)
     except credentials.InvalidToken as e:
@@ -61,13 +57,13 @@ async def set_token(body: TokenIn, admin: Admin, db: DB):
 
 
 @router.post("/api/admin/ai/check", response_model=TaskRef, status_code=202)
-async def check(admin: Admin, db: DB):
+async def check(admin: AdminUser, db: DbSession):
     task = await queue.enqueue(db, "ai_check", user_id=admin.id, dedupe=True)
     return TaskRef(task_id=task.id)
 
 
 @router.delete("/api/admin/ai/token", status_code=204)
-async def delete_token(_: Admin):
+async def delete_token(_: AdminUser):
     credentials.delete_token()
 
 
@@ -115,7 +111,7 @@ class Schedule(BaseModel):
 
 
 async def _ingest_cadence(db: AsyncSession, now: datetime) -> IngestCadence:
-    s = get_settings()
+    s = settings
     due = func.count().filter((Company.next_fetch_at.is_(None)) | (Company.next_fetch_at <= now))
     rows = (await db.execute(
         select(Company.coveted_tier, func.count(), due).where(Company.enabled.is_(True))
@@ -132,7 +128,7 @@ def _iso(d: datetime | None) -> str | None:
 
 
 @router.get("/api/admin/schedule", response_model=Schedule)
-async def schedule(_: Admin, db: DB):
+async def schedule(_: AdminUser, db: DbSession):
     """What the background planner has done and will do for each user."""
     now = datetime.now(UTC)
     active_tasks = (
@@ -159,10 +155,10 @@ async def schedule(_: Admin, db: DB):
             reason=st.last_reason if st else "", skip=st.last_skip if st else "", active=by_user.get(u.id, []),
         ))
     last_tick = await db.scalar(select(Task.created_at).where(Task.kind == "plan_work").order_by(Task.id.desc()).limit(1))
-    next_tick = last_tick + timedelta(minutes=get_settings().planner_interval_minutes) if last_tick else None
+    next_tick = last_tick + timedelta(minutes=settings.planner_interval_minutes) if last_tick else None
     return Schedule(
         backoff_until=_iso(await planner.backoff_until(db, now)), in_flight=len(await planner.in_flight_users(db)),
-        max_per_tick=get_settings().planner_max_per_tick, next_tick=_iso(next_tick), users=users,
+        max_per_tick=settings.planner_max_per_tick, next_tick=_iso(next_tick), users=users,
         ingest=await _ingest_cadence(db, now),
     )
 
@@ -193,7 +189,7 @@ def _source_row(c: Company, job_count: int) -> SourceRow:
 
 
 @router.get("/api/admin/sources", response_model=list[SourceRow])
-async def sources(_: Admin, db: DB):
+async def sources(_: AdminUser, db: DbSession):
     """Per-board ingest health, failing boards first."""
     counts = dict(
         (await db.execute(select(Job.company_id, func.count()).where(Job.is_active.is_(True)).group_by(Job.company_id))).all()
@@ -203,7 +199,7 @@ async def sources(_: Admin, db: DB):
 
 
 @router.post("/api/admin/sources/{company_id}/enable", response_model=SourceRow)
-async def enable_source(company_id: int, _: Admin, db: DB):
+async def enable_source(company_id: int, _: AdminUser, db: DbSession):
     """Re-enable a disabled board; counters reset so one more failure does not disable it again."""
     c = await db.get(Company, company_id)
     if c is None:

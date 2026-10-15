@@ -1,16 +1,14 @@
 """Paste a job link -> the company's whole board is added (for everyone) and its other roles are shown."""
 from datetime import datetime
-from typing import Annotated
 
 import sqlalchemy as sa
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from jobfinder.api.deps import CurrentUser, DbSession
 from jobfinder.auth import ratelimit
-from jobfinder.auth.security import current_user
-from jobfinder.config import get_settings
-from jobfinder.db import get_db
+from jobfinder.core.config import settings
 from jobfinder.ingest.base import safe_http_url
 from jobfinder.ingest.discovery import board_from_url
 from jobfinder.ingest.resolve import BadLink, clean_url, existing_board
@@ -20,8 +18,6 @@ from jobfinder.scheduling import queue
 
 router = APIRouter(prefix="/api/job-links", tags=["job-links"])
 
-DB = Annotated[AsyncSession, Depends(get_db)]
-CurrentUser = Annotated[User, Depends(current_user)]
 RATE_KIND = "job_link"
 MAX_JOBS = 200
 
@@ -70,7 +66,7 @@ class LinkDetail(LinkOut):
 
 
 def _enabled() -> None:
-    if not get_settings().job_links_enabled:
+    if not settings.job_links_enabled:
         raise HTTPException(404, "Adding job links is turned off")
 
 
@@ -97,7 +93,7 @@ async def _own(db: AsyncSession, user: User, link_id: int) -> JobLink:
 
 
 @router.post("", response_model=LinkOut, status_code=202)
-async def add_link(body: LinkIn, user: CurrentUser, db: DB, response: Response):
+async def add_link(body: LinkIn, user: CurrentUser, db: DbSession, response: Response):
     _enabled()
     try:
         url = clean_url(body.url)
@@ -109,7 +105,7 @@ async def add_link(body: LinkIn, user: CurrentUser, db: DB, response: Response):
         response.status_code = 200
         return await _out(db, dup)
 
-    limit = get_settings().job_links_per_user_day
+    limit = settings.job_links_per_user_day
     if await ratelimit.count_since(db, RATE_KIND, str(user.id), 86400) >= limit:
         raise HTTPException(429, f"You can add up to {limit} job links a day. Try again tomorrow.")
     await ratelimit.hit(db, RATE_KIND, str(user.id))
@@ -143,7 +139,7 @@ async def add_link(body: LinkIn, user: CurrentUser, db: DB, response: Response):
 
 
 @router.get("", response_model=list[LinkOut])
-async def list_links(user: CurrentUser, db: DB):
+async def list_links(user: CurrentUser, db: DbSession):
     _enabled()
     links = (await db.scalars(
         sa.select(JobLink).where(JobLink.user_id == user.id).order_by(JobLink.created_at.desc(), JobLink.id.desc())
@@ -152,7 +148,7 @@ async def list_links(user: CurrentUser, db: DB):
 
 
 @router.get("/{link_id}", response_model=LinkDetail)
-async def get_link(link_id: int, user: CurrentUser, db: DB):
+async def get_link(link_id: int, user: CurrentUser, db: DbSession):
     _enabled()
     link = await _own(db, user, link_id)
     out = await _out(db, link)
@@ -175,7 +171,7 @@ async def get_link(link_id: int, user: CurrentUser, db: DB):
 
 
 @router.delete("/{link_id}", status_code=204)
-async def delete_link(link_id: int, user: CurrentUser, db: DB):
+async def delete_link(link_id: int, user: CurrentUser, db: DbSession):
     """Removes the user's link only. The board stays: other people may be getting matches from it."""
     _enabled()
     link = await _own(db, user, link_id)

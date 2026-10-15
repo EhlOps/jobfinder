@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from jobfinder.config import get_settings
+from jobfinder.core.config import settings
 from jobfinder.ingest.base import safe_http_url
 from jobfinder.models import ClarifyingQuestion, Job, JobMatch, Profile, User
 from jobfinder.notify import email as mail
@@ -20,7 +20,6 @@ from jobfinder.notify.tokens import make_token
 from jobfinder.questions.service import OPEN
 
 log = logging.getLogger("jobfinder.daily")
-SEND_WINDOW_HOURS = 6  # if the worker was down at the chosen hour, still send within this many hours after it
 VERDICT_LABEL = {"strong": "Strong fit", "good": "Good fit", "stretch": "Stretch", "no": "Poor fit"}
 
 _env = Environment(
@@ -55,13 +54,13 @@ def is_due(user: User, now: datetime) -> bool:
     scheduled = local.replace(hour=user.digest_hour, minute=0, second=0, microsecond=0)
     if local < scheduled:
         scheduled = (scheduled.replace(tzinfo=None) - timedelta(days=1)).replace(tzinfo=local.tzinfo)
-    if not timedelta(0) <= local - scheduled < timedelta(hours=SEND_WINDOW_HOURS):
+    if not timedelta(0) <= local - scheduled < timedelta(hours=settings.digest_send_window_hours):
         return False
     return not (user.last_digest_at and user.last_digest_at >= scheduled)
 
 
 async def build_content(db: AsyncSession, user: User, *, preview: bool = False) -> Content:
-    s = get_settings()
+    s = settings
     matches: list[JobMatch] = []
     jobs: dict[int, Job] = {}
     more = 0
@@ -99,7 +98,7 @@ def _details(job: Job) -> str:
 
 def render(user: User, content: Content, *, greeting_name: str = "", preview: bool = False) -> tuple[str, str, str, str]:
     """Returns (subject, text, html, unsubscribe_url)."""
-    base = get_settings().public_base_url.rstrip("/")
+    base = settings.public_base_url.rstrip("/")
     unsub = f"{base}/api/unsubscribe/{make_token('unsubscribe', user.id)}"
     ctx = {
         "greeting": f"Hi {greeting_name}," if greeting_name else "Hi,",

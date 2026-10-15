@@ -3,11 +3,9 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from jobfinder.auth.security import current_user
-from jobfinder.db import get_db
-from jobfinder.models import Profile, User
+from jobfinder.api.deps import CurrentUser, DbSession
+from jobfinder.models import Profile
 from jobfinder.scheduling import queue
 from jobfinder.storage.documents import DocumentStore, get_store, is_tailored
 
@@ -20,8 +18,8 @@ class TaskRef(BaseModel):
 
 @router.post("/extract", response_model=TaskRef, status_code=202)
 async def start_extract(
-    user: Annotated[User, Depends(current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    user: CurrentUser,
+    db: DbSession,
     store: Annotated[DocumentStore, Depends(get_store)],
 ):
     if not any(d.chars > 0 and not is_tailored(d) for d in store.list(user.id)):
@@ -32,7 +30,7 @@ async def start_extract(
 
 @router.post("/followups", response_model=TaskRef, status_code=202)
 async def start_followups(
-    user: Annotated[User, Depends(current_user)], db: Annotated[AsyncSession, Depends(get_db)]
+    user: CurrentUser, db: DbSession
 ):
     profile = await db.get(Profile, user.id)
     if not profile or not profile.background:

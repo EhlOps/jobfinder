@@ -2,12 +2,11 @@ from datetime import datetime
 from typing import Annotated, Any, Literal
 
 import sqlalchemy as sa
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from jobfinder.auth.security import current_user
-from jobfinder.db import get_db
+from jobfinder.api.deps import CurrentUser, DbSession
 from jobfinder.ingest.base import safe_http_url
 from jobfinder.matching import prefilter
 from jobfinder.models import Company, CoverLetter, Job, JobMatch, Profile, ProfileFact, User
@@ -15,8 +14,6 @@ from jobfinder.scheduling import queue
 
 router = APIRouter(prefix="/api/matches", tags=["matches"])
 
-DB = Annotated[AsyncSession, Depends(get_db)]
-CurrentUser = Annotated[User, Depends(current_user)]
 Status = Literal["new", "saved", "applied", "dismissed"]
 
 
@@ -120,7 +117,7 @@ def _visible(user_id: int):
 @router.get("", response_model=MatchList)
 async def list_matches(
     user: CurrentUser,
-    db: DB,
+    db: DbSession,
     status: Annotated[Status | None, Query(description="omit for new + saved")] = None,
     min_score: Annotated[int, Query(ge=0, le=100)] = 0,
     workplace: Literal["remote", "hybrid", "onsite"] | None = None,
@@ -191,7 +188,7 @@ async def _get_owned(db: AsyncSession, user: User, match_id: int) -> tuple[JobMa
 
 
 @router.get("/{match_id}", response_model=MatchDetail)
-async def get_match(match_id: int, user: CurrentUser, db: DB):
+async def get_match(match_id: int, user: CurrentUser, db: DbSession):
     m, j = await _get_owned(db, user, match_id)
     profile = await db.get(Profile, user.id)
     has_letter = j.id in await _with_letters(db, user.id, [j.id])
@@ -209,7 +206,7 @@ class JobAnswersIn(BaseModel):
 
 
 @router.post("/{match_id}/answers", status_code=202)
-async def answer_for_match(match_id: int, body: JobAnswersIn, user: CurrentUser, db: DB):
+async def answer_for_match(match_id: int, body: JobAnswersIn, user: CurrentUser, db: DbSession):
     """Answer a requirement question right on the job: saved as profile facts, then this and the other
     matches are re-scored (this one first)."""
     _, j = await _get_owned(db, user, match_id)
@@ -224,7 +221,7 @@ async def answer_for_match(match_id: int, body: JobAnswersIn, user: CurrentUser,
 
 
 @router.patch("/{match_id}", response_model=MatchOut)
-async def set_status(match_id: int, body: StatusIn, user: CurrentUser, db: DB):
+async def set_status(match_id: int, body: StatusIn, user: CurrentUser, db: DbSession):
     m, j = await _get_owned(db, user, match_id)
     m.status = body.status
     await db.commit()
@@ -235,7 +232,7 @@ async def set_status(match_id: int, body: StatusIn, user: CurrentUser, db: DB):
 
 
 @router.post("/refresh", response_model=TaskRef, status_code=202)
-async def refresh(user: CurrentUser, db: DB):
+async def refresh(user: CurrentUser, db: DbSession):
     """Find and score new matches now (runs in the worker)."""
     profile = await db.get(Profile, user.id)
     if not profile or not profile.status:

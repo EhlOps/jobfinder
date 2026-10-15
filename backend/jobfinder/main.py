@@ -1,41 +1,7 @@
-from fastapi import FastAPI
+"""Shim until #53: the app is built by jobfinder.api.app.create_app (uvicorn ... --factory).
 
-from jobfinder.api import (
-    ai_admin,
-    cover_letters,
-    coverage,
-    documents,
-    interview,
-    job_links,
-    links,
-    matches,
-    onboarding,
-    profile,
-    questions,
-    resumes,
-    settings,
-    tasks,
-)
-from jobfinder.auth import routes as auth_routes
+`jobfinder.main:app` still works for an old command line; it loads the settings when imported.
+"""
+from jobfinder.api.app import create_app
 
-app = FastAPI(title="JobFinder")
-app.include_router(auth_routes.router)
-app.include_router(profile.router)
-app.include_router(interview.router)
-app.include_router(documents.router)
-app.include_router(links.router)
-app.include_router(job_links.router)
-app.include_router(onboarding.router)
-app.include_router(tasks.router)
-app.include_router(ai_admin.router)
-app.include_router(coverage.router)
-app.include_router(matches.router)
-app.include_router(cover_letters.router)
-app.include_router(resumes.router)
-app.include_router(questions.router)
-app.include_router(settings.router)
-
-
-@app.get("/healthz")
-async def healthz() -> dict[str, str]:
-    return {"status": "ok"}
+app = create_app()
