@@ -1,0 +1,808 @@
+[
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "check",
+    "path": "/api/admin/ai/check",
+    "response_model": "TaskRef",
+    "status_code": 202
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "DELETE"
+    ],
+    "name": "delete_token",
+    "path": "/api/admin/ai/token",
+    "response_model": null,
+    "status_code": 204
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "PUT"
+    ],
+    "name": "set_token",
+    "path": "/api/admin/ai/token",
+    "response_model": "TaskRef",
+    "status_code": 202
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "GET"
+    ],
+    "name": "coverage",
+    "path": "/api/admin/coverage",
+    "response_model": "Coverage",
+    "status_code": null
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "pin",
+    "path": "/api/admin/coverage/pin",
+    "response_model": "PinOut",
+    "status_code": null
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "rescore",
+    "path": "/api/admin/coverage/rescore",
+    "response_model": "TaskRef",
+    "status_code": 202
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "resolve_target",
+    "path": "/api/admin/coverage/targets/{target_id}/resolve",
+    "response_model": "TaskRef",
+    "status_code": 202
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "unpin",
+    "path": "/api/admin/coverage/unpin",
+    "response_model": "PinOut",
+    "status_code": null
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "resolve_company",
+    "path": "/api/admin/coverage/{company_id}/resolve",
+    "response_model": "TaskRef",
+    "status_code": 202
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "GET"
+    ],
+    "name": "schedule",
+    "path": "/api/admin/schedule",
+    "response_model": "Schedule",
+    "status_code": null
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "GET"
+    ],
+    "name": "sources",
+    "path": "/api/admin/sources",
+    "response_model": "list[SourceRow]",
+    "status_code": null
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "enable_source",
+    "path": "/api/admin/sources/{company_id}/enable",
+    "response_model": "SourceRow",
+    "status_code": null
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "GET"
+    ],
+    "name": "ai_status",
+    "path": "/api/ai/status",
+    "response_model": "AiStatus",
+    "status_code": null
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "login",
+    "path": "/api/auth/login",
+    "response_model": "UserOut",
+    "status_code": null
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "logout",
+    "path": "/api/auth/logout",
+    "response_model": null,
+    "status_code": 204
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "GET"
+    ],
+    "name": "me",
+    "path": "/api/auth/me",
+    "response_model": "UserOut",
+    "status_code": null
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "confirm_reset",
+    "path": "/api/auth/password-reset/confirm",
+    "response_model": "UserOut",
+    "status_code": null
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "request_link",
+    "path": "/api/auth/password-reset/request",
+    "response_model": null,
+    "status_code": 202
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_documents",
+    "path": "/api/documents",
+    "response_model": "list[DocumentOut]",
+    "status_code": null
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "upload_document",
+    "path": "/api/documents",
+    "response_model": "DocumentOut",
+    "status_code": 201
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "DELETE"
+    ],
+    "name": "delete_document",
+    "path": "/api/documents/{doc_id}",
+    "response_model": null,
+    "status_code": 204
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_document",
+    "path": "/api/documents/{doc_id}",
+    "response_model": "DocumentOut",
+    "status_code": null
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "GET"
+    ],
+    "name": "download_document",
+    "path": "/api/documents/{doc_id}/download",
+    "response_model": null,
+    "status_code": null
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "PUT"
+    ],
+    "name": "set_tags",
+    "path": "/api/documents/{doc_id}/tags",
+    "response_model": "DocumentOut",
+    "status_code": null
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "GET"
+    ],
+    "name": "document_text",
+    "path": "/api/documents/{doc_id}/text",
+    "response_model": null,
+    "status_code": null
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_links",
+    "path": "/api/job-links",
+    "response_model": "list[LinkOut]",
+    "status_code": null
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "add_link",
+    "path": "/api/job-links",
+    "response_model": "LinkOut",
+    "status_code": 202
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "DELETE"
+    ],
+    "name": "delete_link",
+    "path": "/api/job-links/{link_id}",
+    "response_model": null,
+    "status_code": 204
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_link",
+    "path": "/api/job-links/{link_id}",
+    "response_model": "LinkDetail",
+    "status_code": null
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_links",
+    "path": "/api/links",
+    "response_model": "list[LinkOut]",
+    "status_code": null
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "add_link",
+    "path": "/api/links",
+    "response_model": "LinkOut",
+    "status_code": 201
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "DELETE"
+    ],
+    "name": "delete_link",
+    "path": "/api/links/{link_id}",
+    "response_model": null,
+    "status_code": 204
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "refresh_link",
+    "path": "/api/links/{link_id}/refresh",
+    "response_model": "LinkOut",
+    "status_code": null
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_matches",
+    "path": "/api/matches",
+    "response_model": "MatchList",
+    "status_code": null
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "refresh",
+    "path": "/api/matches/refresh",
+    "response_model": "TaskRef",
+    "status_code": 202
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_match",
+    "path": "/api/matches/{match_id}",
+    "response_model": "MatchDetail",
+    "status_code": null
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "PATCH"
+    ],
+    "name": "set_status",
+    "path": "/api/matches/{match_id}",
+    "response_model": "MatchOut",
+    "status_code": null
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "answer_for_match",
+    "path": "/api/matches/{match_id}/answers",
+    "response_model": null,
+    "status_code": 202
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "DELETE"
+    ],
+    "name": "delete_letter",
+    "path": "/api/matches/{match_id}/cover-letter",
+    "response_model": null,
+    "status_code": 204
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_letter",
+    "path": "/api/matches/{match_id}/cover-letter",
+    "response_model": "LetterState",
+    "status_code": null
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "generate",
+    "path": "/api/matches/{match_id}/cover-letter",
+    "response_model": "TaskRef",
+    "status_code": 202
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "PUT"
+    ],
+    "name": "save_edits",
+    "path": "/api/matches/{match_id}/cover-letter",
+    "response_model": "LetterOut",
+    "status_code": null
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "GET"
+    ],
+    "name": "download",
+    "path": "/api/matches/{match_id}/cover-letter/download",
+    "response_model": null,
+    "status_code": null
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "DELETE"
+    ],
+    "name": "delete_resume",
+    "path": "/api/matches/{match_id}/resume",
+    "response_model": null,
+    "status_code": 204
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_resume",
+    "path": "/api/matches/{match_id}/resume",
+    "response_model": "ResumeState",
+    "status_code": null
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "generate",
+    "path": "/api/matches/{match_id}/resume",
+    "response_model": "TaskRef",
+    "status_code": 202
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "PUT"
+    ],
+    "name": "save_edits",
+    "path": "/api/matches/{match_id}/resume",
+    "response_model": "ResumeOut",
+    "status_code": null
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "GET"
+    ],
+    "name": "download",
+    "path": "/api/matches/{match_id}/resume/download",
+    "response_model": null,
+    "status_code": null
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "start_extract",
+    "path": "/api/onboarding/extract",
+    "response_model": "TaskRef",
+    "status_code": 202
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "start_followups",
+    "path": "/api/onboarding/followups",
+    "response_model": "TaskRef",
+    "status_code": 202
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "GET"
+    ],
+    "name": "read_profile",
+    "path": "/api/profile",
+    "response_model": "ProfileOut",
+    "status_code": null
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "PUT"
+    ],
+    "name": "put_background",
+    "path": "/api/profile/background",
+    "response_model": "ProfileOut",
+    "status_code": null
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_facts",
+    "path": "/api/profile/facts",
+    "response_model": "list[FactOut]",
+    "status_code": null
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "add_fact",
+    "path": "/api/profile/facts",
+    "response_model": "FactOut",
+    "status_code": 201
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "DELETE"
+    ],
+    "name": "delete_fact",
+    "path": "/api/profile/facts/{fact_id}",
+    "response_model": null,
+    "status_code": 204
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "GET"
+    ],
+    "name": "read_interview",
+    "path": "/api/profile/interview",
+    "response_model": "InterviewOut",
+    "status_code": null
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "answer",
+    "path": "/api/profile/interview/answers",
+    "response_model": null,
+    "status_code": null
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "refresh",
+    "path": "/api/profile/interview/refresh",
+    "response_model": "TaskRef",
+    "status_code": 202
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "PUT"
+    ],
+    "name": "put_status",
+    "path": "/api/profile/status",
+    "response_model": "ProfileOut",
+    "status_code": null
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "GET"
+    ],
+    "name": "questions_by_token",
+    "path": "/api/q/{token}",
+    "response_model": "QuestionList",
+    "status_code": null
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "answer_by_token",
+    "path": "/api/q/{token}/answers",
+    "response_model": "AnswerResult",
+    "status_code": null
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "GET"
+    ],
+    "name": "my_questions",
+    "path": "/api/questions",
+    "response_model": "QuestionList",
+    "status_code": null
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "answer_mine",
+    "path": "/api/questions/answers",
+    "response_model": "AnswerResult",
+    "status_code": null
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "GET"
+    ],
+    "name": "read_settings",
+    "path": "/api/settings",
+    "response_model": "SettingsBody",
+    "status_code": null
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "PUT"
+    ],
+    "name": "write_settings",
+    "path": "/api/settings",
+    "response_model": "SettingsBody",
+    "status_code": null
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "send_preview",
+    "path": "/api/settings/digest/preview",
+    "response_model": "PreviewResult",
+    "status_code": null
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_task",
+    "path": "/api/tasks/{task_id}",
+    "response_model": "TaskOut",
+    "status_code": null
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "GET"
+    ],
+    "name": "unsubscribe_confirm",
+    "path": "/api/unsubscribe/{token}",
+    "response_model": null,
+    "status_code": null
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "unsubscribe",
+    "path": "/api/unsubscribe/{token}",
+    "response_model": null,
+    "status_code": null
+  },
+  {
+    "kind": "Route",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "swagger_ui_html",
+    "path": "/docs"
+  },
+  {
+    "kind": "Route",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "swagger_ui_redirect",
+    "path": "/docs/oauth2-redirect"
+  },
+  {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "GET"
+    ],
+    "name": "healthz",
+    "path": "/healthz",
+    "response_model": "dict[str, str]",
+    "status_code": null
+  },
+  {
+    "kind": "Route",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "openapi",
+    "path": "/openapi.json"
+  },
+  {
+    "kind": "Route",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "redoc_html",
+    "path": "/redoc"
+  }
+]
