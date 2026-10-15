@@ -1,0 +1,19 @@
+# Valkey has no password; this policy is its access control. Only same-namespace pods labelled
+# `jobfinder.io/valkey-client: "true"` (the api/scheduler/workers, #43/#48) reach 6379.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: valkey
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: valkey
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              jobfinder.io/valkey-client: "true"
+      ports:
+        - protocol: TCP
+          port: 6379

@@ -10,7 +10,10 @@ labels:
       app.kubernetes.io/instance: prod
 
 # Placeholders for later issues:
-# - #40/#43: sealed-secret.yaml, sealed for the jobfinder namespace.
+# - #47: sealed-secret-postgres.yaml (postgres-credentials, sealed for the jobfinder namespace).
+#   Until it exists the prod overlay renders but postgres can't start; prod
+#   is not applied before the cutover.
+# - #43: the app's sealed secrets, sealed for the jobfinder namespace.
 # - #43: `images:` entries pinning ghcr.io/ehlops/jobfinder-* to a commit SHA,
 #   and a configMapGenerator built from .env.defaults.
 # - #47: cutover from compose; host Caddy then proxies to Traefik on :8280.

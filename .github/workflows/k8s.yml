@@ -1,0 +1,48 @@
+# Renders every Kustomize entry point under deploy/k8s and validates the output against the
+# Kubernetes schemas (kubeconform), so a broken manifest is caught before anyone applies it.
+# SealedSecret has no upstream schema and is skipped (-ignore-missing-schemas).
+name: k8s
+
+on:
+  pull_request:
+    branches: [main, dev]
+    paths:
+      - "deploy/k8s/**"
+      - "deploy/k3s/manifests/**"
+      - ".github/workflows/k8s.yml"
+  push:
+    branches: [main, dev]
+    paths:
+      - "deploy/k8s/**"
+      - "deploy/k3s/manifests/**"
+      - ".github/workflows/k8s.yml"
+
+concurrency:
+  group: k8s-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Render
+        run: |
+          mkdir -p rendered
+          for k in deploy/k8s/overlays/staging deploy/k8s/overlays/prod deploy/k8s/hello; do
+            out="rendered/$(echo "$k" | tr / _).yaml"
+            echo "kustomize $k -> $out"
+            kubectl kustomize "$k" > "$out"
+          done
+          # Cluster add-on manifests that k3s applies itself (HelmChart CRDs have no schema).
+          cp deploy/k3s/manifests/*.yaml rendered/
+
+      - name: Validate
+        run: |
+          docker run --rm -v "$PWD/rendered:/r" ghcr.io/yannh/kubeconform:v0.6.7 \
+            -strict -ignore-missing-schemas -summary -output text /r

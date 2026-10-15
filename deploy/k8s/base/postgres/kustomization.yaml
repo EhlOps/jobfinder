@@ -1,0 +1,9 @@
+# Postgres 16 for JobFinder (#40). The password comes from the Secret `postgres-credentials`
+# (key POSTGRES_PASSWORD), which each overlay supplies as a SealedSecret sealed for its namespace.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - statefulset.yaml
+  - service.yaml
+  - networkpolicy.yaml
