@@ -1,18 +1,14 @@
 """Kick off the slow AI steps of onboarding. Each returns a task id the UI polls."""
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
 
 from jobfinder.api.deps import CurrentUser, DbSession, Store
 from jobfinder.models import Profile
 from jobfinder.scheduling import queue
+from jobfinder.schemas.common import TaskRef
 from jobfinder.storage.documents import is_tailored
 
 router = APIRouter(prefix="/api/onboarding", tags=["onboarding"])
-
-
-class TaskRef(BaseModel):
-    task_id: int
 
 
 @router.post("/extract", response_model=TaskRef, status_code=202)

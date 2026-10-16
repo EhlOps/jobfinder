@@ -1,78 +1,25 @@
-from datetime import datetime
-from typing import Annotated, Any, Literal
+from typing import Annotated, Literal
 
 import sqlalchemy as sa
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jobfinder.api.deps import CurrentUser, DbSession
-from jobfinder.ingest.base import safe_http_url
 from jobfinder.matching import prefilter
 from jobfinder.models import Company, CoverLetter, Job, JobMatch, Profile, ProfileFact, User
 from jobfinder.scheduling import queue
+from jobfinder.schemas.common import TaskRef
+from jobfinder.schemas.matches import (
+    JobAnswersIn,
+    JobOut,
+    MatchDetail,
+    MatchList,
+    MatchOut,
+    Status,
+    StatusIn,
+)
 
 router = APIRouter(prefix="/api/matches", tags=["matches"])
-
-Status = Literal["new", "saved", "applied", "dismissed"]
-
-
-class JobOut(BaseModel):
-    id: int
-    title: str
-    company: str
-    location: str
-    workplace_type: str | None
-    seniority: str | None
-    salary_min: int | None
-    salary_max: int | None
-    salary_currency: str | None
-    url: str
-    posted_at: datetime | None
-    is_active: bool
-    sponsorship: Literal["sponsors", "refuses", "likely", "unlikely"] | None = None  # None = unknown
-
-    @field_validator("url")
-    @classmethod
-    def _http_only(cls, v: str) -> str:
-        return safe_http_url(v)  # also covers rows stored before ingestion started checking
-
-
-class MatchOut(BaseModel):
-    id: int
-    status: Status
-    score: int
-    confidence: float
-    verdict: str
-    reasons: list[str]
-    gaps: list[str]
-    hire_verdict: str = ""
-    recruiter_take: str = ""
-    stale: bool  # scored against an older version of the profile
-    has_cover_letter: bool = False
-    scored_at: datetime
-    job: JobOut
-
-
-class MatchDetail(MatchOut):
-    unknowns: list[dict[str, Any]]
-    requirements: list[dict[str, Any]] = []
-    description: str
-
-
-class MatchList(BaseModel):
-    items: list[MatchOut]
-    total: int
-    counts: dict[str, int]
-    summary: dict[str, Any]
-
-
-class StatusIn(BaseModel):
-    status: Status
-
-
-class TaskRef(BaseModel):
-    task_id: int
 
 
 def sponsorship_value(j: Job, company_sponsors: bool | None) -> str | None:
@@ -194,15 +141,6 @@ async def get_match(match_id: int, user: CurrentUser, db: DbSession):
     has_letter = j.id in await _with_letters(db, user.id, [j.id])
     flag = (await _sponsor_flags(db, [j])).get(j.company_id)
     return MatchDetail(**_out(m, j, profile.version if profile else 1, has_letter, flag), unknowns=m.unknowns, requirements=m.requirements or [], description=j.description_text)
-
-
-class JobAnswer(BaseModel):
-    question: str = Field(min_length=1, max_length=2000)
-    answer: str = Field(min_length=1, max_length=3000)
-
-
-class JobAnswersIn(BaseModel):
-    answers: list[JobAnswer] = Field(min_length=1, max_length=14)
 
 
 @router.post("/{match_id}/answers", status_code=202)
