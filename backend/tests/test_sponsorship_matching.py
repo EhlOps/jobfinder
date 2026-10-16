@@ -2,9 +2,9 @@ import pytest
 
 from jobfinder.ai.schemas import MatchScore
 from jobfinder.ai.tasks import AITasks, load_prompt
-from jobfinder.api.profile import derive_needs_sponsorship
 from jobfinder.matching.service import sponsorship_info
 from jobfinder.models import Company, Job, JobMatch
+from jobfinder.schemas.profile import derive_needs_sponsorship
 from tests.fakes import FakeClaude
 from tests.test_matches_api import add_match, me
 

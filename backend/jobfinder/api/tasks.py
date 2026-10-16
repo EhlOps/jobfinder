@@ -1,22 +1,10 @@
-from typing import Any
-
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
 
 from jobfinder.api.deps import CurrentUser, DbSession
 from jobfinder.models import Task
+from jobfinder.schemas.tasks import TaskOut
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
-
-
-class TaskOut(BaseModel):
-    id: int
-    kind: str
-    status: str
-    result: dict[str, Any] | None
-    error: str | None
-
-    model_config = {"from_attributes": True}
 
 
 @router.get("/{task_id}", response_model=TaskOut)

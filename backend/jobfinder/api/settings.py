@@ -1,7 +1,4 @@
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
-
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field, field_validator
 
 from jobfinder.api.deps import CurrentUser, DbSession
 from jobfinder.auth import ratelimit
@@ -10,26 +7,9 @@ from jobfinder.models import Profile, User
 from jobfinder.notify import daily
 from jobfinder.notify.email import EmailError
 from jobfinder.scheduling import queue
+from jobfinder.schemas.settings import PreviewResult, SettingsBody
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
-
-
-class SettingsBody(BaseModel):
-    digest_enabled: bool
-    digest_hour: int = Field(ge=0, le=23)
-    timezone: str = Field(min_length=1, max_length=64)
-    question_emails_enabled: bool
-    match_budget_enabled: bool = True
-    match_budget: int | None = Field(default=None, ge=1, le=1000)  # None = keep the current value
-
-    @field_validator("timezone")
-    @classmethod
-    def _valid_zone(cls, v: str) -> str:
-        try:
-            ZoneInfo(v)
-        except (ZoneInfoNotFoundError, ValueError):
-            raise ValueError("Unknown timezone") from None
-        return v
 
 
 def _out(u: User) -> SettingsBody:
@@ -64,12 +44,6 @@ async def write_settings(body: SettingsBody, user: CurrentUser, db: DbSession):
         await queue.enqueue(db, "match_user", user_id=user.id, dedupe=True)
     await db.commit()
     return _out(user)
-
-
-class PreviewResult(BaseModel):
-    to: str
-    matches: int
-    questions: int
 
 
 @router.post("/digest/preview", response_model=PreviewResult)

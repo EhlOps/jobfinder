@@ -3,14 +3,13 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, PlainTextResponse
-from pydantic import BaseModel
 
 from jobfinder.api.deps import CurrentUser
 from jobfinder.core.config import settings
 from jobfinder.profile.resume_parse import ALLOWED_EXTENSIONS, ParserBusy, extract_text_async
+from jobfinder.schemas.documents import DocumentOut
 from jobfinder.storage.documents import (
     MATCH_TAG,
-    DocumentMeta,
     DocumentStore,
     NotFound,
     StoreError,
@@ -29,24 +28,6 @@ CONTENT_TYPES = {
 }
 
 Store = Annotated[DocumentStore, Depends(get_store)]
-
-
-class DocumentOut(BaseModel):
-    id: str
-    kind: str
-    filename: str
-    size: int
-    chars: int
-    tags: dict[str, str]
-    created_at: str
-    duplicate: bool = False
-
-    @classmethod
-    def of(cls, m: DocumentMeta, duplicate: bool = False) -> "DocumentOut":
-        return cls(
-            id=m.id, kind=m.kind, filename=m.filename, size=m.size, chars=m.chars,
-            tags=m.tags, created_at=m.created_at, duplicate=duplicate,
-        )
 
 
 def _not_found(e: StoreError) -> HTTPException:
