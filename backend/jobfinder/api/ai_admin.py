@@ -7,9 +7,9 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from jobfinder.ai import credentials
 from jobfinder.api.deps import AdminUser, CurrentUser, DbSession
 from jobfinder.core.config import settings
+from jobfinder.integrations.claude import credentials
 from jobfinder.matching.service import UNLIMITED, remaining_budget
 from jobfinder.models import AICall, Company, Job, PlannerState, Profile, Task, User
 from jobfinder.scheduling import planner, queue

@@ -74,9 +74,11 @@ source_modules = [
   "jobfinder.auth",
   "jobfinder.cli",
   "jobfinder.config",
+  "jobfinder.context",
   "jobfinder.core",
   "jobfinder.db",
   "jobfinder.ingest",
+  "jobfinder.integrations",
   "jobfinder.letters",
   "jobfinder.matching",
   "jobfinder.models",
@@ -95,7 +97,7 @@ forbidden_modules = ["jobfinder.api"]
 name = "The api package does not import the Claude CLI client directly"
 type = "forbidden"
 source_modules = ["jobfinder.api"]
-forbidden_modules = ["jobfinder.ai.claude_code"]
+forbidden_modules = ["jobfinder.integrations.claude.claude_code", "jobfinder.ai.claude_code"]  # and its shim, until #53
 allow_indirect_imports = true
 
 [[tool.importlinter.contracts]]
@@ -108,8 +110,10 @@ forbidden_modules = [
   "jobfinder.auth",
   "jobfinder.cli",
   "jobfinder.config",
+  "jobfinder.context",
   "jobfinder.db",
   "jobfinder.ingest",
+  "jobfinder.integrations",
   "jobfinder.letters",
   "jobfinder.main",
   "jobfinder.matching",

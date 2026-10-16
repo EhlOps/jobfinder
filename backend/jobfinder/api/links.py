@@ -1,20 +1,18 @@
-from typing import Annotated, Literal
+from typing import Literal
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, HttpUrl
 
-from jobfinder.api.deps import CurrentUser
-from jobfinder.profile.github import GitHubError, fetch_github_summary
+from jobfinder.api.deps import CurrentUser, Store
+from jobfinder.integrations.github import GitHubError, fetch_github_summary
 from jobfinder.profile.web_page import FetchError, fetch_page_text
-from jobfinder.storage.documents import DocumentMeta, DocumentStore, NotFound, get_store
+from jobfinder.storage.documents import DocumentMeta, NotFound
 
 router = APIRouter(prefix="/api/links", tags=["links"])
 
 # LinkedIn and X block scraping; we store the URL but only fetch github/portfolio/other.
 NO_FETCH = {"linkedin", "x"}
-
-Store = Annotated[DocumentStore, Depends(get_store)]
 
 
 class LinkIn(BaseModel):

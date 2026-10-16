@@ -75,7 +75,7 @@ class Profile(Base):
     version: Mapped[int] = mapped_column(Integer, default=1)
     # Last matching run: {last_run_at, pending, scored}. Shown on the matches page.
     match_summary: Mapped[dict] = mapped_column(JSONType, default=dict, server_default="{}")
-    # Recruiter-style audit of the profile (see ai/prompts/profile_audit.md).
+    # Recruiter-style audit of the profile (see integrations/claude/prompts/profile_audit.md).
     dossier: Mapped[dict] = mapped_column(JSONType, default=dict, server_default="{}")
     readiness: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     career_stage: Mapped[str] = mapped_column(String(16), default="", server_default="")  # see matching.prefilter.career_stage

@@ -7,25 +7,20 @@ from datetime import UTC, datetime, timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from jobfinder import db as dbmod
-from jobfinder.ai.claude_code import AIError, CallRecord, ClaudeCode
-from jobfinder.ai.tasks import AITasks
 from jobfinder.auth import ratelimit
 from jobfinder.auth.security import prune_sessions
+from jobfinder.context import default_context
 from jobfinder.core import logging as core_logging
 from jobfinder.core.config import settings
-from jobfinder.models import AICall, Task
+from jobfinder.integrations.claude.claude_code import AIError
+from jobfinder.integrations.claude.tasks import AITasks
+from jobfinder.models import Task
 from jobfinder.scheduling import queue
 from jobfinder.scheduling.handlers import HANDLERS
 
 log = logging.getLogger("jobfinder.worker")
 # Loop timings come from settings: WORKER_POLL_SECONDS, TASK_HEARTBEAT_SECONDS (keeps locked_at fresh
 # while a task runs; must stay well under TASK_STUCK_AFTER_MINUTES) and WORKER_REAP_SECONDS.
-
-
-async def record_call(rec: CallRecord) -> None:
-    async with dbmod.SessionLocal() as db:
-        db.add(AICall(**rec.__dict__))
-        await db.commit()
 
 
 async def _heartbeat_loop(task_id: int, session_factory) -> None:
@@ -119,7 +114,7 @@ def make_scheduler() -> AsyncIOScheduler:
 
 async def main() -> None:
     core_logging.configure(settings.log_level)
-    ai = AITasks(ClaudeCode(recorder=record_call))
+    ai = default_context().claude  # records every call in ai_calls
     limit = settings.ai_max_concurrency
     running: set[asyncio.Task] = set()
     if settings.scheduler_enabled:
