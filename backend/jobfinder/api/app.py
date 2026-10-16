@@ -13,6 +13,7 @@ from jobfinder.api import (
     cover_letters,
     coverage,
     documents,
+    health,
     interview,
     job_links,
     links,
@@ -48,10 +49,6 @@ ROUTERS = (
 )
 
 
-async def healthz() -> dict[str, str]:
-    return {"status": "ok"}
-
-
 def create_app(settings: Settings | None = None, ctx: AppContext | None = None) -> FastAPI:
     """With `ctx` (tests), the app uses that context and leaves closing it to the caller. Without, it
     builds one from `settings`, or takes the process's own (`default_context`), and the lifespan
@@ -69,8 +66,10 @@ def create_app(settings: Settings | None = None, ctx: AppContext | None = None) 
 
     app = FastAPI(title="JobFinder", lifespan=lifespan)
     app.state.ctx = context
+    app.state.alembic = health.alembic_revisions()
     errors.install(app)
     for router in ROUTERS:
         app.include_router(router)
-    app.add_api_route("/healthz", healthz, methods=["GET"])
+    app.add_api_route("/healthz", health.healthz, methods=["GET"])
+    app.add_api_route("/readyz", health.readyz, methods=["GET"])
     return app

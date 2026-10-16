@@ -1,0 +1,71 @@
+# Outbound mail relay (compose: smtp, boky/postfix), reached as smtp:587. Same relay-mode settings as
+# compose: RELAYHOST (+ credentials) relays through a provider, an empty RELAYHOST sends directly.
+# The overlay sets them: staging relays to mailpit only (overlays/staging), prod gets its relay with
+# the cutover (#47). No DKIM volume: compose's dkim keys move with #47 if direct mode is ever used.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: smtp
+  labels:
+    jobfinder.io/rollout: app
+spec:
+  replicas: 1
+  # Postfix keeps a spool; one at a time.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: smtp
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: smtp
+        app.kubernetes.io/component: mail
+    spec:
+      automountServiceAccountToken: false
+      # Root: postfix's master starts as root and drops to its own users (the image doesn't support
+      # running unprivileged), so this keeps the default capabilities and a writable root.
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: smtp
+          # Pinned (compose still uses the floating tag).
+          image: boky/postfix:5.1.0
+          env:
+            - name: ALLOWED_SENDER_DOMAINS
+              value: localhost
+            - name: RELAYHOST
+              value: ""
+          ports:
+            - name: submission
+              containerPort: 587
+          readinessProbe:
+            tcpSocket:
+              port: submission
+            periodSeconds: 10
+          # The image's own HEALTHCHECK.
+          livenessProbe:
+            exec:
+              command: ["/scripts/healthcheck.sh"]
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: smtp
+spec:
+  selector:
+    app.kubernetes.io/name: smtp
+  ports:
+    - name: submission
+      port: 587
+      targetPort: submission

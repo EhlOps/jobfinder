@@ -797,6 +797,17 @@
     "path": "/openapi.json"
   },
   {
+    "include_in_schema": true,
+    "kind": "APIRoute",
+    "methods": [
+      "GET"
+    ],
+    "name": "readyz",
+    "path": "/readyz",
+    "response_model": null,
+    "status_code": null
+  },
+  {
     "kind": "Route",
     "methods": [
       "GET",
