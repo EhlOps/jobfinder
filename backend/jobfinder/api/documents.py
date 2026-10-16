@@ -1,19 +1,17 @@
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, PlainTextResponse
 
-from jobfinder.api.deps import CurrentUser
+from jobfinder.api.deps import CurrentUser, Store
 from jobfinder.core.config import settings
 from jobfinder.profile.resume_parse import ALLOWED_EXTENSIONS, ParserBusy, extract_text_async
 from jobfinder.schemas.documents import DocumentOut
 from jobfinder.storage.documents import (
     MATCH_TAG,
-    DocumentStore,
     NotFound,
     StoreError,
-    get_store,
     is_tailored,
 )
 
@@ -26,8 +24,6 @@ CONTENT_TYPES = {
     ".txt": "text/plain",
     ".md": "text/markdown",
 }
-
-Store = Annotated[DocumentStore, Depends(get_store)]
 
 
 def _not_found(e: StoreError) -> HTTPException:

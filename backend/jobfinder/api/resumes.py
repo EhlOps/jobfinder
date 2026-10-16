@@ -9,7 +9,7 @@ from fastapi.responses import Response
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from jobfinder.api.deps import CurrentUser, DbSession
+from jobfinder.api.deps import CurrentUser, DbSession, Store
 from jobfinder.models import Job, JobMatch, Profile, Task, User
 from jobfinder.resumes import keywords, service
 from jobfinder.resumes.export import render_docx, render_pdf, resume_to_text
@@ -23,7 +23,7 @@ from jobfinder.schemas.resumes import (
     ResumeState,
     TailoredResumeOut,
 )
-from jobfinder.storage.documents import DocumentMeta, DocumentStore, NotFound, get_store
+from jobfinder.storage.documents import DocumentMeta, DocumentStore, NotFound
 
 router = APIRouter(prefix="/api/matches/{match_id}/resume", tags=["resumes"])
 
@@ -65,9 +65,9 @@ def _out(job: Job, meta: DocumentMeta, resume: TailoredResumeOut) -> ResumeOut:
 
 
 @router.get("", response_model=ResumeState)
-async def get_resume(match_id: int, user: CurrentUser, db: DbSession):
+async def get_resume(match_id: int, user: CurrentUser, db: DbSession, store: Store):
     job = await _job(db, user, match_id)
-    found = _current(get_store(), user.id, match_id)
+    found = _current(store, user.id, match_id)
     pending = (
         await db.execute(
             sa.select(Task.id)
@@ -83,13 +83,13 @@ async def get_resume(match_id: int, user: CurrentUser, db: DbSession):
 
 
 @router.post("", response_model=TaskRef, status_code=202)
-async def generate(match_id: int, body: ResumeGenerateIn, user: CurrentUser, db: DbSession):
+async def generate(match_id: int, body: ResumeGenerateIn, user: CurrentUser, db: DbSession, store: Store):
     """Tailor (or re-tailor) the resume in the worker. Poll GET /api/tasks/{id}, then GET this resource."""
     await _job(db, user, match_id)
     profile = await db.get(Profile, user.id)
     if not profile or not profile.background:
         raise HTTPException(422, "Finish your profile first (onboarding)")
-    found = _current(get_store(), user.id, match_id)
+    found = _current(store, user.id, match_id)
     if found and found[0].tags.get(EDITED_TAG) == "1" and not body.force:
         raise HTTPException(409, "You've edited this resume; regenerating would replace your changes.")
     payload = {"match_id": match_id, "force": True} if body.force else {"match_id": match_id}
@@ -98,9 +98,8 @@ async def generate(match_id: int, body: ResumeGenerateIn, user: CurrentUser, db:
 
 
 @router.put("", response_model=ResumeOut)
-async def save_edits(match_id: int, body: EditIn, user: CurrentUser, db: DbSession):
+async def save_edits(match_id: int, body: EditIn, user: CurrentUser, db: DbSession, store: Store):
     job = await _job(db, user, match_id)
-    store = get_store()
     found = _current(store, user.id, match_id)
     if not found:
         raise HTTPException(404, "No resume yet")
@@ -116,9 +115,8 @@ async def save_edits(match_id: int, body: EditIn, user: CurrentUser, db: DbSessi
 
 
 @router.delete("", status_code=204)
-async def delete_resume(match_id: int, user: CurrentUser, db: DbSession):
+async def delete_resume(match_id: int, user: CurrentUser, db: DbSession, store: Store):
     await _job(db, user, match_id)
-    store = get_store()
     for meta in store.list(user.id, kind="resume", tags=service.match_tags(match_id)):
         try:
             store.delete(user.id, meta.id)
@@ -127,9 +125,9 @@ async def delete_resume(match_id: int, user: CurrentUser, db: DbSession):
 
 
 @router.get("/download")
-async def download(match_id: int, user: CurrentUser, db: DbSession, format: Annotated[Literal["docx", "pdf"], Query()] = "docx"):
+async def download(match_id: int, user: CurrentUser, db: DbSession, store: Store, format: Annotated[Literal["docx", "pdf"], Query()] = "docx"):
     job = await _job(db, user, match_id)
-    found = _current(get_store(), user.id, match_id)
+    found = _current(store, user.id, match_id)
     if not found:
         raise HTTPException(404, "No resume yet")
     base = re.sub(r"\s+", " ", re.sub(r"[^A-Za-z0-9 ._-]+", "", f"Resume - {job.company_name} - {job.title}").strip())

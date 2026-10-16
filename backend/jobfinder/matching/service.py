@@ -10,10 +10,10 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from jobfinder.ai.claude_code import AIError
 from jobfinder.ai.schemas import MatchScore, verdict_for
-from jobfinder.ai.tasks import AITasks
 from jobfinder.core.config import settings
+from jobfinder.integrations.claude.claude_code import AIError
+from jobfinder.integrations.claude.tasks import AITasks
 from jobfinder.matching import prefilter as pf
 from jobfinder.matching.scoring import finalize
 from jobfinder.models import ClarifyingQuestion, Company, Job, JobMatch, Profile, ProfileFact, User

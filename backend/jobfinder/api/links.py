@@ -1,20 +1,17 @@
-from typing import Annotated
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 
-from jobfinder.api.deps import CurrentUser
-from jobfinder.profile.github import GitHubError, fetch_github_summary
+from jobfinder.api.deps import CurrentUser, Store
+from jobfinder.integrations.github import GitHubError, fetch_github_summary
 from jobfinder.profile.web_page import FetchError, fetch_page_text
 from jobfinder.schemas.links import ProfileLinkIn, ProfileLinkOut
-from jobfinder.storage.documents import DocumentStore, NotFound, get_store
+from jobfinder.storage.documents import NotFound
 
 router = APIRouter(prefix="/api/links", tags=["links"])
 
 # LinkedIn and X block scraping; we store the URL but only fetch github/portfolio/other.
 NO_FETCH = {"linkedin", "x"}
-
-Store = Annotated[DocumentStore, Depends(get_store)]
 
 
 async def _fetch(kind: str, url: str) -> tuple[str, str | None]:

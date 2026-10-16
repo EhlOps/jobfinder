@@ -1,10 +1,11 @@
-"""The app context: the infrastructure one process shares, built in exactly one place.
+"""The app context's infrastructure: what one process shares, built in exactly one place.
 
 `build_context(settings)` makes the engine, the session factory, the shared HTTP client and the
-clock. Nothing is built at import time. The api lifespan (api/app.py) builds or receives one; the
-worker, CLI and renderer use `default_context()`, the process's own, through `jobfinder.db`; tests
-build theirs around the test database. Integrations (the Claude client, the document store) join in
-#42, when they move out of the feature packages.
+clock. Nothing is built at import time. core may import nothing outside core, so the integrations
+(`ctx.claude`, `ctx.store`) are added one layer up, in jobfinder/context.py, whose AppContext extends
+this one; the api, the worker and the CLI use that. `default_context()` here is the process's own
+infrastructure, which `jobfinder.db` and the renderer use and jobfinder/context.py builds on; tests
+build theirs around the test database.
 """
 from dataclasses import dataclass
 from functools import lru_cache

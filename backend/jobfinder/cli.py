@@ -3,14 +3,14 @@
 import argparse
 import asyncio
 
-from jobfinder.ai.claude_code import AIError, ClaudeCode
+from jobfinder.integrations.claude.claude_code import AIError
 
 
 async def ai_check() -> int:
-    from jobfinder.ai.tasks import AITasks
+    from jobfinder.context import default_context
 
     try:
-        await AITasks(ClaudeCode()).ping()
+        await default_context().claude.ping()
     except AIError as e:
         print(f"AI check FAILED: {e}")
         if e.kind == "auth":
@@ -40,18 +40,18 @@ async def daily(args: argparse.Namespace) -> int:
     """Send the daily email. With --email: that user now (add --preview to mark nothing as sent)."""
     import sqlalchemy as sa
 
-    from jobfinder.ai.tasks import AITasks
+    from jobfinder.context import default_context
     from jobfinder.db import SessionLocal
+    from jobfinder.integrations.smtp import EmailError
     from jobfinder.models import User
     from jobfinder.notify import daily as daily_mod
-    from jobfinder.notify.email import EmailError
     from jobfinder.scheduling.handlers import daily_emails
 
     async with SessionLocal() as db:
         if not args.email:
             from jobfinder.models import Task
 
-            out = await daily_emails(db, AITasks(ClaudeCode()), Task(kind="daily_emails", payload={}))
+            out = await daily_emails(db, default_context().claude, Task(kind="daily_emails", payload={}))
             print(out)
             return 1 if out["errors"] else 0
         user = (await db.scalars(sa.select(User).where(User.email == args.email.lower()))).first()
@@ -70,12 +70,12 @@ async def daily(args: argparse.Namespace) -> int:
 async def collect(args: argparse.Namespace) -> int:
     import sqlalchemy as sa
 
-    from jobfinder.ai.tasks import AITasks
+    from jobfinder.context import default_context
     from jobfinder.db import SessionLocal
     from jobfinder.models import User
     from jobfinder.questions import service
 
-    ai = AITasks(ClaudeCode())
+    ai = default_context().claude
     async with SessionLocal() as db:
         q = sa.select(User).where(User.password_hash.is_not(None))
         if args.email:
@@ -89,7 +89,7 @@ async def collect(args: argparse.Namespace) -> int:
 
 
 async def test_email(args: argparse.Namespace) -> int:
-    from jobfinder.notify.email import EmailError, send_email
+    from jobfinder.integrations.smtp import EmailError, send_email
 
     if not args.to:
         print("Usage: test-email --to you@example.com")
