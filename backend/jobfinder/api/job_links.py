@@ -7,14 +7,14 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jobfinder.api.deps import CurrentUser, DbSession
-from jobfinder.auth import ratelimit
 from jobfinder.core.config import settings
 from jobfinder.ingest.base import safe_http_url
-from jobfinder.ingest.discovery import board_from_url
 from jobfinder.ingest.resolve import BadLink, clean_url, existing_board
-from jobfinder.ingest.sources.custom import refusal_for_url, refusal_message
+from jobfinder.integrations.ats.custom import refusal_for_url, refusal_message
+from jobfinder.integrations.directories import board_from_url
 from jobfinder.models import Company, Job, JobLink, JobMatch, User
 from jobfinder.scheduling import queue
+from jobfinder.services import ratelimit
 
 router = APIRouter(prefix="/api/job-links", tags=["job-links"])
 

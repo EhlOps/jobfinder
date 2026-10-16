@@ -22,6 +22,7 @@ from jobfinder.ingest.base import (
     parse_salary_range,
     safe_http_url,
 )
+from jobfinder.integrations.robots import PoliteFetcher
 
 BASE = "https://{tenant}.taleo.net/careersection"
 SEARCH_PAGE = BASE + "/{cs}/jobsearch.ftl?lang=en"
@@ -271,9 +272,6 @@ async def fetch_taleo(
     client: httpx.AsyncClient, slug: str, company_name: str, list_only: bool = False
 ) -> list[JobPosting]:
     """list_only fetches the first listing page and no job pages (postings then have no description)."""
-    # imported here: discovery imports the source registry, which imports this module
-    from jobfinder.ingest.discovery.robots import PoliteFetcher
-
     tenant, cs = parse_slug(slug)  # the host is always {tenant}.taleo.net, never taken from the slug as-is
     robots = PoliteFetcher(client)
     portal = await _portal(robots, tenant, cs)

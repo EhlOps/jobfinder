@@ -9,13 +9,13 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from jobfinder import db as dbmod
 from jobfinder.ai.claude_code import AIError, CallRecord, ClaudeCode
 from jobfinder.ai.tasks import AITasks
-from jobfinder.auth import ratelimit
 from jobfinder.auth.security import prune_sessions
 from jobfinder.core import logging as core_logging
 from jobfinder.core.config import settings
 from jobfinder.models import AICall, Task
 from jobfinder.scheduling import queue
 from jobfinder.scheduling.handlers import HANDLERS
+from jobfinder.services import ratelimit
 
 log = logging.getLogger("jobfinder.worker")
 # Loop timings come from settings: WORKER_POLL_SECONDS, TASK_HEARTBEAT_SECONDS (keeps locked_at fresh

@@ -12,13 +12,14 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jobfinder.core.config import settings
-from jobfinder.ingest.discovery.robots import PoliteFetcher, RobotsDisallowed, make_client
-from jobfinder.ingest.sources.custom import board_for_url as custom_board_for_url
-from jobfinder.ingest.sources.eightfold import board_from_url as eightfold_board
-from jobfinder.ingest.sources.icims import slug_from_host as icims_slug_from_host
-from jobfinder.ingest.sources.oracle_hcm import board_from_ce_url
-from jobfinder.ingest.sources.taleo import taleo_board
-from jobfinder.ingest.validate import SLUG_RE, ValidationResult, add_board, validate_board
+from jobfinder.ingest.validate import ValidationResult, add_board, validate_board
+from jobfinder.integrations.ats import SLUG_RE
+from jobfinder.integrations.ats.custom import board_for_url as custom_board_for_url
+from jobfinder.integrations.ats.eightfold import board_from_url as eightfold_board
+from jobfinder.integrations.ats.icims import slug_from_host as icims_slug_from_host
+from jobfinder.integrations.ats.oracle_hcm import board_from_ce_url
+from jobfinder.integrations.ats.taleo import taleo_board
+from jobfinder.integrations.robots import PoliteFetcher, RobotsDisallowed, make_client
 from jobfinder.models import Company
 
 log = logging.getLogger("jobfinder.discovery")
@@ -197,8 +198,6 @@ class DiscoveryResult:
 
 
 def all_sources() -> list[Source]:
-    from jobfinder.ingest.discovery import github_lists, hn_hiring, yc
-
     return [github_lists.SOURCE, hn_hiring.SOURCE, yc.SOURCE, yc.WELLFOUND]
 
 
@@ -262,3 +261,7 @@ async def discover_boards(
         if own:
             await client.aclose()
     return result
+
+
+# The directory modules build their Source from the names above, so they load last.
+from jobfinder.integrations.directories import github_lists, hn_hiring, yc

@@ -23,11 +23,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from jobfinder.ai.claude_code import AIError
 from jobfinder.ai.tasks import AITasks
 from jobfinder.core.config import settings
+from jobfinder.core.urls import registrable_domain
 from jobfinder.ingest.base import JobPosting, safe_http_url
 from jobfinder.ingest.http_safety import JSON_TYPES, FetchError, safe_fetch
-from jobfinder.ingest.recipes import Recipe, RecipeError, run_recipe, validate_recipe
 from jobfinder.ingest.resolve.ladder import RecipeHit, ResolveContext
+from jobfinder.ingest.resolve.names import name_from_domain
 from jobfinder.ingest.resolve.rungs.listing import _APIISH, _QUOTED_URL, _STATIC
+from jobfinder.ingest.service import deactivate_missing, upsert_postings
+from jobfinder.integrations.recipes import Recipe, RecipeError, health, run_recipe, validate_recipe
+from jobfinder.models import Company
 
 log = logging.getLogger("jobfinder.resolve.llm")
 
@@ -41,14 +45,10 @@ Check = Callable[[list[JobPosting]], tuple[bool, str]]
 
 
 def _domain(url: str) -> str:
-    from jobfinder.ingest.resolve import registrable_domain  # resolve/__init__ imports the rungs
-
     return registrable_domain(url)
 
 
 def _company_name(domain: str) -> str:
-    from jobfinder.ingest.resolve import name_from_domain
-
     return name_from_domain(domain)
 
 
@@ -168,10 +168,6 @@ async def reinduce_company(db: AsyncSession, ai: AITasks, company_id: int,
 
     Only a verdict on the site is recorded with record_reinduce (a failure disables the board). When the AI
     fails or no page can be fetched, nothing is recorded and "retry": True asks the caller to try later."""
-    from jobfinder.ingest.recipes import health
-    from jobfinder.ingest.service import deactivate_missing, upsert_postings
-    from jobfinder.models import Company
-
     company = await db.get(Company, company_id)
     if company is None or company.ats != "recipe":
         return {"skipped": "not a recipe board"}

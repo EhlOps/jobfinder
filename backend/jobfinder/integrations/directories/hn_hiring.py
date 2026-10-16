@@ -1,8 +1,8 @@
 """Hacker News 'Ask HN: Who is hiring?' via the public Algolia API."""
 import html
 
-from jobfinder.ingest.discovery import Source, boards_from_text
-from jobfinder.ingest.discovery.robots import PoliteFetcher
+from jobfinder.integrations.directories import Source, boards_from_text
+from jobfinder.integrations.robots import PoliteFetcher
 
 API = "https://hn.algolia.com/api/v1"
 TITLE = "Ask HN: Who is hiring?"

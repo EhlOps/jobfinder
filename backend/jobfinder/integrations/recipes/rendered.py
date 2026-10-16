@@ -6,9 +6,10 @@ from urllib.parse import urljoin, urlsplit
 import httpx
 import sqlalchemy as sa
 
+from jobfinder import db as app_db  # the module: tests swap db.SessionLocal for the test database
 from jobfinder.core.config import settings
 from jobfinder.ingest.base import JobPosting
-from jobfinder.ingest.recipes import (
+from jobfinder.integrations.recipes import (
     MAX_ITEMS,
     RECIPE_RUNNERS,
     Recipe,
@@ -16,7 +17,9 @@ from jobfinder.ingest.recipes import (
     RecipeUnavailable,
     fill_template,
 )
-from jobfinder.ingest.recipes.json_api import make_posting, parse_date
+from jobfinder.integrations.recipes.json_api import make_posting, parse_date
+from jobfinder.models import Company
+from jobfinder.renderer import LIST, RenderError, RenderUnavailable, request_render
 
 LIST_WAIT_S = 150.0  # ingest runs boards concurrently and the renderer takes two at a time, 30 s each
 _FIELDS = ("external_id", "title", "url", "location", "posted_at", "description")
@@ -33,8 +36,6 @@ def item_id(value: str, base_url: str) -> str:
 
 async def run_rendered(client: httpx.AsyncClient, recipe: Recipe, slug: str, company_name: str, *,
                        wait_s: float = LIST_WAIT_S) -> list[JobPosting]:
-    from jobfinder.renderer import LIST, RenderError, RenderUnavailable, request_render
-
     if not settings.renderer_enabled:
         raise RecipeUnavailable("this board needs the renderer, which is switched off (RENDERER_ENABLED)")
     try:
@@ -68,12 +69,8 @@ async def run_rendered(client: httpx.AsyncClient, recipe: Recipe, slug: str, com
 
 async def count_rendered_boards(session_factory=None) -> int:
     """Recipe boards that need the browser on every fetch (for the cap)."""
-    from jobfinder.models import Company
-
     if session_factory is None:
-        from jobfinder import db
-
-        session_factory = db.SessionLocal
+        session_factory = app_db.SessionLocal
     async with session_factory() as db:
         return await db.scalar(
             sa.select(sa.func.count()).select_from(Company)

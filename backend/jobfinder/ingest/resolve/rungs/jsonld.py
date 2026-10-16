@@ -10,6 +10,7 @@ import json
 import re
 from datetime import UTC, datetime, timedelta
 
+from jobfinder.core.urls import registrable_domain
 from jobfinder.ingest.base import (
     JobPosting,
     clip,
@@ -20,6 +21,7 @@ from jobfinder.ingest.base import (
     safe_http_url,
 )
 from jobfinder.ingest.resolve.ladder import ResolveContext, SingleJob
+from jobfinder.ingest.resolve.names import name_from_domain
 
 MAX_BLOCKS = 20
 MAX_BLOCK_CHARS = 1_000_000
@@ -185,8 +187,6 @@ def _org_domain(org) -> str:
     """The hiring organisation's own website, if the JSON-LD names one."""
     if not isinstance(org, dict):
         return ""
-    from jobfinder.ingest.resolve import registrable_domain  # resolve/__init__ imports the rungs
-
     for key in ("sameAs", "url"):
         v = org.get(key)
         for u in (v if isinstance(v, list) else [v])[:5]:
@@ -198,8 +198,6 @@ def _org_domain(org) -> str:
 
 def posting_from_ld(ld: dict, page_url: str) -> JobPosting | None:
     """A JobPosting from a schema.org JobPosting object, or None without a title."""
-    from jobfinder.ingest.resolve import name_from_domain, registrable_domain
-
     title = _text(ld.get("title")) or _text(ld.get("name"))
     if not title:
         return None
@@ -253,8 +251,6 @@ class JsonLdRung:
         if posting is None:
             ctx.note("jsonld: JobPosting without a title")
             return None
-        from jobfinder.ingest.resolve import registrable_domain
-
         org = _org_domain(ld.get("hiringOrganization"))
         here = registrable_domain(page.url)
         if org and org != here:  # e.g. an aggregator re-posting the job; the board is on the company's site

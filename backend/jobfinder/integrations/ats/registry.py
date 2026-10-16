@@ -1,23 +1,24 @@
+"""The ATS registry: the name stored in companies.ats -> the fetcher that reads that kind of board."""
 from collections.abc import Awaitable, Callable
 from functools import partial
 
 import httpx
 
 from jobfinder.ingest.base import JobPosting
-from jobfinder.ingest.sources.ashby import fetch_ashby
-from jobfinder.ingest.sources.bamboohr import fetch_bamboohr
-from jobfinder.ingest.sources.eightfold import fetch_eightfold
-from jobfinder.ingest.sources.greenhouse import fetch_greenhouse
-from jobfinder.ingest.sources.icims import fetch_icims
-from jobfinder.ingest.sources.lever import fetch_lever
-from jobfinder.ingest.sources.oracle_hcm import fetch_oracle_hcm
-from jobfinder.ingest.sources.phenom import fetch_phenom
-from jobfinder.ingest.sources.recruitee import fetch_recruitee
-from jobfinder.ingest.sources.smartrecruiters import fetch_smartrecruiters
-from jobfinder.ingest.sources.successfactors import fetch_successfactors
-from jobfinder.ingest.sources.taleo import fetch_taleo
-from jobfinder.ingest.sources.workable import fetch_workable
-from jobfinder.ingest.sources.workday import fetch_workday
+from jobfinder.integrations.ats.ashby import fetch_ashby
+from jobfinder.integrations.ats.bamboohr import fetch_bamboohr
+from jobfinder.integrations.ats.eightfold import fetch_eightfold
+from jobfinder.integrations.ats.greenhouse import fetch_greenhouse
+from jobfinder.integrations.ats.icims import fetch_icims
+from jobfinder.integrations.ats.lever import fetch_lever
+from jobfinder.integrations.ats.oracle_hcm import fetch_oracle_hcm
+from jobfinder.integrations.ats.phenom import fetch_phenom
+from jobfinder.integrations.ats.recruitee import fetch_recruitee
+from jobfinder.integrations.ats.smartrecruiters import fetch_smartrecruiters
+from jobfinder.integrations.ats.successfactors import fetch_successfactors
+from jobfinder.integrations.ats.taleo import fetch_taleo
+from jobfinder.integrations.ats.workable import fetch_workable
+from jobfinder.integrations.ats.workday import fetch_workday
 
 Fetcher = Callable[[httpx.AsyncClient, str, str], Awaitable[list[JobPosting]]]
 

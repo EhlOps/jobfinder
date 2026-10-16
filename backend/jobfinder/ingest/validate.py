@@ -1,5 +1,4 @@
 """Board validation: a live fetch must succeed and return at least one posting before a board is added."""
-import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -8,10 +7,10 @@ import sqlalchemy as sa
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from jobfinder.ingest.sources import ATS_FETCHERS, PROBE_FETCHERS
+from jobfinder.integrations.ats import SLUG_RE
+from jobfinder.integrations.ats.registry import ATS_FETCHERS, PROBE_FETCHERS
 from jobfinder.models import Company
 
-SLUG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$")
 ORIGINS = ("seed", "discovered", "user")
 
 

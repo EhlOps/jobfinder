@@ -1,22 +1,24 @@
 """Fetching URLs that came from users or scraped pages, safely.
 
 Every hop (including each redirect) is resolved once, checked to be a public address, and then connected to
-*by that validated IP*, so a second DNS answer can't point us at something internal (same approach as
-profile/web_page.py). Bodies are streamed with a byte cap, content types are allow-listed, and robots.txt is
-honoured when a PoliteFetcher is given. Adapters that build URLs from a host stored in a slug call
+*by that validated IP*, so a second DNS answer can't point us at something internal (core/http.py's
+resolve_public, as profile/web_page.py uses it). Bodies are streamed with a byte cap, content types are
+allow-listed, and robots.txt is honoured when a PoliteFetcher is given. Adapters that build URLs from a host stored in a slug call
 assert_public_host() before contacting it.
 """
 import asyncio
 import json as jsonlib
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 from urllib.parse import urljoin, urlparse
 
 import httpx
 
-from jobfinder.core.http import USER_AGENT
-from jobfinder.ingest.discovery.robots import PoliteFetcher
-from jobfinder.ingest.sources.custom import refusal_for_url
-from jobfinder.profile.web_page import FetchError, resolve_public
+from jobfinder.core.http import USER_AGENT, FetchError, resolve_public
+from jobfinder.integrations.ats.custom import refusal_for_url
+
+if TYPE_CHECKING:  # robots.py fetches robots.txt through safe_fetch, so it imports this module
+    from jobfinder.integrations.robots import PoliteFetcher
 
 MAX_BYTES = 2_000_000
 MAX_REDIRECTS = 4
@@ -68,7 +70,7 @@ def _allowed_type(ctype: str, accept: tuple[str, ...]) -> bool:
 
 async def _fetch(
     client: httpx.AsyncClient, method: str, url: str, *, headers: dict | None, json, max_bytes: int,
-    accept: tuple[str, ...], robots: PoliteFetcher | None,
+    accept: tuple[str, ...], robots: "PoliteFetcher | None",
 ) -> SafeResponse:
     for _ in range(MAX_REDIRECTS + 1):
         host, ip = await resolve_public(url)
@@ -103,7 +105,7 @@ async def _fetch(
 
 async def safe_fetch(
     client: httpx.AsyncClient, url: str, *, method: str = "GET", headers: dict | None = None, json=None,
-    max_bytes: int = MAX_BYTES, accept: tuple[str, ...] = ANY_TYPES, robots: PoliteFetcher | None = None,
+    max_bytes: int = MAX_BYTES, accept: tuple[str, ...] = ANY_TYPES, robots: "PoliteFetcher | None" = None,
     deadline_s: float = DEADLINE_S, raise_for_status: bool = True,
 ) -> SafeResponse:
     """GET/POST `url` with SSRF, size, type and (optionally) robots checks on every hop.

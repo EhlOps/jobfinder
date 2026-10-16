@@ -8,7 +8,7 @@ link from such a site is reported as unsupported with the recorded reason instea
 A site whose postings live on an ATS we already read (`board`) is not given its own adapter; a pasted
 link from its careers site resolves straight to that ATS board. Adding a custom adapter later means:
 review terms, set terms_ok=True, set `ats` and `board=(ats, fixed_slug)`, and register the fetcher in
-ingest/sources/__init__.py.
+integrations/ats/registry.py.
 
 This module is a leaf (no jobfinder imports) so discovery and the resolver can import it without cycles.
 """

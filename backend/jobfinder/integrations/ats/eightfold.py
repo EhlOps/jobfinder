@@ -17,6 +17,7 @@ from urllib.parse import parse_qs, quote, urlsplit
 
 import httpx
 
+from jobfinder.ingest import http_safety
 from jobfinder.ingest.base import (
     JobPosting,
     clip,
@@ -26,6 +27,7 @@ from jobfinder.ingest.base import (
     parse_salary_range,
     safe_http_url,
 )
+from jobfinder.integrations.robots import PoliteFetcher
 
 PCSX_LIST = "https://{host}/api/pcsx/search?domain={domain}&query=&location=&start={start}&sort_by=timestamp"
 PCSX_DETAIL = "https://{host}/api/pcsx/position_details?position_id={id}&domain={domain}&hl=en"
@@ -183,15 +185,11 @@ def parse_eightfold(items: list[dict], company_name: str, slug: str) -> list[Job
 
 
 # ── fetching ──────────────────────────────────────────────────────────────
-# http_safety and discovery.robots are imported inside functions: both pull in discovery/__init__, which
-# imports validate -> sources -> this module (a cycle at import time).
 class _Site:
     """One board's requests: SSRF-safe, robots-checked, retried on 429/503 with the cookies the 429 set
     (Eightfold's rate limiter answers a cookieless burst with 429 and lets the same client through after)."""
 
     def __init__(self, client, host: str, domain: str):
-        from jobfinder.ingest.discovery.robots import PoliteFetcher
-
         # discovery hands fetchers a robots-checking wrapper (_PoliteClient) that only has get/post;
         # safe_fetch needs the httpx client underneath, and we reuse its PoliteFetcher
         fetcher = getattr(client, "_fetcher", None)
@@ -210,8 +208,6 @@ class _Site:
 
     async def get_json(self, url: str):
         """GET JSON; an HTTP error status surfaces as httpx.HTTPStatusError, like the other ATS adapters."""
-        from jobfinder.ingest import http_safety
-
         for attempt in range(MAX_ATTEMPTS):
             headers = {"Cookie": "; ".join(f"{k}={v}" for k, v in self.cookies.items())} if self.cookies else None
             r = await http_safety.safe_fetch(self.client, url, headers=headers, accept=http_safety.JSON_TYPES,
@@ -262,8 +258,6 @@ async def fetch_eightfold(
     client: httpx.AsyncClient, slug: str, company_name: str, list_only: bool = False
 ) -> list[JobPosting]:
     """list_only fetches just the first listing page and skips the per-posting detail calls (cheap probe)."""
-    from jobfinder.ingest import http_safety
-
     host, domain = parse_slug(slug)
     await http_safety.assert_public_host(host)
     site = _Site(client, host, domain)

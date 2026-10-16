@@ -18,10 +18,12 @@ from jobfinder.core.config import settings
 from jobfinder.core.http import USER_AGENT
 from jobfinder.ingest import schedule
 from jobfinder.ingest.base import JobPosting, safe_http_url
-from jobfinder.ingest.recipes import RecipeUnavailable
 from jobfinder.ingest.selection import Target, select_boards
-from jobfinder.ingest.sources import ATS_FETCHERS, Fetcher
+from jobfinder.integrations.ats.registry import ATS_FETCHERS, Fetcher
+from jobfinder.integrations.recipes import RecipeUnavailable, run_recipe
+from jobfinder.integrations.recipes.health import needs_reinduce, record_run
 from jobfinder.models import Company, Job, Profile, User
+from jobfinder.scheduling import queue
 
 log = logging.getLogger("jobfinder.ingest")
 
@@ -218,8 +220,6 @@ def _record_success(company: Company, now: datetime) -> None:
 def board_fetcher(company: Company) -> Fetcher | None:
     """The fetcher for a board: its ATS adapter, or the recipe runner for ats='recipe' boards."""
     if company.ats == "recipe":
-        from jobfinder.ingest.recipes import run_recipe
-
         return partial(run_recipe, recipe=company.recipe)
     return ATS_FETCHERS.get(company.ats)
 
@@ -229,8 +229,6 @@ def _recipe_run(company: Company, n_postings: int, error: str | None = None) -> 
     True when the recipe is now degraded and due a re-induction (see _queue_reinduce)."""
     if company.ats != "recipe":
         return False
-    from jobfinder.ingest.recipes.health import needs_reinduce, record_run
-
     record_run(company, n_postings, error)
     return needs_reinduce(company)
 
@@ -239,8 +237,6 @@ async def _queue_reinduce(db: AsyncSession, company_id: int) -> None:
     """Queue the LLM self-heal for a degraded recipe board (after the run is committed: enqueue commits)."""
     if not settings.resolver_llm_enabled:
         return
-    from jobfinder.scheduling import queue
-
     try:
         await queue.enqueue(db, "reinduce_recipe", {"company_id": company_id}, dedupe=True)
     except Exception:  # the run itself is recorded; the next degraded run queues it again

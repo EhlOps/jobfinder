@@ -40,11 +40,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jobfinder.core.config import settings
-from jobfinder.core.urls import clean_domain
-from jobfinder.ingest.discovery.robots import PoliteFetcher
+from jobfinder.core.urls import clean_domain, registrable_domain
 from jobfinder.ingest.http_safety import TEXT_TYPES, FetchError, safe_fetch
+from jobfinder.ingest.resolve import _HEADERS, resolve_url
 from jobfinder.ingest.resolve.ladder import PAGE_MAX_BYTES
-from jobfinder.ingest.sources.custom import refusal_for_url, refusal_message, site_for_url
+from jobfinder.integrations.ats.custom import refusal_for_url, refusal_message, site_for_url
+from jobfinder.integrations.robots import PoliteFetcher
 from jobfinder.models import Company, CovetedTarget, Job, JobLink, JobMatch, Task
 
 log = logging.getLogger("jobfinder.coveted")
@@ -183,8 +184,6 @@ async def score_all(db: AsyncSession, now: datetime | None = None) -> dict:
 def guess_domain(company: Company) -> str | None:
     """The employer's own domain, best effort: recipe boards and custom-domain slugs carry it; otherwise the
     name ('Jane Street' -> janestreet.com). Only ever used to try careers URLs, which the resolver validates."""
-    from jobfinder.ingest.resolve import registrable_domain
-
     slug = company.slug or ""
     host = slug.rsplit("__", 1)[-1] if company.ats == "eightfold" else slug.split("__")[0]
     if company.ats not in ("workday", "oracle_hcm") and "." in host:
@@ -229,8 +228,6 @@ async def _target_for(db: AsyncSession, company: Company) -> CovetedTarget | Non
 
 async def resolve_target(db: AsyncSession, target: CovetedTarget, client: httpx.AsyncClient) -> dict:
     """Try the target's careers URLs once each, stopping at the first that leads to a working board."""
-    from jobfinder.ingest.resolve import resolve_url
-
     tid, domain, current = target.id, target.domain, target.company_id
     robots = PoliteFetcher(client)  # shared by every candidate URL, so robots.txt is read once per host
     errors: list[str] = []
@@ -312,8 +309,6 @@ async def audit_coverage(db: AsyncSession, limit: int | None = None, client: htt
         )).all()
     own = client is None
     if client is None:
-        from jobfinder.ingest.resolve import _HEADERS
-
         client = httpx.AsyncClient(timeout=30, follow_redirects=True, headers=_HEADERS)
     results = []
     try:

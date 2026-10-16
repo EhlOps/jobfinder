@@ -1,10 +1,13 @@
-"""Polite fetching for discovery: a descriptive User-Agent, robots.txt checks and low volume."""
+"""Polite fetching for discovery and the ATS fetchers: a descriptive User-Agent, robots.txt checks and low
+volume."""
 import asyncio
 import logging
 from urllib.parse import quote, unquote, urlparse, urlsplit, urlunparse
 from urllib.robotparser import RobotFileParser
 
 import httpx
+
+from jobfinder.ingest.http_safety import TEXT_TYPES, FetchError, safe_fetch
 
 log = logging.getLogger("jobfinder.discovery")
 USER_AGENT = "JobFinderDiscovery/1.0 (+personal job search tool; polite, low volume)"
@@ -62,9 +65,6 @@ class PoliteFetcher:
         """robots.txt goes through safe_fetch like everything else: the origin can come from a pasted URL, so
         even this request is IP-pinned, redirect-checked and capped (a private address -> None -> nothing
         allowed)."""
-        # imported lazily: http_safety imports this module
-        from jobfinder.ingest.http_safety import TEXT_TYPES, FetchError, safe_fetch
-
         accept = (*TEXT_TYPES, "application/octet-stream")  # S3/CDN-hosted robots.txt
         parser = RobotFileParser()
         try:

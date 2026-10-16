@@ -16,7 +16,7 @@ from jobfinder.ingest.base import (
     safe_http_url,
 )
 from jobfinder.ingest.http_safety import JSON_TYPES, safe_fetch
-from jobfinder.ingest.recipes import (
+from jobfinder.integrations.recipes import (
     MAX_ITEMS,
     RECIPE_RUNNERS,
     Recipe,

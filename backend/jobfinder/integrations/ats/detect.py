@@ -6,11 +6,11 @@ platform and returns the (ats, slug) to fetch, or None. Register new detectors i
 """
 from collections.abc import Callable
 
-from jobfinder.ingest.sources.eightfold import detect_html as detect_eightfold
-from jobfinder.ingest.sources.icims import detect_icims
-from jobfinder.ingest.sources.oracle_hcm import detect_ce_page
-from jobfinder.ingest.sources.phenom import detect_phenom
-from jobfinder.ingest.sources.successfactors import detect_successfactors
+from jobfinder.integrations.ats.eightfold import detect_html as detect_eightfold
+from jobfinder.integrations.ats.icims import detect_icims
+from jobfinder.integrations.ats.oracle_hcm import detect_ce_page
+from jobfinder.integrations.ats.phenom import detect_phenom
+from jobfinder.integrations.ats.successfactors import detect_successfactors
 
 Detector = Callable[[str, str], tuple[str, str] | None]  # (page_url, html) -> (ats, slug) | None
 

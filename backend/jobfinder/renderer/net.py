@@ -13,7 +13,7 @@ from urllib.robotparser import RobotFileParser
 import httpx
 
 from jobfinder.core.http import USER_AGENT
-from jobfinder.ingest.discovery.robots import ROBOTS_TOKEN, can_fetch
+from jobfinder.integrations.robots import ROBOTS_TOKEN, can_fetch
 from jobfinder.profile import web_page
 from jobfinder.renderer.guard import Resolver
 

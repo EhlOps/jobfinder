@@ -1,9 +1,10 @@
 """Pydantic models the AI functions return. Their JSON schema is passed to `claude --json-schema`."""
-import json
-import re
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field
+
+from jobfinder.integrations.recipes import Recipe
+from jobfinder.integrations.recipes.validation import recipe_from_induced
 
 
 class Education(BaseModel):
@@ -151,9 +152,8 @@ class TailoredResume(BaseModel):
 
 
 # Recipe induction (resolver rung 5). Deliberately permissive, so a near miss comes back from the model and
-# can be explained to it on the retry. to_recipe() turns it into an ingest.recipes.Recipe, which enforces the
-# safety rules (http(s) URLs only, allow-listed headers, capped pagination), and checks everything else.
-_URL_IN_TEXT = re.compile(r"https?://[^\s\"'<>\\]+", re.IGNORECASE)  # explicit URLs only: 'a//b' is no URL
+# can be explained to it on the retry. to_recipe() turns it into an integrations.recipes.Recipe, which enforces
+# the safety rules (http(s) URLs only, allow-listed headers, capped pagination), and checks everything else.
 
 
 class InducedRequest(BaseModel):
@@ -189,47 +189,7 @@ class InducedRecipe(BaseModel):
     confidence: float = 0.5
     notes: str = ""
 
-    def to_recipe(self, domain: str, provenance: dict | None = None):
-        """A real, safe Recipe whose every URL is on `domain` (a registrable domain), or RecipeError with a
-        reason that can be fed back to the model. Paths and selectors are compiled here, before any fetch."""
-        from jobfinder.ingest.recipes import Recipe, RecipeError, fill_template
-        from jobfinder.ingest.recipes.html import _is_template, compile_recipe
-        from jobfinder.ingest.resolve import registrable_domain
-
-        data = self.model_dump(exclude={"confidence", "notes"})
-        data["provenance"] = provenance or {}
-        try:
-            recipe = Recipe.model_validate(data)
-        except ValidationError as e:
-            err = e.errors()[0]
-            where = ".".join(str(x) for x in err.get("loc", ()))
-            raise RecipeError(f"invalid recipe at {where}: {err.get('msg', 'bad value')}") from None
-
-        f = recipe.fields
-        urls = [recipe.list.url] + [v for k, v in recipe.list.headers.items() if k.lower() == "referer"]
-        url_is_path = f.url.startswith("$") if recipe.kind == "json_api" else not _is_template(f.url)
-        if not url_is_path:
-            filled = fill_template(f.url, {"external_id": "1", "title": "t", "location": "l"})
-            if not filled.startswith("/") or filled.startswith("//"):  # root-relative stays on the list host
-                urls.append(filled)
-        if recipe.list.json_body:
-            urls += _URL_IN_TEXT.findall(json.dumps(recipe.list.json_body))
-        for u in urls:
-            if u.startswith("//"):
-                u = "https:" + u
-            if not u.lower().startswith(("http://", "https://")):
-                raise RecipeError(f"recipe URL {u[:100]!r} is not an absolute http(s) URL")
-            if registrable_domain(u) != domain:
-                raise RecipeError(f"recipe URL {u[:100]!r} is not on {domain}")
-
-        if recipe.kind == "json_api":
-            from jobfinder.ingest.recipes.json_api import compile_path
-
-            for path in (recipe.items, f.external_id, f.title, f.location, f.posted_at, f.description,
-                         f.url if url_is_path else None):
-                if path:
-                    compile_path(path)
-            return recipe
-        compile_recipe(recipe)  # the CSS subset; anything else is a RecipeError before any fetch
-        return recipe
+    def to_recipe(self, domain: str, provenance: dict | None = None) -> Recipe:
+        """A real, safe Recipe on `domain`, or RecipeError (see integrations/recipes/validation.py)."""
+        return recipe_from_induced(self, domain, provenance)
 

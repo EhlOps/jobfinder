@@ -147,12 +147,12 @@ def validate_recipe(postings: list[JobPosting], pasted_url: str | None) -> tuple
     return True, f"{len(postings)} jobs"
 
 
-from jobfinder.ingest.recipes import (
+from jobfinder.integrations.recipes import (
     html as _html,  # noqa: F401  (registers the runner)
 )
-from jobfinder.ingest.recipes import (
+from jobfinder.integrations.recipes import (
     json_api as _json_api,  # noqa: F401  (registers the runner)
 )
-from jobfinder.ingest.recipes import (
+from jobfinder.integrations.recipes import (
     rendered as _rendered,  # noqa: F401  (registers the rendered_html runner)
 )

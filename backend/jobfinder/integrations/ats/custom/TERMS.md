@@ -119,4 +119,4 @@ without fetching their careers sites.
 Re-review a site when its terms change or it publishes an API/feed licence. To enable one: record the
 new evidence here, set `terms_ok=True`, `ats=...`, `board=(ats, fixed_slug)` in `CUSTOM_SITES`, add the
 adapter module in this package (host fixed in code, robots honoured with `safe_fetch(...,
-robots=PoliteFetcher(client))`), and register it in `ingest/sources/__init__.py`.
+robots=PoliteFetcher(client))`), and register it in `integrations/ats/registry.py`.
