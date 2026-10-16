@@ -66,7 +66,7 @@ def create_app(settings: Settings | None = None, ctx: AppContext | None = None) 
 
     app = FastAPI(title="JobFinder", lifespan=lifespan)
     app.state.ctx = context
-    app.state.alembic_heads = health.alembic_heads()
+    app.state.alembic = health.alembic_revisions()
     errors.install(app)
     for router in ROUTERS:
         app.include_router(router)

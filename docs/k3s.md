@@ -163,15 +163,15 @@ browser → host Caddy (TLS, staging.ehlops.com) → Traefik 127.0.0.1:8280 → 
 | `mailpit` | `axllent/mailpit:v1.31.3` | staging only; the app's `SMTP_HOST` |
 | Job `migrate` | `jobfinder-api` | `alembic upgrade head`, once per deploy, before the rollout |
 
-**Config.** ConfigMap `jobfinder-config` = `backend/.env.defaults` + `base/app` overrides (`POSTGRES_HOST=postgres`, `STORE_DIR`/`CLAUDE_AUTH_DIR` on the PVCs, `FORWARDED_ALLOW_IPS=10.42.0.0/16`, `MIGRATE_ON_START=false`) + staging's (`PUBLIC_BASE_URL`, SMTP to mailpit, `PLANNER_MAX_PER_TICK=0` so copied users don't spend the shared Claude subscription in the background). Secret `jobfinder-env` (SealedSecret: a staging-only `SECRET_KEY` and prod's Claude token); `POSTGRES_PASSWORD` from `postgres-credentials`.
+**Config.** ConfigMap `jobfinder-config` = `backend/.env.defaults` + `base/app` overrides (`POSTGRES_HOST=postgres`, `STORE_DIR`/`CLAUDE_AUTH_DIR` on the PVCs, `FORWARDED_ALLOW_IPS=10.42.0.0/16`, `MIGRATE_ON_START=false`) + staging's (`PUBLIC_BASE_URL`, SMTP to mailpit, and background Claude work off: `PLANNER_MAX_PER_TICK=0`, `RESOLVER_LLM_ENABLED`, `COVERAGE_ENABLED`, `DISCOVERY_ENABLED` all false, so copied users don't spend the shared subscription; ingestion of known boards still runs). Secret `jobfinder-env` (SealedSecret: a staging-only `SECRET_KEY` and prod's Claude token); `POSTGRES_PASSWORD` from `postgres-credentials`.
 
-**Readiness.** `GET /readyz` on the api answers 200 only when the database answers and `alembic_version` equals the image's alembic head; otherwise 503 with the reason. Pods never serve against an unmigrated schema. Side effect: right after a deploy migrates, the old pods turn unready until the new ones are ready (a few seconds of 503s when a deploy carries a migration).
+**Readiness.** `GET /readyz` on the api answers 200 when the database answers and `alembic_version` equals the image's alembic head, or is a revision the image doesn't know (a newer image migrated: the old pods keep serving through the rollout, so migrations must stay backward compatible for one release). It answers 503 with the reason when the database is unreachable (2s limit), unmigrated, or behind the image. Pods never serve against an unmigrated schema.
 
-**Client IPs.** Host Caddy replaces any client-sent `X-Forwarded-For` with the real IP. Traefik trusts only `10.42.0.1` (the cni0 address its hostPort traffic arrives from; `deploy/k3s/manifests/traefik-config.yaml`), web's Caddy trusts the pod CIDR, and uvicorn takes the rightmost untrusted hop. The rate limiter therefore sees the browser's IP.
+**Client IPs.** Host Caddy replaces any client-sent `X-Forwarded-For` with the real IP. Traefik trusts only `10.42.0.1` (the cni0 address its hostPort traffic arrives from; `deploy/k3s/manifests/traefik-config.yaml`), web's Caddy trusts the pod CIDR, and uvicorn takes the rightmost untrusted hop. NetworkPolicies `web` and `api` admit only Traefik → web → api, so no other pod can forge the header. The rate limiter therefore sees the browser's IP. The namespace enforces Pod Security `baseline`.
 
 ### Deploy
 
-GitHub Actions deploys every push to dev once `images` has pushed that commit's images (`images.yml` → `deploy-staging.yml`). It SSHes to the host with a key whose forced command runs `deploy/k8s/deploy-staging-ssh.sh`, which accepts exactly `sha-<7-40 hex>`, checks the commit is on `origin/dev`, exports that commit's `deploy/k8s` and runs its `deploy.sh`. For a manifest-only change, use **Actions → deploy-staging → Run workflow** on dev. By hand, on the host:
+GitHub Actions deploys every push to dev once `images` has pushed that commit's images (`images.yml` → `deploy-staging.yml`). It SSHes to the host with a key whose forced command is the root-owned copy of `deploy/k8s/deploy-staging-ssh.sh` in `/usr/local/lib/jobfinder/`. It accepts exactly `sha-<7-40 hex>`, checks the commit is on `origin/dev` and not older than what staging runs (namespace annotation `jobfinder.io/deployed-commit`; late out-of-order runs are skipped), exports that commit's `deploy/k8s` as data, and runs the installed `deploy.sh` on it, so code from a push never runs on the host. For a manifest-only change, use **Actions → deploy-staging → Run workflow** on dev. By hand, on the host:
 
 ```sh
 deploy/k8s/deploy.sh staging sha-1a2b3c4      # from a checkout of that commit
@@ -179,7 +179,7 @@ deploy/k8s/deploy.sh staging sha-1a2b3c4      # from a checkout of that commit
 
 `deploy.sh`:
 
-1. **Pins each image.** `sha-<commit>` if GHCR has it; else the image the Deployment already runs (a frontend-only push rebuilds only web, a backend-only one only api/worker/renderer); else, on a first deploy, the current digest of `dev`. A registry error stops the deploy instead of falling back.
+1. **Pins each image.** `sha-<commit>` if GHCR has it; else the newest of the commit's last 50 dev ancestors that has one (a frontend-only push rebuilds only web, a backend-only one only api/worker/renderer); else the image the Deployment already runs; else, on a first deploy, the current digest of `dev`. A registry error stops the deploy instead of falling back. By hand, ancestors are only used if you pass them: `DEPLOY_CANDIDATE_TAGS="sha-… sha-…"`.
 2. **Migrates.** Applies everything except the Deployments, replaces Job `migrate`, waits for it. A failed migration prints the Job's log and stops; no pod has rolled.
 3. **Rolls out.** Applies the Deployments (label `jobfinder.io/rollout=app`) and waits for each rollout.
 
@@ -200,7 +200,7 @@ Roll back by deploying an earlier commit's tag (`deploy.sh staging sha-<older>`)
 deploy/k8s/staging-restore.sh            # asks first; --yes to skip the prompt
 ```
 
-It scales api/worker/renderer to 0, drops and recreates the staging database, streams `pg_dump -Fc` from the compose container `jobfinder-db-1` into `pg_restore` in `postgres-0` (no file on disk), and scales the app back. The schema is then at prod's revision: if staging's image is newer, the api stays unready until you redeploy (which migrates). Documents in compose's `store` volume are not copied. Staging's users are real people: all mail goes to mailpit, and nothing else may send.
+It takes the deploy lock (refusing while a deploy runs), scales api/worker/renderer to 0, drops and recreates the staging database, streams `pg_dump -Fc` from the compose container `jobfinder-db-1` into `pg_restore` in `postgres-0` (no file on disk), and scales the app back. The schema is then at prod's revision: if staging's image is newer, the api stays unready until you redeploy (which migrates). Documents in compose's `store` volume are not copied. Staging's users are real people: all mail goes to mailpit, and nothing else may send.
 
 ### Read staging's mail
 
@@ -227,8 +227,9 @@ Never expose mailpit through an Ingress: it holds password-reset links for real 
 
    ```sh
    ssh-keygen -t ed25519 -N '' -C jobfinder-staging-deploy -f /tmp/staging_deploy
-   sudo install -o root -g root -m 0755 deploy/k8s/deploy-staging-ssh.sh /usr/local/bin/jobfinder-deploy-staging
-   echo "restrict,command=\"/usr/local/bin/jobfinder-deploy-staging\" $(cat /tmp/staging_deploy.pub)" >> ~/.ssh/authorized_keys
+   sudo install -o root -g root -m 0755 -D deploy/k8s/deploy-staging-ssh.sh /usr/local/lib/jobfinder/deploy-staging-ssh.sh
+   sudo install -o root -g root -m 0755 -D deploy/k8s/deploy.sh /usr/local/lib/jobfinder/deploy.sh
+   echo "restrict,command=\"/usr/local/lib/jobfinder/deploy-staging-ssh.sh\" $(cat /tmp/staging_deploy.pub)" >> ~/.ssh/authorized_keys
    gh secret set STAGING_SSH_KEY  -R EhlOps/jobfinder < /tmp/staging_deploy
    gh secret set STAGING_SSH_HOST -R EhlOps/jobfinder --body '<public IP or hostname>'
    gh secret set STAGING_SSH_USER -R EhlOps/jobfinder --body opc
@@ -236,7 +237,7 @@ Never expose mailpit through an Ingress: it holds password-reset links for real 
    shred -u /tmp/staging_deploy /tmp/staging_deploy.pub
    ```
 
-   `restrict` turns off forwarding, PTYs and agent use; the forced command runs no matter what the client asks for. Test it: `ssh -i <key> opc@<host> 'rm -rf /'` must answer `refused`. Re-install the wrapper (`sudo install …` above) whenever `deploy-staging-ssh.sh` changes; the repo copy is never run directly. Until the three required secrets exist, `deploy-staging` skips with a warning.
+   `restrict` turns off forwarding, PTYs and agent use; the forced command runs no matter what the client asks for. Test it: `ssh -i <key> opc@<host> 'rm -rf /'` must answer `refused`. Re-install both (`sudo install …` above) whenever `deploy-staging-ssh.sh` or `deploy.sh` changes on dev; the repo copies are never run by the key. Residual trust: kubectl there is cluster-admin, so a manifest on dev could still create objects outside the namespace; a namespace-scoped kubeconfig for the forced command would close that (follow-up). Until the three required secrets exist, `deploy-staging` skips with a warning.
 5. **Data and first deploy:** `deploy/k8s/staging-restore.sh`, then **Run workflow** on dev (or `deploy.sh staging sha-<head of dev>`).
 
 ## Resources

@@ -48,9 +48,16 @@ configMapGenerator:
       - SMTP_PASSWORD=
       - SMTP_STARTTLS=false
       - EMAIL_FROM=JobFinder staging <jobs@staging.ehlops.com>
-      # Staging shares prod's Claude subscription: the background planner stays off, so copied users
-      # don't spend it. Work someone starts in the staging UI (a cover letter, a match) still runs.
+      # Staging shares prod's Claude subscription and the host's IP. Background work that calls Claude
+      # or crawls beyond the known boards stays off: the planner (per-user matching), the LLM resolver
+      # rung, the weekly coverage audit and board discovery. Work someone starts in the staging UI (a
+      # cover letter, a match) still runs, and so does ingestion of the existing boards on its
+      # adaptive schedule (one more fetch per board per interval; set SCHEDULER_ENABLED=false here if
+      # that ever matters).
       - PLANNER_MAX_PER_TICK=0
+      - RESOLVER_LLM_ENABLED=false
+      - COVERAGE_ENABLED=false
+      - DISCOVERY_ENABLED=false
 
 patches:
   # Postfix relays only to the sink (networkpolicy-smtp.yaml blocks everything else anyway).

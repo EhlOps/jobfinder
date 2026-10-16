@@ -31,6 +31,11 @@ case ${1-} in
 esac
 
 [ "$NS" != jobfinder ] || die "refusing to restore into the prod namespace"
+
+# The deploy lock (deploy-staging-ssh.sh): a deploy during the restore would migrate the empty
+# database under pg_restore and scale the app back up.
+exec 9>"${JOBFINDER_DEPLOY_LOCK:-/tmp/jobfinder-deploy-staging.lock}"
+flock -n 9 || die "a staging deploy is running; try again when it has finished"
 docker inspect "$SRC" >/dev/null 2>&1 || die "compose container $SRC not found"
 kubectl -n "$NS" get pod postgres-0 >/dev/null || die "postgres-0 not found in $NS"
 

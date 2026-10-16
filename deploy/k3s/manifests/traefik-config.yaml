@@ -23,6 +23,8 @@ spec:
       # Connections to the 127.0.0.1:8280 hostPort are masqueraded by the CNI portmap rules, so
       # Traefik sees them from cni0's address, 10.42.0.1; only the host can originate from it. Other
       # pods keep their own IPs and stay untrusted: Traefik replaces whatever header they send.
+      # 10.42.0.1 is cni0 on this node (the first node's pod subnet, 10.42.0.0/24). If a rebuild ever
+      # hands the node another subnet, update this; deploy/k8s/deploy.sh warns when cni0 differs.
       - "--entryPoints.web.forwardedHeaders.trustedIPs=10.42.0.1/32"
     ports:
       web:

@@ -46,7 +46,8 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Above the host's worst case: up to 20 min for the deploy lock, then the migrate Job and rollouts.
+    timeout-minutes: 60
     environment:
       name: staging
       url: https://staging.ehlops.com

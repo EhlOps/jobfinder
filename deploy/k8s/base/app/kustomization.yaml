@@ -23,6 +23,7 @@ resources:
   - smtp.yaml
   - migrate-job.yaml
   - ingress.yaml
+  - networkpolicy.yaml   # only Traefik -> web -> api
 
 configMapGenerator:
   - name: jobfinder-config
@@ -37,7 +38,8 @@ configMapGenerator:
       - SMTP_HOST=smtp
       # .env.defaults quotes this value and kustomize would keep the quotes.
       - EMAIL_FROM=JobFinder <jobs@localhost>
-      # uvicorn --proxy-headers: trust the pod network only (the web pod is the api's only client).
+      # uvicorn --proxy-headers: trust the pod network only (networkpolicy.yaml: web is the api's only
+      # client).
       # It walks X-Forwarded-For from the right and keeps the first untrusted hop, the client IP that
       # host Caddy set. Compose uses "*" because only the web container can reach its api.
       - FORWARDED_ALLOW_IPS=10.42.0.0/16

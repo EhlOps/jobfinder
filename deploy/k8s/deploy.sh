@@ -4,14 +4,17 @@
 #   deploy/k8s/deploy.sh <staging|prod> sha-<commit>
 #
 #   1. Pins each image. images.yml only rebuilds what changed (a frontend-only push builds only web),
-#      so per image, in order: ghcr.io/ehlops/jobfinder-<name>:sha-<commit> if it exists; else the
-#      image that Deployment already runs; else (first deploy) the digest `dev`/`main` points at now.
-#      Everything ends up pinned by an immutable tag or digest, never a moving branch tag.
+#      so per image, the first that exists in GHCR of: ghcr.io/ehlops/jobfinder-<name>:sha-<commit>;
+#      the sha- tags in DEPLOY_CANDIDATE_TAGS (the commit's ancestors, newest first, which the SSH
+#      wrapper passes, so a commit that only rebuilt web still gets the newest api built before it);
+#      else the image that Deployment already runs; else (first deploy) the digest `dev`/`main`
+#      points at now. Everything ends up pinned by an immutable tag or digest, never a moving tag.
 #   2. Applies everything except the app Deployments, with a fresh migrate Job, and waits for the Job.
 #      A failed migration stops here: no pod has rolled.
 #   3. Applies the Deployments (label jobfinder.io/rollout=app) and waits for every rollout.
 #
-# Uses the manifests next to this script; run it from a checkout (or export) of the same commit.
+# Uses the manifests in DEPLOY_K8S_DIR (default: next to this script); they must be that commit's.
+# At the end it records the tag (and DEPLOY_COMMIT, when given) as annotations on the namespace.
 # Needs kubectl (KUBECONFIG pointing at the cluster) and curl. GitHub Actions reaches it through the
 # SSH forced command deploy-staging-ssh.sh; docs/k3s.md, "Staging", has the whole flow.
 set -euo pipefail
@@ -26,7 +29,12 @@ case $overlay in
   *) usage ;;
 esac
 
-here=$(cd "$(dirname "$0")" && pwd)
+k8s_dir=$(cd "${DEPLOY_K8S_DIR:-$(dirname "$0")}" && pwd)
+[ -d "$k8s_dir/overlays/$overlay" ] || usage
+candidates=()
+for t in ${DEPLOY_CANDIDATE_TAGS:-}; do
+  [[ $t =~ ^sha-[0-9a-f]{7,40}$ ]] && candidates+=("$t")
+done
 REGISTRY=ghcr.io/ehlops
 # image name -> the Deployment that runs it (the api image also runs the migrate Job)
 declare -A WORKLOAD=([api]=api [worker]=worker [renderer]=renderer [web]=web)
@@ -57,14 +65,16 @@ remote_digest() {
 
 # Prints a kustomize `images:` entry pinning <name>.
 pin_image() {
-  local name=$1 deployed digest
-  # Assigned on its own line so a die() in the substitution stops the script (set -e).
-  digest=$(remote_digest "$name" "$tag")
-  if [ -n "$digest" ]; then
-    log "$name: $tag"
-    printf '  - name: %s/jobfinder-%s\n    newTag: %s\n' "$REGISTRY" "$name" "$tag"
-    return
-  fi
+  local name=$1 deployed digest t
+  for t in "$tag" ${candidates[@]+"${candidates[@]}"}; do
+    # Assigned on its own line so a die() in the substitution stops the script (set -e).
+    digest=$(remote_digest "$name" "$t")
+    if [ -n "$digest" ]; then
+      if [ "$t" = "$tag" ]; then log "$name: $t"; else log "$name: not rebuilt at $tag, newest is $t"; fi
+      printf '  - name: %s/jobfinder-%s\n    newTag: %s\n' "$REGISTRY" "$name" "$t"
+      return
+    fi
+  done
   deployed=$(kubectl -n "$ns" get deployment "${WORKLOAD[$name]}" \
              -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || true)
   case $deployed in
@@ -100,7 +110,13 @@ wait_for_job() {
 
 # A scratch kustomization next to the overlays (kustomize wants relative paths) that layers the
 # pinned images over the overlay.
-work=$(mktemp -d "$here/.deploy.XXXXXX")
+# Traefik trusts X-Forwarded-For only from cni0's address (deploy/k3s/manifests/traefik-config.yaml).
+if command -v ip >/dev/null && ip -4 addr show cni0 >/dev/null 2>&1 \
+   && ! ip -4 addr show cni0 | grep -q 'inet 10\.42\.0\.1/'; then
+  log "WARNING: cni0 is not 10.42.0.1; update Traefik's forwardedHeaders.trustedIPs or every client shares one IP"
+fi
+
+work=$(mktemp -d "$k8s_dir/.deploy.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 {
   echo "apiVersion: kustomize.config.k8s.io/v1beta1"
@@ -129,4 +145,6 @@ kubectl apply -f "$work/rendered.yaml" -l 'jobfinder.io/rollout=app'
 for d in $(kubectl -n "$ns" get deployments -l jobfinder.io/rollout=app -o name); do
   kubectl -n "$ns" rollout status "$d" --timeout="$ROLLOUT_TIMEOUT"
 done
+kubectl annotate namespace "$ns" --overwrite \
+  jobfinder.io/deployed-tag="$tag" jobfinder.io/deployed-commit="${DEPLOY_COMMIT:-unknown}" >/dev/null
 log "deployed $tag to $ns"
