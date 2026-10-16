@@ -1,51 +1,18 @@
-from datetime import datetime
-from typing import Literal
-
 import sqlalchemy as sa
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
-from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jobfinder.api.deps import CurrentUser, DbSession
 from jobfinder.letters.docx_export import build_docx, filename
 from jobfinder.models import CoverLetter, Job, JobMatch, Profile, Task, User
 from jobfinder.scheduling import queue
+from jobfinder.schemas.common import TaskRef
+from jobfinder.schemas.cover_letters import ContentIn, LetterGenerateIn, LetterOut, LetterState
 
 router = APIRouter(prefix="/api/matches/{match_id}/cover-letter", tags=["cover letters"])
 
-Tone = Literal["professional", "warm", "concise", "enthusiastic"]
 DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-MAX_LETTER_CHARS = 10_000
-
-
-class LetterOut(BaseModel):
-    content: str
-    tone: str
-    edited: bool
-    words: int
-    stale: bool  # drafted before the latest profile update
-    generated_at: datetime
-    updated_at: datetime
-
-
-class LetterState(BaseModel):
-    letter: LetterOut | None
-    pending_task_id: int | None  # a draft is being written right now
-
-
-class GenerateIn(BaseModel):
-    tone: Tone = "professional"
-    notes: str = Field(default="", max_length=500)
-    force: bool = False  # required to overwrite a letter the user has edited
-
-
-class ContentIn(BaseModel):
-    content: str = Field(min_length=1, max_length=MAX_LETTER_CHARS)
-
-
-class TaskRef(BaseModel):
-    task_id: int
 
 
 async def _match_and_job(db: AsyncSession, user: User, match_id: int) -> tuple[JobMatch, Job]:
@@ -92,7 +59,7 @@ async def get_letter(match_id: int, user: CurrentUser, db: DbSession):
 
 
 @router.post("", response_model=TaskRef, status_code=202)
-async def generate(match_id: int, body: GenerateIn, user: CurrentUser, db: DbSession):
+async def generate(match_id: int, body: LetterGenerateIn, user: CurrentUser, db: DbSession):
     """Draft (or redraft) the letter in the worker. Poll GET /api/tasks/{id}, then GET this resource."""
     _, job = await _match_and_job(db, user, match_id)
     profile = await db.get(Profile, user.id)
