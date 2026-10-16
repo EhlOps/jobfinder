@@ -19,8 +19,8 @@ from jobfinder.auth.security import (
 from jobfinder.core.config import settings
 from jobfinder.core.db import DbSession
 from jobfinder.core.urls import public_link
+from jobfinder.integrations import smtp as mail
 from jobfinder.models import Profile, Session, User
-from jobfinder.notify import email as mail
 from jobfinder.notify.tokens import (
     InvalidToken,
     make_password_token,

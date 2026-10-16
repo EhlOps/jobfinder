@@ -1,38 +1,14 @@
 """'Strengthen my profile': the recruiter-style audit, its next questions, and answering them."""
-from typing import Any
-
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
 
 from jobfinder.api.deps import CurrentUser, DbSession
 from jobfinder.models import Profile
 from jobfinder.profile import interview
 from jobfinder.scheduling import queue
+from jobfinder.schemas.common import TaskRef
+from jobfinder.schemas.interview import InterviewAnswersIn, InterviewOut
 
 router = APIRouter(prefix="/api/profile/interview", tags=["interview"])
-
-
-class InterviewOut(BaseModel):
-    readiness: int
-    dimensions: dict[str, int]
-    dossier: dict[str, Any]
-    questions: list[dict[str, Any]]
-    audited: bool
-    stale: bool  # the profile changed since the last audit
-
-
-class AnswerIn(BaseModel):
-    question: str = Field(min_length=1, max_length=2000)
-    answer: str = Field(default="", max_length=interview.MAX_ANSWER_CHARS)
-    skip: bool = False
-
-
-class AnswersIn(BaseModel):
-    answers: list[AnswerIn] = Field(max_length=20)
-
-
-class TaskRef(BaseModel):
-    task_id: int
 
 
 @router.get("", response_model=InterviewOut)
@@ -50,5 +26,5 @@ async def refresh(user: CurrentUser, db: DbSession):
 
 
 @router.post("/answers")
-async def answer(body: AnswersIn, user: CurrentUser, db: DbSession):
+async def answer(body: InterviewAnswersIn, user: CurrentUser, db: DbSession):
     return await interview.answer(db, user.id, [a.model_dump() for a in body.answers])

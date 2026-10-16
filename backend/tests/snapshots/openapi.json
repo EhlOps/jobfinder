@@ -432,7 +432,7 @@
       "EditIn": {
         "properties": {
           "content": {
-            "$ref": "#/components/schemas/TailoredResume",
+            "$ref": "#/components/schemas/TailoredResumeOut",
             "description": "The complete edited resume"
           }
         },
@@ -648,6 +648,49 @@
         "title": "IngestCadence",
         "type": "object"
       },
+      "InterviewAnswerIn": {
+        "properties": {
+          "answer": {
+            "default": "",
+            "maxLength": 3000,
+            "title": "Answer",
+            "type": "string"
+          },
+          "question": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Question",
+            "type": "string"
+          },
+          "skip": {
+            "default": false,
+            "title": "Skip",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "question"
+        ],
+        "title": "InterviewAnswerIn",
+        "type": "object"
+      },
+      "InterviewAnswersIn": {
+        "properties": {
+          "answers": {
+            "items": {
+              "$ref": "#/components/schemas/InterviewAnswerIn"
+            },
+            "maxItems": 20,
+            "title": "Answers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "answers"
+        ],
+        "title": "InterviewAnswersIn",
+        "type": "object"
+      },
       "InterviewOut": {
         "properties": {
           "audited": {
@@ -732,6 +775,139 @@
           "answers"
         ],
         "title": "JobAnswersIn",
+        "type": "object"
+      },
+      "JobLinkIn": {
+        "properties": {
+          "url": {
+            "maxLength": 4096,
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "title": "JobLinkIn",
+        "type": "object"
+      },
+      "JobLinkOut": {
+        "properties": {
+          "ats": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ats"
+          },
+          "company": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company"
+          },
+          "company_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company Id"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "job_count": {
+            "title": "Job Count",
+            "type": "integer"
+          },
+          "pasted_job_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pasted Job Id"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
+          "rung": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rung"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "url",
+          "status",
+          "company_id",
+          "company",
+          "ats",
+          "rung",
+          "error",
+          "job_count",
+          "pasted_job_id",
+          "created_at",
+          "resolved_at"
+        ],
+        "title": "JobLinkOut",
         "type": "object"
       },
       "JobOut": {
@@ -890,6 +1066,34 @@
           "at"
         ],
         "title": "LastCall",
+        "type": "object"
+      },
+      "LetterGenerateIn": {
+        "properties": {
+          "force": {
+            "default": false,
+            "title": "Force",
+            "type": "boolean"
+          },
+          "notes": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Notes",
+            "type": "string"
+          },
+          "tone": {
+            "default": "professional",
+            "enum": [
+              "professional",
+              "warm",
+              "concise",
+              "enthusiastic"
+            ],
+            "title": "Tone",
+            "type": "string"
+          }
+        },
+        "title": "LetterGenerateIn",
         "type": "object"
       },
       "LetterOut": {
@@ -1526,6 +1730,74 @@
         "title": "PreviewResult",
         "type": "object"
       },
+      "ProfileLinkIn": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "github",
+              "portfolio",
+              "linkedin",
+              "x",
+              "other"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "url": {
+            "format": "uri",
+            "maxLength": 2083,
+            "minLength": 1,
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "url"
+        ],
+        "title": "ProfileLinkIn",
+        "type": "object"
+      },
+      "ProfileLinkOut": {
+        "properties": {
+          "fetch_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fetch Error"
+          },
+          "fetched": {
+            "title": "Fetched",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "url",
+          "fetched",
+          "fetch_error"
+        ],
+        "title": "ProfileLinkOut",
+        "type": "object"
+      },
       "ProfileOut": {
         "properties": {
           "background": {
@@ -1590,6 +1862,47 @@
           "name"
         ],
         "title": "Project",
+        "type": "object"
+      },
+      "QuestionAnswerIn": {
+        "properties": {
+          "answer": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Answer",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "skip": {
+            "default": false,
+            "title": "Skip",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "QuestionAnswerIn",
+        "type": "object"
+      },
+      "QuestionAnswersIn": {
+        "properties": {
+          "answers": {
+            "items": {
+              "$ref": "#/components/schemas/QuestionAnswerIn"
+            },
+            "maxItems": 30,
+            "title": "Answers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "answers"
+        ],
+        "title": "QuestionAnswersIn",
         "type": "object"
       },
       "QuestionJob": {
@@ -1695,10 +2008,21 @@
         "title": "ResumeContact",
         "type": "object"
       },
+      "ResumeGenerateIn": {
+        "properties": {
+          "force": {
+            "default": false,
+            "title": "Force",
+            "type": "boolean"
+          }
+        },
+        "title": "ResumeGenerateIn",
+        "type": "object"
+      },
       "ResumeOut": {
         "properties": {
           "content": {
-            "$ref": "#/components/schemas/TailoredResume"
+            "$ref": "#/components/schemas/TailoredResumeOut"
           },
           "coverage": {
             "$ref": "#/components/schemas/CoverageOut"
@@ -2288,7 +2612,7 @@
         "title": "StatusIn",
         "type": "object"
       },
-      "TailoredResume": {
+      "TailoredResumeOut": {
         "description": "A resume rewritten for one posting. Sections are required so a response cannot silently drop one.",
         "properties": {
           "contact": {
@@ -2335,7 +2659,7 @@
           "projects",
           "education"
         ],
-        "title": "TailoredResume",
+        "title": "TailoredResumeOut",
         "type": "object"
       },
       "TargetRow": {
@@ -2613,330 +2937,6 @@
           "type"
         ],
         "title": "ValidationError",
-        "type": "object"
-      },
-      "jobfinder__api__cover_letters__GenerateIn": {
-        "properties": {
-          "force": {
-            "default": false,
-            "title": "Force",
-            "type": "boolean"
-          },
-          "notes": {
-            "default": "",
-            "maxLength": 500,
-            "title": "Notes",
-            "type": "string"
-          },
-          "tone": {
-            "default": "professional",
-            "enum": [
-              "professional",
-              "warm",
-              "concise",
-              "enthusiastic"
-            ],
-            "title": "Tone",
-            "type": "string"
-          }
-        },
-        "title": "GenerateIn",
-        "type": "object"
-      },
-      "jobfinder__api__interview__AnswerIn": {
-        "properties": {
-          "answer": {
-            "default": "",
-            "maxLength": 3000,
-            "title": "Answer",
-            "type": "string"
-          },
-          "question": {
-            "maxLength": 2000,
-            "minLength": 1,
-            "title": "Question",
-            "type": "string"
-          },
-          "skip": {
-            "default": false,
-            "title": "Skip",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "question"
-        ],
-        "title": "AnswerIn",
-        "type": "object"
-      },
-      "jobfinder__api__interview__AnswersIn": {
-        "properties": {
-          "answers": {
-            "items": {
-              "$ref": "#/components/schemas/jobfinder__api__interview__AnswerIn"
-            },
-            "maxItems": 20,
-            "title": "Answers",
-            "type": "array"
-          }
-        },
-        "required": [
-          "answers"
-        ],
-        "title": "AnswersIn",
-        "type": "object"
-      },
-      "jobfinder__api__job_links__LinkIn": {
-        "properties": {
-          "url": {
-            "maxLength": 4096,
-            "title": "Url",
-            "type": "string"
-          }
-        },
-        "required": [
-          "url"
-        ],
-        "title": "LinkIn",
-        "type": "object"
-      },
-      "jobfinder__api__job_links__LinkOut": {
-        "properties": {
-          "ats": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Ats"
-          },
-          "company": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Company"
-          },
-          "company_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Company Id"
-          },
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "error": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error"
-          },
-          "id": {
-            "title": "Id",
-            "type": "integer"
-          },
-          "job_count": {
-            "title": "Job Count",
-            "type": "integer"
-          },
-          "pasted_job_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Pasted Job Id"
-          },
-          "resolved_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Resolved At"
-          },
-          "rung": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Rung"
-          },
-          "status": {
-            "title": "Status",
-            "type": "string"
-          },
-          "url": {
-            "title": "Url",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "url",
-          "status",
-          "company_id",
-          "company",
-          "ats",
-          "rung",
-          "error",
-          "job_count",
-          "pasted_job_id",
-          "created_at",
-          "resolved_at"
-        ],
-        "title": "LinkOut",
-        "type": "object"
-      },
-      "jobfinder__api__links__LinkIn": {
-        "properties": {
-          "kind": {
-            "enum": [
-              "github",
-              "portfolio",
-              "linkedin",
-              "x",
-              "other"
-            ],
-            "title": "Kind",
-            "type": "string"
-          },
-          "url": {
-            "format": "uri",
-            "maxLength": 2083,
-            "minLength": 1,
-            "title": "Url",
-            "type": "string"
-          }
-        },
-        "required": [
-          "kind",
-          "url"
-        ],
-        "title": "LinkIn",
-        "type": "object"
-      },
-      "jobfinder__api__links__LinkOut": {
-        "properties": {
-          "fetch_error": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Fetch Error"
-          },
-          "fetched": {
-            "title": "Fetched",
-            "type": "boolean"
-          },
-          "id": {
-            "title": "Id",
-            "type": "string"
-          },
-          "kind": {
-            "title": "Kind",
-            "type": "string"
-          },
-          "url": {
-            "title": "Url",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "kind",
-          "url",
-          "fetched",
-          "fetch_error"
-        ],
-        "title": "LinkOut",
-        "type": "object"
-      },
-      "jobfinder__api__questions__AnswerIn": {
-        "properties": {
-          "answer": {
-            "default": "",
-            "maxLength": 2000,
-            "title": "Answer",
-            "type": "string"
-          },
-          "id": {
-            "title": "Id",
-            "type": "integer"
-          },
-          "skip": {
-            "default": false,
-            "title": "Skip",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "id"
-        ],
-        "title": "AnswerIn",
-        "type": "object"
-      },
-      "jobfinder__api__questions__AnswersIn": {
-        "properties": {
-          "answers": {
-            "items": {
-              "$ref": "#/components/schemas/jobfinder__api__questions__AnswerIn"
-            },
-            "maxItems": 30,
-            "title": "Answers",
-            "type": "array"
-          }
-        },
-        "required": [
-          "answers"
-        ],
-        "title": "AnswersIn",
-        "type": "object"
-      },
-      "jobfinder__api__resumes__GenerateIn": {
-        "properties": {
-          "force": {
-            "default": false,
-            "title": "Force",
-            "type": "boolean"
-          }
-        },
-        "title": "GenerateIn",
         "type": "object"
       }
     }
@@ -4318,7 +4318,7 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "$ref": "#/components/schemas/jobfinder__api__job_links__LinkOut"
+                    "$ref": "#/components/schemas/JobLinkOut"
                   },
                   "title": "Response List Links Api Job Links Get",
                   "type": "array"
@@ -4367,7 +4367,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/jobfinder__api__job_links__LinkIn"
+                "$ref": "#/components/schemas/JobLinkIn"
               }
             }
           },
@@ -4378,7 +4378,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/jobfinder__api__job_links__LinkOut"
+                  "$ref": "#/components/schemas/JobLinkOut"
                 }
               }
             },
@@ -4536,7 +4536,7 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "$ref": "#/components/schemas/jobfinder__api__links__LinkOut"
+                    "$ref": "#/components/schemas/ProfileLinkOut"
                   },
                   "title": "Response List Links Api Links Get",
                   "type": "array"
@@ -4585,7 +4585,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/jobfinder__api__links__LinkIn"
+                "$ref": "#/components/schemas/ProfileLinkIn"
               }
             }
           },
@@ -4596,7 +4596,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/jobfinder__api__links__LinkOut"
+                  "$ref": "#/components/schemas/ProfileLinkOut"
                 }
               }
             },
@@ -4705,7 +4705,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/jobfinder__api__links__LinkOut"
+                  "$ref": "#/components/schemas/ProfileLinkOut"
                 }
               }
             },
@@ -5281,7 +5281,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/jobfinder__api__cover_letters__GenerateIn"
+                "$ref": "#/components/schemas/LetterGenerateIn"
               }
             }
           },
@@ -5577,7 +5577,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/jobfinder__api__resumes__GenerateIn"
+                "$ref": "#/components/schemas/ResumeGenerateIn"
               }
             }
           },
@@ -6191,7 +6191,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/jobfinder__api__interview__AnswersIn"
+                "$ref": "#/components/schemas/InterviewAnswersIn"
               }
             }
           },
@@ -6391,7 +6391,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/jobfinder__api__questions__AnswersIn"
+                "$ref": "#/components/schemas/QuestionAnswersIn"
               }
             }
           },
@@ -6499,7 +6499,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/jobfinder__api__questions__AnswersIn"
+                "$ref": "#/components/schemas/QuestionAnswersIn"
               }
             }
           },

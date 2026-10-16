@@ -282,7 +282,7 @@
     ],
     "name": "list_links",
     "path": "/api/job-links",
-    "response_model": "list[LinkOut]",
+    "response_model": "list[JobLinkOut]",
     "status_code": null
   },
   {
@@ -293,7 +293,7 @@
     ],
     "name": "add_link",
     "path": "/api/job-links",
-    "response_model": "LinkOut",
+    "response_model": "JobLinkOut",
     "status_code": 202
   },
   {
@@ -326,7 +326,7 @@
     ],
     "name": "list_links",
     "path": "/api/links",
-    "response_model": "list[LinkOut]",
+    "response_model": "list[ProfileLinkOut]",
     "status_code": null
   },
   {
@@ -337,7 +337,7 @@
     ],
     "name": "add_link",
     "path": "/api/links",
-    "response_model": "LinkOut",
+    "response_model": "ProfileLinkOut",
     "status_code": 201
   },
   {
@@ -359,7 +359,7 @@
     ],
     "name": "refresh_link",
     "path": "/api/links/{link_id}/refresh",
-    "response_model": "LinkOut",
+    "response_model": "ProfileLinkOut",
     "status_code": null
   },
   {

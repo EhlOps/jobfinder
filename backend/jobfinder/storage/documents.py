@@ -22,8 +22,6 @@ from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
-from jobfinder.core.config import settings
-
 ID_RE = re.compile(r"^doc_[0-9a-f]{22}$")
 TAG_KEY_RE = re.compile(r"^[a-z0-9_.-]{1,40}$")
 MAX_TAG_VALUE = 200
@@ -225,4 +223,9 @@ class DocumentStore:
 
 
 def get_store() -> DocumentStore:
-    return DocumentStore(Path(settings.store_dir))
+    """The process's store (`ctx.store`). Routers declare `store: Store` (api/deps.py) instead."""
+    from jobfinder.context import (
+        default_context,  # cycle: the context builds this module's DocumentStore
+    )
+
+    return default_context().store

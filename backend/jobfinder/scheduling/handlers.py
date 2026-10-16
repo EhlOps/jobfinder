@@ -5,11 +5,12 @@ from collections.abc import Awaitable, Callable
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from jobfinder.ai.claude_code import AIError
-from jobfinder.ai.tasks import AITasks
+from jobfinder.context import default_context
+from jobfinder.integrations.claude.claude_code import AIError
+from jobfinder.integrations.claude.tasks import AITasks
 from jobfinder.models import Profile, ProfileFact, Task
 from jobfinder.scheduling import queue
-from jobfinder.storage.documents import get_store, is_tailored
+from jobfinder.storage.documents import is_tailored
 
 Handler = Callable[[AsyncSession, AITasks, Task], Awaitable[dict]]
 
@@ -19,7 +20,7 @@ REINDUCE_RETRIES = 6  # re-induction attempts put off by a rate limit or an unre
 
 
 async def extract_profile(db: AsyncSession, ai: AITasks, task: Task) -> dict:
-    store = get_store()
+    store = default_context().store
     sources = []
     for doc in store.list(task.user_id):
         if is_tailored(doc):  # AI-tailored output must not become ground truth
@@ -97,8 +98,8 @@ async def daily_emails(db: AsyncSession, ai: AITasks, task: Task) -> dict:
     """Hourly tick: send the daily email to every user whose chosen hour has come."""
     from datetime import UTC, datetime
 
+    from jobfinder.integrations.smtp import EmailError
     from jobfinder.notify import daily
-    from jobfinder.notify.email import EmailError
     from jobfinder.questions import service as questions
 
     now = datetime.now(UTC)
@@ -133,7 +134,7 @@ async def cover_letter(db: AsyncSession, ai: AITasks, task: Task) -> dict:
 async def resume_tailor(db: AsyncSession, ai: AITasks, task: Task) -> dict:
     from jobfinder.resumes import service
 
-    return await service.tailor(db, ai, get_store(), task.user_id, task.payload["match_id"], force=bool(task.payload.get("force")))
+    return await service.tailor(db, ai, default_context().store, task.user_id, task.payload["match_id"], force=bool(task.payload.get("force")))
 
 
 async def ai_check(db: AsyncSession, ai: AITasks, task: Task) -> dict:
