@@ -24,7 +24,7 @@ from jobfinder.ingest.validate import SLUG_RE
 from jobfinder.models import JobLink, Task
 from tests.fakes import fake_resolve_public
 
-TERMS = Path(__file__).parents[1] / "jobfinder/ingest/sources/custom/TERMS.md"
+TERMS = Path(__file__).parents[1] / "jobfinder/integrations/ats/custom/TERMS.md"
 
 REFUSED_URLS = {
     "Google": [

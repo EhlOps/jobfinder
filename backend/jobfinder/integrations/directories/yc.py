@@ -1,5 +1,5 @@
 """Sources recorded as skipped: no terms grant automated access, so nothing is requested."""
-from jobfinder.ingest.discovery import Source
+from jobfinder.integrations.directories import Source
 
 SOURCE = Source(
     "yc_work_at_a_startup",

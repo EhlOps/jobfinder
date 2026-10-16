@@ -12,6 +12,7 @@ import re
 from datetime import UTC, datetime
 from urllib.parse import parse_qsl, urljoin, urlsplit
 
+from jobfinder.core.urls import registrable_domain
 from jobfinder.ingest.base import safe_http_url
 from jobfinder.ingest.http_safety import (
     JSON_TYPES,
@@ -20,10 +21,16 @@ from jobfinder.ingest.http_safety import (
     SafeResponse,
     safe_fetch,
 )
-from jobfinder.ingest.recipes import Recipe, RecipeError, parse_recipe, run_recipe, validate_recipe
-from jobfinder.ingest.recipes.html import compile_selector, page_text, parse_document, select
-from jobfinder.ingest.recipes.sniff import explain_json_sample
 from jobfinder.ingest.resolve.ladder import PAGE_MAX_BYTES, RecipeHit, ResolveContext
+from jobfinder.integrations.recipes import (
+    Recipe,
+    RecipeError,
+    parse_recipe,
+    run_recipe,
+    validate_recipe,
+)
+from jobfinder.integrations.recipes.html import compile_selector, page_text, parse_document, select
+from jobfinder.integrations.recipes.sniff import explain_json_sample
 
 MAX_FETCHES = 8  # per resolve: candidate fetches plus validation runs
 MAX_JSON_PER_PAGE = 3
@@ -115,8 +122,6 @@ def _selectors(anchors: list, base: str):
 def html_recipe(r: SafeResponse, pattern: str, domain: str, pasted_url: str) -> tuple[dict | None, str]:
     """An html recipe for a listing page whose anchors repeat the pasted job's URL pattern, or
     (None, why not). The items selector must pick out exactly those job links (no nav or filter links)."""
-    from jobfinder.ingest.resolve import registrable_domain
-
     doc = parse_document(page_text(r))
     if doc is None:
         return None, "empty page"
@@ -169,8 +174,6 @@ class ListingRung:
 
 class _Sniff:
     def __init__(self, ctx: ResolveContext):
-        from jobfinder.ingest.resolve import registrable_domain
-
         self.ctx = ctx
         self.domain = registrable_domain(ctx.url)
         self.left = MAX_FETCHES
@@ -182,8 +185,6 @@ class _Sniff:
         self.ctx.note(f"listing: {msg}")
 
     def _same_site(self, url: str) -> bool:
-        from jobfinder.ingest.resolve import registrable_domain
-
         return bool(url) and registrable_domain(url) == self.domain
 
     async def fetch(self, url: str, accept: tuple[str, ...]) -> SafeResponse | None:

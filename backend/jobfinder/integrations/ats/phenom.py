@@ -21,6 +21,14 @@ from jobfinder.ingest.base import (
     parse_salary_range,
     safe_http_url,
 )
+from jobfinder.ingest.http_safety import (
+    JSON_TYPES,
+    TEXT_TYPES,
+    FetchError,
+    assert_public_host,
+    safe_fetch,
+)
+from jobfinder.integrations.robots import PoliteFetcher
 
 LIST_API = "https://{host}/widgets"
 JOB_URL = "https://{host}/{country}/{lang}/job/{job_id}"
@@ -180,16 +188,6 @@ async def fetch_phenom(
     client: httpx.AsyncClient, slug: str, company_name: str, list_only: bool = False
 ) -> list[JobPosting]:
     """list_only fetches just the first listing page (descriptions are the listing teasers) and no job pages."""
-    # imported here: discovery imports the source registry, which imports this module
-    from jobfinder.ingest.discovery.robots import PoliteFetcher
-    from jobfinder.ingest.http_safety import (
-        JSON_TYPES,
-        TEXT_TYPES,
-        FetchError,
-        assert_public_host,
-        safe_fetch,
-    )
-
     host, country, lang = parse_slug(slug)
     await assert_public_host(host)  # the host comes from a slug a user may have pasted
     robots = PoliteFetcher(client)

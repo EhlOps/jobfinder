@@ -33,8 +33,6 @@ class JobPosting:
         return dedupe_hash(self.company_name, self.title, self.location)
 
 
-
-
 # ── text ──────────────────────────────────────────────────────────────────
 _BLOCK = {"p", "div", "br", "li", "ul", "ol", "h1", "h2", "h3", "h4", "h5", "h6", "tr", "section", "table"}
 

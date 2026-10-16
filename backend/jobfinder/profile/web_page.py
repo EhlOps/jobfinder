@@ -4,40 +4,20 @@ Users supply these URLs and the server fetches them, so: every hop is resolved o
 connected to *by that validated IP* (no second DNS lookup an attacker could answer differently); the body
 is streamed with a byte cap and an overall deadline; and text extraction runs off the event loop."""
 import asyncio
-import ipaddress
-import socket
 from urllib.parse import urljoin, urlparse
 
 import httpx
 import trafilatura
+
+# FetchError and resolve_public live in core/http.py; they are bound here too, so patching
+# web_page.resolve_public (the tests do) still reaches _fetch.
+from jobfinder.core.http import FetchError, resolve_public
 
 MAX_CHARS = 30_000
 MAX_BYTES = 2_000_000
 DEADLINE_S = 20.0
 MAX_REDIRECTS = 4
 USER_AGENT = "Mozilla/5.0 (compatible; JobFinderBot/0.1)"
-
-
-class FetchError(Exception):
-    pass
-
-
-async def resolve_public(url: str) -> tuple[str, str]:
-    """SSRF guard. Returns (hostname, a validated public IP to connect to); raises FetchError otherwise."""
-    parsed = urlparse(url)
-    if parsed.scheme not in ("http", "https") or not parsed.hostname:
-        raise FetchError("URL must be http(s)")
-    try:
-        infos = await asyncio.get_running_loop().getaddrinfo(parsed.hostname, None, type=socket.SOCK_STREAM)
-    except (socket.gaierror, UnicodeError):
-        raise FetchError("Could not resolve host") from None
-    ips = [info[4][0] for info in infos]
-    if not ips:
-        raise FetchError("Could not resolve host")
-    for ip in ips:
-        if not ipaddress.ip_address(ip.split("%")[0]).is_global:
-            raise FetchError("URL points to a non-public address")
-    return parsed.hostname, ips[0]
 
 
 async def assert_public_url(url: str) -> None:

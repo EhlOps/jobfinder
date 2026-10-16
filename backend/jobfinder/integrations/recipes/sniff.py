@@ -7,8 +7,8 @@ then map each field to the first matching key. The caller validates the recipe a
 import re
 from urllib.parse import parse_qsl, urlsplit
 
-from jobfinder.ingest.recipes import Recipe, RecipeError, parse_recipe
-from jobfinder.ingest.recipes.json_api import get_all
+from jobfinder.integrations.recipes import Recipe, RecipeError, parse_recipe
+from jobfinder.integrations.recipes.json_api import get_all
 
 MAX_JSON_NODES = 20_000
 MIN_PAGE_LEN = 5  # a sample this long is taken as a full page

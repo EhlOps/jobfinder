@@ -1,13 +1,13 @@
 from fastapi import APIRouter, HTTPException
 
 from jobfinder.api.deps import CurrentUser, DbSession
-from jobfinder.auth import ratelimit
 from jobfinder.core.config import settings
 from jobfinder.integrations.smtp import EmailError
 from jobfinder.models import Profile, User
 from jobfinder.notify import daily
 from jobfinder.scheduling import queue
 from jobfinder.schemas.settings import PreviewResult, SettingsBody
+from jobfinder.services import ratelimit
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 

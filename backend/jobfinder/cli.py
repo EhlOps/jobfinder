@@ -274,7 +274,7 @@ def _yes_no(v: str) -> bool:
 
 
 def main() -> None:
-    from jobfinder.ingest.sources import ATS_FETCHERS
+    from jobfinder.integrations.ats.registry import ATS_FETCHERS
 
     parser = argparse.ArgumentParser(prog="jobfinder.cli")
     parser.add_argument("command", choices=["ai-check", "ingest", "daily", "questions", "test-email", "add-user", "reset-link", "list-users", "add-board", "list-boards", "set-board", "grant-admin", "revoke-admin"])

@@ -1,8 +1,8 @@
 """Job lists on GitHub: the raw README/markdown/JSON holds the apply links, mapped to (ats, slug) boards."""
 import logging
 
-from jobfinder.ingest.discovery import FoundBoards, Source, boards_from_text
-from jobfinder.ingest.discovery.robots import PoliteFetcher
+from jobfinder.integrations.directories import FoundBoards, Source, boards_from_text
+from jobfinder.integrations.robots import PoliteFetcher
 
 log = logging.getLogger("jobfinder.discovery")
 

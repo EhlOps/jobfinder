@@ -96,6 +96,7 @@ async def build_queries(db: AsyncSession, limit: int | None = None) -> list[JobQ
 
 def _scrape(query: JobQuery, results: int) -> list[dict]:
     try:
+        # optional dependency: python-jobspy (uv sync --extra jobspy)
         from jobspy import scrape_jobs
     except ImportError:
         raise RuntimeError("python-jobspy is not installed (uv sync --extra jobspy)") from None

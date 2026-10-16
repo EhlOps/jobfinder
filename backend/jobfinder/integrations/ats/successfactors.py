@@ -9,13 +9,13 @@ the UDM API) is disallowed on these sites and is never called.
 import asyncio
 import re
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 from urllib.parse import urljoin, urlsplit
 
 import httpx
 from lxml import etree
 from lxml import html as lxml_html
 
+from jobfinder.core.http import FetchError
 from jobfinder.ingest.base import (
     JobPosting,
     clip,
@@ -25,10 +25,9 @@ from jobfinder.ingest.base import (
     parse_salary_range,
     safe_http_url,
 )
-from jobfinder.profile.web_page import FetchError
-
-if TYPE_CHECKING:
-    from jobfinder.ingest.discovery.robots import PoliteFetcher
+from jobfinder.ingest.http_safety import TEXT_TYPES, assert_public_host, safe_fetch
+from jobfinder.integrations.ats import SLUG_RE
+from jobfinder.integrations.robots import PoliteFetcher
 
 SEARCH_URL = "{base}/search/?q=&sortColumn=referencedate&sortDirection=desc&startrow={start}"
 MAX_PAGES = 40  # 25 rows a page -> 1,000 newest postings (EY lists ~8,800)
@@ -38,8 +37,6 @@ DETAIL_CONCURRENCY = 4
 _HOST_RE = re.compile(
     r"^(?=.{4,150}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$"
 )
-# same as validate.SLUG_RE (importing it from there would be circular)
-SLUG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$")
 _BRAND_RE = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
 _RESERVED_BRANDS = {"job", "search", "services", "go", "content", "talentcommunity"}
 _JOB_PATH_RE = re.compile(r"/job/[^/?#]+/(\d{1,20})/?$")
@@ -203,12 +200,9 @@ def parse_successfactors(rows: list[dict], company_name: str, slug: str) -> list
     return out
 
 
-async def _get(client: httpx.AsyncClient, robots: "PoliteFetcher", url: str) -> str:
+async def _get(client: httpx.AsyncClient, robots: PoliteFetcher, url: str) -> str:
     """Robots-checked, SSRF-safe GET of an HTML page; HTTP errors surface as httpx.HTTPStatusError so ingest
     health treats them like any other ATS."""
-    # imported lazily: http_safety -> discovery -> validate -> this registry would be circular
-    from jobfinder.ingest.http_safety import TEXT_TYPES, safe_fetch
-
     r = await safe_fetch(client, url, accept=TEXT_TYPES, robots=robots, raise_for_status=False)
     if r.status >= 400:
         req = httpx.Request("GET", url)
@@ -221,14 +215,10 @@ async def fetch_successfactors(
     client: httpx.AsyncClient, slug: str, company_name: str, list_only: bool = False
 ) -> list[JobPosting]:
     """list_only reads just the first search page and skips the job-page fetches (cheap probe)."""
-    # imported lazily (see _get); PoliteFetcher loads robots.txt through safe_fetch, so it is IP-pinned too
-    from jobfinder.ingest.discovery.robots import PoliteFetcher
-    from jobfinder.ingest.http_safety import assert_public_host
-
     host, brand = parse_slug(slug)
     await assert_public_host(host)  # a custom domain from the slug: never let it point inside
     base = board_base(host, brand)
-    robots = PoliteFetcher(client)
+    robots = PoliteFetcher(client)  # loads robots.txt through safe_fetch, so it is IP-pinned too
 
     listed: list[dict] = []
     seen: set[str] = set()

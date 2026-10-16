@@ -1,54 +1,33 @@
-from collections.abc import Awaitable, Callable
-from functools import partial
+"""Moved (#42): the ATS fetchers are jobfinder.integrations.ats (registry in .registry), and USAJOBS and
+JobSpy are jobfinder.integrations.usajobs and .jobspy. These old names stay importable until #53, as the
+same module objects (see ingest/_moved.py)."""
+import pkgutil
 
-import httpx
+from jobfinder.ingest._moved import alias
+from jobfinder.integrations import ats
 
-from jobfinder.ingest.base import JobPosting
-from jobfinder.ingest.sources.ashby import fetch_ashby
-from jobfinder.ingest.sources.bamboohr import fetch_bamboohr
-from jobfinder.ingest.sources.eightfold import fetch_eightfold
-from jobfinder.ingest.sources.greenhouse import fetch_greenhouse
-from jobfinder.ingest.sources.icims import fetch_icims
-from jobfinder.ingest.sources.lever import fetch_lever
-from jobfinder.ingest.sources.oracle_hcm import fetch_oracle_hcm
-from jobfinder.ingest.sources.phenom import fetch_phenom
-from jobfinder.ingest.sources.recruitee import fetch_recruitee
-from jobfinder.ingest.sources.smartrecruiters import fetch_smartrecruiters
-from jobfinder.ingest.sources.successfactors import fetch_successfactors
-from jobfinder.ingest.sources.taleo import fetch_taleo
-from jobfinder.ingest.sources.workable import fetch_workable
-from jobfinder.ingest.sources.workday import fetch_workday
+# The old __init__ was the registry, so it exported every fetcher it registered too.
+from jobfinder.integrations.ats.registry import (  # noqa: F401
+    ATS_FETCHERS,
+    PROBE_FETCHERS,
+    Fetcher,
+    fetch_ashby,
+    fetch_bamboohr,
+    fetch_eightfold,
+    fetch_greenhouse,
+    fetch_icims,
+    fetch_lever,
+    fetch_oracle_hcm,
+    fetch_phenom,
+    fetch_recruitee,
+    fetch_smartrecruiters,
+    fetch_successfactors,
+    fetch_taleo,
+    fetch_workable,
+    fetch_workday,
+)
 
-Fetcher = Callable[[httpx.AsyncClient, str, str], Awaitable[list[JobPosting]]]
-
-# ATS name (as stored in companies.ats) -> fetcher(client, slug, company_name)
-ATS_FETCHERS: dict[str, Fetcher] = {
-    "greenhouse": fetch_greenhouse,
-    "lever": fetch_lever,
-    "ashby": fetch_ashby,
-    "smartrecruiters": fetch_smartrecruiters,
-    "workable": fetch_workable,
-    "recruitee": fetch_recruitee,
-    "bamboohr": fetch_bamboohr,
-    "workday": fetch_workday,
-    "phenom": fetch_phenom,
-    "oracle_hcm": fetch_oracle_hcm,
-    "successfactors": fetch_successfactors,
-    "icims": fetch_icims,
-    "eightfold": fetch_eightfold,
-    "taleo": fetch_taleo,
-}
-
-# Cheap existence probes (no per-posting detail requests) for the ATSes whose full fetch fans out; others reuse the full fetcher.
-PROBE_FETCHERS: dict[str, Fetcher] = {
-    **ATS_FETCHERS,
-    "smartrecruiters": partial(fetch_smartrecruiters, list_only=True),
-    "bamboohr": partial(fetch_bamboohr, list_only=True),
-    "workday": partial(fetch_workday, list_only=True),
-    "phenom": partial(fetch_phenom, list_only=True),
-    "oracle_hcm": partial(fetch_oracle_hcm, list_only=True),
-    "successfactors": partial(fetch_successfactors, list_only=True),
-    "icims": partial(fetch_icims, list_only=True),
-    "eightfold": partial(fetch_eightfold, list_only=True),
-    "taleo": partial(fetch_taleo, list_only=True),
-}
+for _info in pkgutil.iter_modules(ats.__path__):
+    alias(f"{__name__}.{_info.name}", f"{ats.__name__}.{_info.name}")
+alias(f"{__name__}.usajobs", "jobfinder.integrations.usajobs")
+alias(f"{__name__}.jobspy_source", "jobfinder.integrations.jobspy")

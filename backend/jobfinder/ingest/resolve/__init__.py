@@ -8,10 +8,8 @@ is private. If no board turns up but a rung found the posting itself, that one j
 import dataclasses
 import hashlib
 import logging
-import re
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
-from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 import sqlalchemy as sa
@@ -19,22 +17,28 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jobfinder.core.http import USER_AGENT
+from jobfinder.core.urls import (  # noqa: F401  (re-exported: the API and tests import them from here)
+    MAX_URL_CHARS,
+    BadLink,
+    clean_url,
+    registrable_domain,
+)
 from jobfinder.ingest.base import JobPosting
-from jobfinder.ingest.discovery.robots import PoliteFetcher
 from jobfinder.ingest.http_safety import SafeResponse
 from jobfinder.ingest.resolve.ladder import BoardHit, RecipeHit, ResolveContext, SingleJob
+from jobfinder.ingest.resolve.names import name_from_domain, name_from_slug
 from jobfinder.ingest.resolve.rungs import RUNGS
 from jobfinder.ingest.service import ingest_company, upsert_postings
-from jobfinder.ingest.sources.custom import refusal_for_url, refusal_message, site_for_url
 from jobfinder.ingest.validate import SLUG_RE, add_board
+from jobfinder.integrations.ats.custom import refusal_for_url, refusal_message, site_for_url
+from jobfinder.integrations.robots import PoliteFetcher
 from jobfinder.models import Company, Job, JobLink
 
 if TYPE_CHECKING:
-    from jobfinder.ai.tasks import AITasks
+    from jobfinder.integrations.claude.tasks import AITasks
 
 log = logging.getLogger("jobfinder.resolve")
 
-MAX_URL_CHARS = 2048
 SUPPORTED = (
     "Greenhouse, Lever, Ashby, Workable, SmartRecruiters, Recruitee, BambooHR, Workday, iCIMS, "
     "Oracle Recruiting, SuccessFactors, Eightfold, Phenom and Taleo"
@@ -46,63 +50,6 @@ UNSUPPORTED = (
 SINGLE_ONLY = "We saved this job, but couldn't find the rest of the company's job board yet."
 _HEADERS = {"User-Agent": USER_AGENT}
 LINK_SOURCE = "link"  # Job.source for a pasted posting kept on its own (no board)
-
-
-class BadLink(ValueError):
-    """The pasted text is not a URL we accept. The message is safe to show the user."""
-
-
-def clean_url(raw: str) -> str:
-    """Normalise a pasted job URL, or raise BadLink. Never fetched here; this is input hygiene only:
-    http(s) only, no credentials, no control characters, bounded length, fragment dropped."""
-    url = (raw or "").strip()
-    if not url or len(url) > MAX_URL_CHARS:
-        raise BadLink(f"Paste a job link of at most {MAX_URL_CHARS} characters.")
-    if re.search(r"[\x00-\x20\x7f]", url):
-        raise BadLink("That link contains spaces or control characters.")
-    try:
-        parts = urlsplit(url)
-        host = parts.hostname
-    except ValueError as e:
-        raise BadLink("That doesn't look like a link.") from e
-    if parts.scheme.lower() not in ("http", "https") or not host:
-        raise BadLink("Only http(s) job links are supported.")
-    if parts.username is not None or parts.password is not None:
-        raise BadLink("Links with a username or password in them are not accepted.")
-    return urlunsplit((parts.scheme.lower(), parts.netloc.lower(), parts.path, parts.query, ""))
-
-
-def name_from_slug(ats: str, slug: str) -> str:
-    """A readable company name from the board slug ('acme-robotics' -> 'Acme Robotics'). Admins can rename."""
-    if ats == "oracle_hcm":  # "eeho.fa.us2__CX_45001": only the pod name says anything about the company
-        return name_from_slug("", slug.split(".")[0])
-    if "__" in slug:  # composite custom-domain key "careers.acme.com__us__en" -> name from the domain
-        return name_from_domain(registrable_domain("https://" + slug.split("__")[0]))
-    base = slug.split(".")[0] if ats == "workday" else slug
-    if ats == "successfactors":  # "careers.acme.com__brand" -> the brand, else the domain's name
-        host, _, brand = slug.partition("__")
-        base = brand or registrable_domain(f"https://{host}/").split(".")[0]
-    if ats == "icims":  # "careers-acme-corp" -> "acme-corp" (the label's prefix is the portal kind)
-        base = slug.split("-", 1)[-1]
-    if ats == "eightfold":  # "host__domain": the tenant domain names the company
-        base = slug.rsplit("__", 1)[-1].split(".")[0]
-    words = [w for w in re.split(r"[-_.\s]+", base) if w]
-    return (" ".join(w if w.isupper() else w.capitalize() for w in words) or slug)[:200]
-
-
-def name_from_domain(domain: str) -> str:
-    """'acme-robotics.com' -> 'Acme Robotics'."""
-    return name_from_slug("", domain.split(".")[0]) if domain else "Unknown company"
-
-
-def registrable_domain(url: str) -> str:
-    """Best-effort registrable domain ('careers.acme.co.uk' -> 'acme.co.uk'). No public-suffix list, so
-    common two-level suffixes are special-cased; good enough for naming and namespacing recipe boards."""
-    host = (urlsplit(url).hostname or "").lower().rstrip(".")
-    parts = host.split(".")
-    if len(parts) >= 3 and parts[-2] in ("co", "com", "ac", "org", "net", "gov", "edu") and len(parts[-1]) == 2:
-        return ".".join(parts[-3:])
-    return ".".join(parts[-2:])
 
 
 async def existing_board(db: AsyncSession, ats: str, slug: str) -> Company | None:

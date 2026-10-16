@@ -30,6 +30,8 @@ from jobfinder.ingest.base import (
     parse_salary_range,
     safe_http_url,
 )
+from jobfinder.ingest.http_safety import TEXT_TYPES, FetchError, safe_fetch
+from jobfinder.integrations.robots import PoliteFetcher
 
 SUFFIX = ".icims.com"
 SITEMAP = "https://{host}/sitemap.xml"
@@ -288,9 +290,6 @@ class _PortalRobots:
 
 
 def _transport(client) -> tuple[httpx.AsyncClient, _PortalRobots]:
-    # imported here: http_safety -> discovery.robots -> discovery -> validate -> sources would be a cycle
-    from jobfinder.ingest.discovery.robots import PoliteFetcher
-
     # discovery probes pass a robots-checking wrapper (get/post only); fetch through its real client instead
     fetcher = getattr(client, "_fetcher", None)
     if isinstance(fetcher, PoliteFetcher):
@@ -301,8 +300,6 @@ def _transport(client) -> tuple[httpx.AsyncClient, _PortalRobots]:
 async def _get(client: httpx.AsyncClient, url: str, robots: _PortalRobots, max_bytes: int = 2_000_000) -> str:
     """Fetch one portal page. HTTP errors surface as httpx.HTTPStatusError (so a 404 reads as "board not
     found"); a redirect off *.icims.com raises NotIcimsBoard; robots/SSRF refusals raise FetchError."""
-    from jobfinder.ingest.http_safety import TEXT_TYPES, safe_fetch
-
     r = await safe_fetch(client, url, robots=robots, accept=TEXT_TYPES, max_bytes=max_bytes,  # type: ignore[arg-type]
                          raise_for_status=False)
     if r.status >= 400:
@@ -327,8 +324,6 @@ async def fetch_icims(
     client: httpx.AsyncClient, slug: str, company_name: str, list_only: bool = False
 ) -> list[JobPosting]:
     """list_only reads just the job list (first search page, or the sitemap) and skips the detail pages."""
-    from jobfinder.ingest.http_safety import FetchError
-
     host = parse_slug(slug)
     client, robots = _transport(client)
     try:
