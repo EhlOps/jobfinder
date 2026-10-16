@@ -7,7 +7,7 @@
     clock     "now", as something tests can replace
     logging   process log setup
     security  password hashing and random tokens
-    context   AppContext: the infrastructure a process shares, built in one place
+    context   AppContext: the infrastructure a process shares (jobfinder/context.py adds the integrations)
     urls      hostname and link helpers
     text      tokenizing and whitespace helpers
 

@@ -1,0 +1,99 @@
+# The opt-in headless browser (compose profile "renderer", resolver rung 4.5): claims only render_*
+# tasks. Off by default (replicas 0), as in compose. To turn it on, patch replicas to 1 in the overlay
+# and merge RENDERER_ENABLED=true into its jobfinder-config, so the worker starts queueing render tasks.
+# Like compose, it gets only the database settings: no Secret (the image bakes in a placeholder
+# SECRET_KEY, since it signs nothing), no volumes, a read-only root and a /tmp scratch dir.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: renderer
+  labels:
+    jobfinder.io/rollout: app
+spec:
+  replicas: 0
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: renderer
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: renderer
+        app.kubernetes.io/component: renderer
+        jobfinder.io/postgres-client: "true"
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        # The image's `jobfinder` user (backend/Dockerfile.renderer).
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: renderer
+          image: ghcr.io/ehlops/jobfinder-renderer
+          env:
+            - name: POSTGRES_HOST
+              valueFrom:
+                configMapKeyRef: {name: jobfinder-config, key: POSTGRES_HOST}
+            - name: POSTGRES_PORT
+              valueFrom:
+                configMapKeyRef: {name: jobfinder-config, key: POSTGRES_PORT}
+            - name: POSTGRES_USER
+              valueFrom:
+                configMapKeyRef: {name: jobfinder-config, key: POSTGRES_USER}
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef: {name: jobfinder-config, key: POSTGRES_DB}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: POSTGRES_PASSWORD
+            - name: LOG_LEVEL
+              valueFrom:
+                configMapKeyRef: {name: jobfinder-config, key: LOG_LEVEL}
+            - name: RENDERER_CONCURRENCY
+              valueFrom:
+                configMapKeyRef: {name: jobfinder-config, key: RENDERER_CONCURRENCY}
+            - name: RENDERER_POLL_SECONDS
+              valueFrom:
+                configMapKeyRef: {name: jobfinder-config, key: RENDERER_POLL_SECONDS}
+            # Chromium writes its profile under $HOME.
+            - name: HOME
+              value: /tmp
+          # No HTTP endpoint; tini exits when the renderer dies. See worker.yaml.
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "grep -qs 'jobfinder[.]renderer' /proc/[0-9]*/cmdline"]
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          # Compose: cpus 1.5, mem_limit 1536m.
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              cpu: 1500m
+              memory: 1536Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            # Chromium's shared memory (compose: shm_size 256m).
+            - name: shm
+              mountPath: /dev/shm
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 512Mi
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 256Mi

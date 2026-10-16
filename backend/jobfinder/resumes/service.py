@@ -5,7 +5,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jobfinder.ai.schemas import TailoredResume
-from jobfinder.ai.tasks import AITasks
+from jobfinder.integrations.claude.tasks import AITasks
 from jobfinder.matching.service import job_payload
 from jobfinder.models import Company, Job, JobMatch, Profile, ProfileFact
 from jobfinder.storage.documents import MATCH_TAG, DocumentStore, is_tailored

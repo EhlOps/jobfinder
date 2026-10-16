@@ -5,9 +5,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from html.parser import HTMLParser
 
-from jobfinder.core.urls import (
-    safe_http_url,  # noqa: F401  (re-exported: every fetcher imports it from here)
-)
+# safe_http_url moved to core (the API schemas use it too); re-exported for ingest code that imports it from here
+from jobfinder.core.urls import safe_http_url  # noqa: F401
 
 MAX_DESCRIPTION_CHARS = 20_000
 

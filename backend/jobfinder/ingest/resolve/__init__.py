@@ -35,7 +35,7 @@ from jobfinder.integrations.robots import PoliteFetcher
 from jobfinder.models import Company, Job, JobLink
 
 if TYPE_CHECKING:
-    from jobfinder.ai.tasks import AITasks
+    from jobfinder.integrations.claude.tasks import AITasks
 
 log = logging.getLogger("jobfinder.resolve")
 

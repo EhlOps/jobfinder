@@ -1,40 +1,30 @@
 """Connect Claude from the web app: the admin pastes the token from `claude setup-token`."""
 from datetime import UTC, datetime, timedelta
-from typing import Literal
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from jobfinder.ai import credentials
 from jobfinder.api.deps import AdminUser, CurrentUser, DbSession
 from jobfinder.core.config import settings
+from jobfinder.integrations.claude import credentials
 from jobfinder.matching.service import UNLIMITED, remaining_budget
 from jobfinder.models import AICall, Company, Job, PlannerState, Profile, Task, User
 from jobfinder.scheduling import planner, queue
+from jobfinder.schemas.ai_admin import (
+    ActiveTask,
+    AiStatus,
+    IngestCadence,
+    LastCall,
+    Schedule,
+    ScheduleRow,
+    SourceRow,
+    TierCount,
+    TokenIn,
+)
+from jobfinder.schemas.common import TaskRef
 
 router = APIRouter(tags=["ai"])
-
-
-class LastCall(BaseModel):
-    ok: bool
-    error_kind: str | None
-    at: str
-
-
-class AiStatus(BaseModel):
-    configured: bool
-    source: Literal["file", "env", "none"]
-    last_call: LastCall | None
-
-
-class TokenIn(BaseModel):
-    token: str
-
-
-class TaskRef(BaseModel):
-    task_id: int
 
 
 @router.get("/api/ai/status", response_model=AiStatus)
@@ -65,49 +55,6 @@ async def check(admin: AdminUser, db: DbSession):
 @router.delete("/api/admin/ai/token", status_code=204)
 async def delete_token(_: AdminUser):
     credentials.delete_token()
-
-
-class ActiveTask(BaseModel):
-    kind: str
-    status: str
-    run_after: str
-
-
-class ScheduleRow(BaseModel):
-    user_id: int
-    email: str
-    last_seen_at: str | None
-    last_run_at: str | None
-    last_scored: int | None
-    pending: int | None
-    budget_left: int | None  # null = no daily limit
-    last_planned_at: str | None
-    next_due_at: str | None
-    reason: str
-    skip: str
-    active: list[ActiveTask]
-
-
-class TierCount(BaseModel):
-    tier: int | None  # coveted tier; null = untiered
-    boards: int
-    due: int  # fetched on the next tick
-
-
-class IngestCadence(BaseModel):
-    adaptive: bool
-    tick_minutes: int
-    interval_hours: int  # the fixed cadence when not adaptive (and for jobspy/usajobs)
-    tiers: list[TierCount]
-
-
-class Schedule(BaseModel):
-    backoff_until: str | None
-    in_flight: int
-    max_per_tick: int
-    next_tick: str | None
-    users: list[ScheduleRow]
-    ingest: IngestCadence
 
 
 async def _ingest_cadence(db: AsyncSession, now: datetime) -> IngestCadence:
@@ -161,22 +108,6 @@ async def schedule(_: AdminUser, db: DbSession):
         max_per_tick=settings.planner_max_per_tick, next_tick=_iso(next_tick), users=users,
         ingest=await _ingest_cadence(db, now),
     )
-
-
-class SourceRow(BaseModel):
-    id: int
-    name: str
-    ats: str
-    slug: str
-    origin: str
-    enabled: bool
-    consecutive_failures: int
-    last_success_at: str | None
-    last_fetched_at: str | None
-    last_error: str | None
-    disabled_reason: str | None
-    validated_at: str | None
-    job_count: int
 
 
 def _source_row(c: Company, job_count: int) -> SourceRow:

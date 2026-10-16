@@ -1,4 +1,5 @@
 # Production: keeps the base namespace `jobfinder`.
+# Not applied before the cutover (#47); production keeps running on compose until then.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
@@ -9,11 +10,23 @@ labels:
   - pairs:
       app.kubernetes.io/instance: prod
 
-# Placeholders for later issues:
-# - #47: sealed-secret-postgres.yaml (postgres-credentials, sealed for the jobfinder namespace).
-#   Until it exists the prod overlay renders but postgres can't start; prod
-#   is not applied before the cutover.
-# - #43: the app's sealed secrets, sealed for the jobfinder namespace.
-# - #43: `images:` entries pinning ghcr.io/ehlops/jobfinder-* to a commit SHA,
-#   and a configMapGenerator built from .env.defaults.
-# - #47: cutover from compose; host Caddy then proxies to Traefik on :8280.
+# The default tag for a bare `kubectl apply -k`; deploy.sh pins each image to sha-<commit> (#43).
+images:
+  - name: ghcr.io/ehlops/jobfinder-api
+    newTag: main
+  - name: ghcr.io/ehlops/jobfinder-worker
+    newTag: main
+  - name: ghcr.io/ehlops/jobfinder-renderer
+    newTag: main
+  - name: ghcr.io/ehlops/jobfinder-web
+    newTag: main
+
+# Placeholders for the cutover (#47). Until they exist the prod overlay renders but postgres and the
+# app can't start:
+# - sealed-secret-postgres.yaml: postgres-credentials, sealed for the jobfinder namespace.
+# - sealed-secret-env.yaml: jobfinder-env (SECRET_KEY = compose's, CLAUDE_CODE_OAUTH_TOKEN), sealed
+#   for the jobfinder namespace.
+# - configMapGenerator (behavior: merge): PUBLIC_BASE_URL and the SMTP settings of backend/.env.
+# - a patch for smtp's RELAYHOST (+ credentials from a SealedSecret), and a host rule on Ingress web
+#   (only one namespace may keep the hostless rule; see base/app/ingress.yaml).
+# - host Caddy then proxies the prod hostname to Traefik on :8280.

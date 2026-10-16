@@ -5,7 +5,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from jobfinder.ai.tasks import TONES, AITasks
+from jobfinder.integrations.claude.tasks import TONES, AITasks
 from jobfinder.matching.service import job_payload
 from jobfinder.models import Company, CoverLetter, Job, JobMatch, Profile, ProfileFact
 

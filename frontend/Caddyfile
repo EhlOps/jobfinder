@@ -3,12 +3,15 @@
 #   dev:  SITE_ADDRESS unset -> ":80", plain HTTP, no certificates
 #   prod: SITE_ADDRESS=jobs.example.com -> HTTPS via Let's Encrypt, HTTP redirects to HTTPS
 #   behind the host's Caddy: SITE_ADDRESS unset, the host Caddy terminates TLS and proxies to 127.0.0.1:8180
-# Trusted proxies are the Docker bridge range only: published ports reach this container from the
-# bridge gateway, i.e. from the host's Caddy, which discards client-sent X-Forwarded-For and sets the
-# real client IP. That IP is kept for the api (the rate limiter relies on it); anyone else's is replaced.
+#   k3s (#43): SITE_ADDRESS=:8080 (non-root, no TLS), behind host Caddy -> Traefik -> this container
+# Trusted proxies (TRUSTED_PROXIES, default the Docker bridge range): in compose, published ports reach
+# this container from the bridge gateway, i.e. from the host's Caddy, which discards client-sent
+# X-Forwarded-For and sets the real client IP. That IP is kept for the api (the rate limiter relies on
+# it); anyone else's is replaced. On k3s the hop before this pod is Traefik, so the k8s manifests set
+# the pod CIDR, TRUSTED_PROXIES=10.42.0.0/16 (Traefik in turn trusts only host Caddy's hop).
 {
 	servers {
-		trusted_proxies static 172.16.0.0/12
+		trusted_proxies static {$TRUSTED_PROXIES:172.16.0.0/12}
 	}
 }
 

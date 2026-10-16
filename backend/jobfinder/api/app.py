@@ -1,6 +1,6 @@
 """The FastAPI app factory: `uvicorn jobfinder.api.app:create_app --factory`.
 
-Settings and the context (core/context.py) are resolved when the app is created, so a missing key
+Settings and the context (jobfinder/context.py) are resolved when the app is created, so a missing key
 stops startup before anything is served. Building the context does no I/O; tests pass their own.
 """
 from collections.abc import AsyncIterator
@@ -13,6 +13,7 @@ from jobfinder.api import (
     cover_letters,
     coverage,
     documents,
+    health,
     interview,
     job_links,
     links,
@@ -25,9 +26,9 @@ from jobfinder.api import (
 )
 from jobfinder.api import settings as settings_api
 from jobfinder.auth import routes as auth_routes
+from jobfinder.context import AppContext, build_context, default_context
 from jobfinder.core import errors
 from jobfinder.core.config import Settings
-from jobfinder.core.context import AppContext, build_context, default_context
 
 ROUTERS = (
     auth_routes.router,
@@ -48,10 +49,6 @@ ROUTERS = (
 )
 
 
-async def healthz() -> dict[str, str]:
-    return {"status": "ok"}
-
-
 def create_app(settings: Settings | None = None, ctx: AppContext | None = None) -> FastAPI:
     """With `ctx` (tests), the app uses that context and leaves closing it to the caller. Without, it
     builds one from `settings`, or takes the process's own (`default_context`), and the lifespan
@@ -69,8 +66,10 @@ def create_app(settings: Settings | None = None, ctx: AppContext | None = None) 
 
     app = FastAPI(title="JobFinder", lifespan=lifespan)
     app.state.ctx = context
+    app.state.alembic = health.alembic_revisions()
     errors.install(app)
     for router in ROUTERS:
         app.include_router(router)
-    app.add_api_route("/healthz", healthz, methods=["GET"])
+    app.add_api_route("/healthz", health.healthz, methods=["GET"])
+    app.add_api_route("/readyz", health.readyz, methods=["GET"])
     return app

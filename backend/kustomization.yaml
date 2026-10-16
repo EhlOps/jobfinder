@@ -1,0 +1,12 @@
+# k3s (#43): the ConfigMap `jobfinder-config`, holding every setting's default straight from
+# .env.defaults. It lives here, not under deploy/k8s, because kustomize only reads files in or below
+# a kustomization's own directory (a symlink is refused too), and a copy could drift from the file
+# the app reads. deploy/k8s/base/app pulls this directory in and overrides the keys k8s needs.
+# kustomize keeps quotes literally, which is why base/app overrides EMAIL_FROM (the one quoted value).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+configMapGenerator:
+  - name: jobfinder-config
+    envs:
+      - .env.defaults

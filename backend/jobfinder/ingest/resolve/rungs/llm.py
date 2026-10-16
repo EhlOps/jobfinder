@@ -20,8 +20,6 @@ from urllib.parse import urljoin
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from jobfinder.ai.claude_code import AIError
-from jobfinder.ai.tasks import AITasks
 from jobfinder.core.config import settings
 from jobfinder.core.urls import registrable_domain
 from jobfinder.ingest.base import JobPosting, safe_http_url
@@ -30,6 +28,8 @@ from jobfinder.ingest.resolve.ladder import RecipeHit, ResolveContext
 from jobfinder.ingest.resolve.names import name_from_domain
 from jobfinder.ingest.resolve.rungs.listing import _APIISH, _QUOTED_URL, _STATIC
 from jobfinder.ingest.service import deactivate_missing, upsert_postings
+from jobfinder.integrations.claude.claude_code import AIError
+from jobfinder.integrations.claude.tasks import AITasks
 from jobfinder.integrations.recipes import Recipe, RecipeError, health, run_recipe, validate_recipe
 from jobfinder.models import Company
 

@@ -20,7 +20,8 @@ resources:
   - postgres/        # Postgres 16 StatefulSet, Service, NetworkPolicy (app pods only)
   - valkey/          # valkey StatefulSet (AOF) for the task streams (#48)
   - storage/         # PVCs: store, claude-auth (mounted by the app in #43)
+  # #43: today's app (web, api, worker, renderer, smtp, the migrate Job, the Ingress). Each overlay
+  # supplies the Secret `jobfinder-env` as a SealedSecret and pins the images; see deploy/k8s/README.md.
+  - app/
   # Backups and restore are deferred (owner, #40 comment of 2026-10-15); deploy/backup.sh
   # still covers the compose production stack.
-  # Placeholders for later issues (add the directories as they land):
-  # - app/             # #43: api, scheduler, worker-io, worker-ai, renderer, web

@@ -10,16 +10,25 @@ systemd Caddy stays the TLS edge on 80/443.
 ```
 deploy/k8s/
   base/                 # shared by every environment; never applied directly
-    kustomization.yaml  # common labels; placeholder for the app (#43)
+    kustomization.yaml  # common labels
     namespace.yaml      # Namespace `jobfinder`
     postgres/           # #40: Postgres 16 StatefulSet, Service, NetworkPolicy
     valkey/             # #40: valkey StatefulSet (AOF), Service, NetworkPolicy
     storage/            # #40: PVCs store, claude-auth
+    app/                # #43: web, api, worker, renderer, smtp, migrate Job, Ingress, config overrides
   overlays/
-    staging/            # namespace `jobfinder-staging`; sealed-secret-postgres.yaml
-    prod/               # namespace `jobfinder` (the base default)
+    staging/            # namespace `jobfinder-staging`; sealed secrets, mailpit, staging config
+    prod/               # namespace `jobfinder` (the base default); placeholders until #47
   hello/                # #38 smoke test: whoami behind Traefik at /healthz
+  deploy.sh             # #43: pin images, migrate, roll out (deploy.sh <overlay> sha-<commit>)
+  deploy-staging-ssh.sh # #43: SSH forced command GitHub Actions deploys staging through
+  staging-restore.sh    # #43: copy prod's compose database into staging
 ```
+
+The app's ConfigMap comes from `backend/kustomization.yaml`, which turns
+`backend/.env.defaults` into `jobfinder-config` (kustomize can only read files
+in or below a kustomization's directory). `base/app` and each overlay merge
+their overrides into it.
 
 **Namespaces.** Prod uses `jobfinder`; staging uses `jobfinder-staging` so both
 can run side by side on one node with identical object names. The overlay's
@@ -34,8 +43,13 @@ touches an environment.
 immutable, so changing a common label later must not touch them.
 
 **Images.** GHCR images (`ghcr.io/ehlops/jobfinder-*`) are public, so no
-`imagePullSecret` is needed. Overlays will pin them by commit SHA with an
-`images:` block (#43).
+`imagePullSecret` is needed. Each overlay's `images:` block names a default
+tag (`dev`/`main`); `deploy.sh` layers a pin per image on top at deploy time:
+`sha-<commit>` when that commit built the image, otherwise the image the
+Deployment already runs, otherwise the current digest of `dev`/`main`. Deploy
+with `deploy.sh`, not a bare `kubectl apply -k`, which would deploy the moving
+default tag and skip the migrate-before-rollout ordering. Runbook:
+`docs/k3s.md`, "Staging".
 
 **Data services.** Postgres and valkey only accept pods in the same namespace
 labelled `jobfinder.io/postgres-client: "true"` / `jobfinder.io/valkey-client:
@@ -68,6 +82,10 @@ kubectl apply -k deploy/k8s/overlays/staging
 kubectl diff  -k deploy/k8s/overlays/prod                       # before touching prod
 ```
 
+That is fine for the data services and for checking a change. To ship the app,
+use `deploy/k8s/deploy.sh staging sha-<commit>`: it pins the images and runs
+the migrate Job before any Deployment rolls (`docs/k3s.md`, "Staging").
+
 ### Smoke test
 
 ```sh
@@ -98,7 +116,7 @@ they were sealed for.
    | kubeseal --format yaml \
        --controller-namespace kube-system \
        --controller-name sealed-secrets-controller \
-   > deploy/k8s/overlays/staging/sealed-secret.yaml
+   > deploy/k8s/overlays/staging/sealed-secret-env.yaml
    ```
 
    The controller flags shown are kubeseal's defaults; change them if the
@@ -109,7 +127,8 @@ they were sealed for.
    a SealedSecret sealed for staging will not decrypt in prod, so seal once per
    overlay.
 
-2. Add `sealed-secret.yaml` to that overlay's `resources:` and commit it.
+2. Add the file to that overlay's `resources:` (staging already lists
+   `sealed-secret-env.yaml` and `sealed-secret-postgres.yaml`) and commit it.
 3. Apply the overlay; the controller creates the real `Secret` in-cluster.
 
 To seal offline (e.g. on a laptop without cluster access), fetch the public
@@ -120,4 +139,22 @@ out-of-band (see `docs/k3s.md`), or sealed secrets cannot be decrypted after a
 cluster rebuild.
 
 To rotate a value, re-run step 1 and commit the new file. Add
-`--merge-into sealed-secret.yaml` to `kubeseal` to update a single key.
+`--merge-into <file>` to `kubeseal` to update a single key.
+
+**What the app's Secret holds.** `jobfinder-env` carries only `SECRET_KEY` and
+`CLAUDE_CODE_OAUTH_TOKEN`; the pods take `POSTGRES_PASSWORD` from
+`postgres-credentials`, so the database password lives in one Secret. Staging's
+was sealed like this (the token is the one saved on prod's admin "AI setup"
+page, which lives in the compose `claude-auth` volume; `backend/.env` has none):
+
+```sh
+kubectl create secret generic jobfinder-env --namespace jobfinder-staging \
+  --from-literal=SECRET_KEY="$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')" \
+  --from-literal=CLAUDE_CODE_OAUTH_TOKEN="$(docker exec jobfinder-api-1 cat /data/claude/oauth_token)" \
+  --dry-run=client -o yaml \
+| kubeseal --format yaml --controller-namespace kube-system --controller-name sealed-secrets-controller \
+> deploy/k8s/overlays/staging/sealed-secret-env.yaml
+```
+
+Pods read the Secret at start: after applying a new one, `kubectl -n
+jobfinder-staging rollout restart deploy/api deploy/worker`.
