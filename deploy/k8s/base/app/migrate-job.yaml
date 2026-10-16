@@ -1,0 +1,62 @@
+# `alembic upgrade head`, once per deploy, before any app pod rolls (compose ran it in the api's
+# entrypoint on every start; with two api replicas they would race). deploy/k8s/deploy.sh deletes the
+# previous Job (a Job's pod template is immutable), applies this one with the new api image, waits
+# for it, and only then applies the Deployments; a failed migration stops the deploy there.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: migrate
+spec:
+  # One retry for a transient failure (e.g. postgres restarting); a broken migration fails twice.
+  backoffLimit: 1
+  activeDeadlineSeconds: 900
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: migrate
+        app.kubernetes.io/component: migrate
+        jobfinder.io/postgres-client: "true"
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: migrate
+          # The api image: it ships alembic.ini and alembic/ (deploy.sh pins the same tag as the api).
+          image: ghcr.io/ehlops/jobfinder-api
+          # Bypasses docker-entrypoint.sh; this is the only thing the pod does.
+          command: ["alembic", "upgrade", "head"]
+          envFrom:
+            - configMapRef:
+                name: jobfinder-config
+            - secretRef:
+                name: jobfinder-env
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: POSTGRES_PASSWORD
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi

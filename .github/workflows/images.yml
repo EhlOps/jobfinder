@@ -137,3 +137,13 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,scope=${{ matrix.name }},mode=max
+
+  # Pushes to dev roll staging forward once every image of the commit is in GHCR (#43). Skipped with
+  # build (nothing changed to build) and on any build failure, so staging never gets half a commit.
+  deploy-staging:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/deploy-staging.yml
+    secrets: inherit

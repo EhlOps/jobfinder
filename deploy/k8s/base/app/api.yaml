@@ -1,0 +1,121 @@
+# The FastAPI app (compose: api). Two replicas: it is stateless apart from the two RWO volumes, which
+# every pod on this single node can mount. Only the web pod talks to it (Caddy proxies /api/* to api:8000).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  labels:
+    # deploy.sh applies the objects labelled rollout=app only after the migrate Job succeeded.
+    jobfinder.io/rollout: app
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # Never below two ready pods; a new pod joins only once /readyz passes.
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: api
+        app.kubernetes.io/component: api
+        jobfinder.io/postgres-client: "true"
+        jobfinder.io/valkey-client: "true"   # the task streams (#48)
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        # The image's `jobfinder` user (backend/Dockerfile).
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: api
+          image: ghcr.io/ehlops/jobfinder-api
+          # The image's entrypoint and command (uvicorn --proxy-headers); MIGRATE_ON_START=false in the
+          # ConfigMap makes the entrypoint skip alembic.
+          ports:
+            - name: http
+              containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: jobfinder-config
+            - secretRef:
+                name: jobfinder-env
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: POSTGRES_PASSWORD
+          # Slow first start (imports, settings) without a long liveness delay afterwards.
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 2
+            failureThreshold: 30
+          # Traffic only while the database answers and its schema is at this image's alembic head.
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          # Liveness never checks the database: an outage must not restart every pod in a loop.
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: store
+              mountPath: /data/store
+            - name: claude-auth
+              mountPath: /data/claude
+            # Upload spooling and anything else that wants a temp dir.
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: store
+          persistentVolumeClaim:
+            claimName: store
+        - name: claude-auth
+          persistentVolumeClaim:
+            claimName: claude-auth
+        - name: tmp
+          emptyDir:
+            sizeLimit: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+spec:
+  selector:
+    app.kubernetes.io/name: api
+  ports:
+    # web's Caddyfile proxies to api:8000.
+    - name: http
+      port: 8000
+      targetPort: http

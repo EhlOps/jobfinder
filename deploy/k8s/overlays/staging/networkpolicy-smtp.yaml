@@ -1,0 +1,32 @@
+# Staging's postfix may talk to mailpit and DNS, nothing else: even a misconfigured RELAYHOST (or an
+# empty one, which means direct delivery) cannot mail a real address from a copy of prod's users.
+# Enforced by k3s's embedded network policy controller (kube-router), like the #40 policies.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: smtp-egress
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: smtp
+  policyTypes: ["Egress"]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: mailpit
+      ports:
+        - protocol: TCP
+          port: 1025
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53

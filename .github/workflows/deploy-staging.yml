@@ -1,0 +1,115 @@
+# Deploys dev to staging (k3s namespace jobfinder-staging, https://staging.ehlops.com) once `images`
+# has published that commit's images (#43): images.yml calls this workflow as its last job, on pushes
+# to dev only. (A workflow_run trigger would only fire once this file is on the default branch, main.)
+# The runner only SSHes in: the key's forced command (deploy/k8s/deploy-staging-ssh.sh, installed on
+# the host) validates the tag, exports that commit's manifests and runs
+# deploy/k8s/deploy.sh staging sha-<short>. No cluster credentials leave the host.
+#
+# Images that the commit didn't rebuild (images.yml filters by path) keep the image staging already
+# runs; deploy.sh explains the rule. A manifest-only change on dev builds no images, so deploy it with
+# "Run workflow" on dev (it defaults to the head of the branch it runs on; the host refuses commits
+# that aren't on dev).
+#
+# Secrets (repo settings → Secrets and variables → Actions), set up per docs/k3s.md, "Staging":
+#   STAGING_SSH_KEY          private half of the deploy key (ed25519, no passphrase)
+#   STAGING_SSH_HOST         the host's address
+#   STAGING_SSH_USER         the account whose authorized_keys pins the forced command (opc)
+#   STAGING_SSH_KNOWN_HOSTS  optional: `ssh-keyscan -t ed25519 <host>` output; without it the host key
+#                            is trusted on first use for every run
+name: deploy-staging
+
+on:
+  workflow_call:
+    inputs:
+      sha:
+        description: "Commit to deploy; empty = the commit that triggered the caller"
+        type: string
+        required: false
+        default: ""
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "Commit on dev to deploy (7-40 hex); empty = the head of the chosen branch"
+        type: string
+        required: false
+        default: ""
+
+# One deploy at a time (a newer waiting run replaces an older waiting one); the forced command also
+# takes a lock on the host.
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: staging
+      url: https://staging.ehlops.com
+    steps:
+      # Until the owner has created the deploy key and secrets, skip quietly instead of failing.
+      - name: Check the secrets
+        id: ready
+        env:
+          SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+          SSH_HOST: ${{ secrets.STAGING_SSH_HOST }}
+          SSH_USER: ${{ secrets.STAGING_SSH_USER }}
+        run: |
+          if [ -n "$SSH_KEY" ] && [ -n "$SSH_HOST" ] && [ -n "$SSH_USER" ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::STAGING_SSH_KEY/HOST/USER are not all set; skipping the staging deploy"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Pick the tag
+        if: steps.ready.outputs.ok == 'true'
+        id: tag
+        env:
+          INPUT_SHA: ${{ inputs.sha }}
+        run: |
+          set -euo pipefail
+          sha=${INPUT_SHA:-$GITHUB_SHA}
+          if [[ ! $sha =~ ^[0-9a-f]{7,40}$ ]]; then
+            echo "::error::not a commit sha: $sha"; exit 1
+          fi
+          # docker/metadata-action's type=sha tag: the first 7 characters.
+          echo "tag=sha-${sha:0:7}" >> "$GITHUB_OUTPUT"
+          echo "Deploying sha-${sha:0:7}"
+
+      - name: SSH setup
+        if: steps.ready.outputs.ok == 'true'
+        env:
+          SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+          SSH_HOST: ${{ secrets.STAGING_SSH_HOST }}
+          KNOWN_HOSTS: ${{ secrets.STAGING_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          if [ -n "$KNOWN_HOSTS" ]; then
+            printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            echo "::warning::STAGING_SSH_KNOWN_HOSTS is not set; trusting the host key on first use"
+            ssh-keyscan -t ed25519 "$SSH_HOST" > ~/.ssh/known_hosts
+          fi
+
+      - name: Deploy
+        if: steps.ready.outputs.ok == 'true'
+        env:
+          SSH_HOST: ${{ secrets.STAGING_SSH_HOST }}
+          SSH_USER: ${{ secrets.STAGING_SSH_USER }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o ServerAliveInterval=30 -o ConnectTimeout=20 \
+            "$SSH_USER@$SSH_HOST" "$TAG"
+
+      - name: Clean up the key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key

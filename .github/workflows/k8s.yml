@@ -9,12 +9,18 @@ on:
     paths:
       - "deploy/k8s/**"
       - "deploy/k3s/manifests/**"
+      # The app's ConfigMap is generated from these (#43).
+      - "backend/kustomization.yaml"
+      - "backend/.env.defaults"
       - ".github/workflows/k8s.yml"
   push:
     branches: [main, dev]
     paths:
       - "deploy/k8s/**"
       - "deploy/k3s/manifests/**"
+      # The app's ConfigMap is generated from these (#43).
+      - "backend/kustomization.yaml"
+      - "backend/.env.defaults"
       - ".github/workflows/k8s.yml"
 
 concurrency:

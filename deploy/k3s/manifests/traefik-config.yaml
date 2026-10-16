@@ -19,6 +19,11 @@ spec:
         maxUnavailable: 1
     additionalArguments:
       - "--entryPoints.web.address=:8000/tcp"
+      # Keep host Caddy's X-Forwarded-For (the real client IP; the app's rate limiter needs it, #43).
+      # Connections to the 127.0.0.1:8280 hostPort are masqueraded by the CNI portmap rules, so
+      # Traefik sees them from cni0's address, 10.42.0.1; only the host can originate from it. Other
+      # pods keep their own IPs and stay untrusted: Traefik replaces whatever header they send.
+      - "--entryPoints.web.forwardedHeaders.trustedIPs=10.42.0.1/32"
     ports:
       web:
         hostPort: 8280

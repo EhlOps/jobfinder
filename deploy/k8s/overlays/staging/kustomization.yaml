@@ -1,5 +1,8 @@
 # Staging: same manifests as prod, isolated in its own namespace so both can
 # run side by side on the single node without name collisions.
+# Deploy with deploy/k8s/deploy.sh staging sha-<commit> (GitHub Actions does it after each dev build;
+# docs/k3s.md, "Staging"), not a bare `kubectl apply -k`: the script pins every image to an immutable
+# tag and runs the migrate Job before the Deployments roll.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
@@ -11,14 +14,72 @@ resources:
   - ../../base
   # postgres-credentials (POSTGRES_PASSWORD), sealed for jobfinder-staging (#40).
   - sealed-secret-postgres.yaml
+  # jobfinder-env (SECRET_KEY, CLAUDE_CODE_OAUTH_TOKEN), sealed for jobfinder-staging (#43).
+  - sealed-secret-env.yaml
+  # Staging email goes nowhere but this sink.
+  - mailpit.yaml
+  - networkpolicy-smtp.yaml
 
 labels:
   - pairs:
       app.kubernetes.io/instance: staging
 
-# Placeholders for later issues:
-# - #43: the app's sealed secrets, sealed for the jobfinder-staging namespace
-#   (a SealedSecret only decrypts in the namespace it was sealed for).
-# - #43: `images:` entries pinning ghcr.io/ehlops/jobfinder-* to a commit SHA,
-#   and a configMapGenerator built from .env.defaults.
-# - #43: replica / resource patches under `patches:`.
+# The default tag for a bare `kubectl apply -k`. deploy.sh replaces each one with sha-<commit>, or
+# with the image already running (or dev's digest) when that commit didn't rebuild it.
+images:
+  - name: ghcr.io/ehlops/jobfinder-api
+    newTag: dev
+  - name: ghcr.io/ehlops/jobfinder-worker
+    newTag: dev
+  - name: ghcr.io/ehlops/jobfinder-renderer
+    newTag: dev
+  - name: ghcr.io/ehlops/jobfinder-web
+    newTag: dev
+
+configMapGenerator:
+  - name: jobfinder-config
+    behavior: merge
+    literals:
+      - PUBLIC_BASE_URL=https://staging.ehlops.com
+      # Never a real mail server: straight to the sink, no auth, no TLS.
+      - SMTP_HOST=mailpit
+      - SMTP_PORT=1025
+      - SMTP_USER=
+      - SMTP_PASSWORD=
+      - SMTP_STARTTLS=false
+      - EMAIL_FROM=JobFinder staging <jobs@staging.ehlops.com>
+      # Staging shares prod's Claude subscription: the background planner stays off, so copied users
+      # don't spend it. Work someone starts in the staging UI (a cover letter, a match) still runs.
+      - PLANNER_MAX_PER_TICK=0
+
+patches:
+  # Postfix relays only to the sink (networkpolicy-smtp.yaml blocks everything else anyway).
+  - target:
+      kind: Deployment
+      name: smtp
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/env
+        value:
+          - name: ALLOWED_SENDER_DOMAINS
+            value: staging.ehlops.com localhost
+          - name: RELAYHOST
+            value: "[mailpit]:1025"
+  # The public hostname, in front of the base's hostless rule (host Caddy proxies it to :8280).
+  - target:
+      kind: Ingress
+      name: web
+    patch: |-
+      - op: add
+        path: /spec/rules/0
+        value:
+          host: staging.ehlops.com
+          http:
+            paths:
+              - path: /
+                pathType: Prefix
+                backend:
+                  service:
+                    name: web
+                    port:
+                      name: http
