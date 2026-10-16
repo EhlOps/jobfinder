@@ -19,7 +19,7 @@ from jobfinder.ingest.resolve.rungs.llm import LlmRung, endpoint_candidates
 from jobfinder.models import AICall, Company, Job, JobLink, Task
 from jobfinder.scheduling import handlers
 from tests.factories import make_user
-from tests.fakes import FakeClaude, fake_resolve_public
+from tests.fakes import FakeClaude, fake_resolve_public, handle
 
 PASTED = "https://careers.acme.com/jobs/4021"
 PAGE = """<html><head><title>Acme careers</title><style>.x{color:red}</style>
@@ -53,7 +53,7 @@ def public_dns(monkeypatch):
     monkeypatch.setattr(http_safety, "resolve_public", fake_resolve_public())
 
 
-def site(seen: list | None = None, jobs=JOBS, page=PAGE) -> httpx.AsyncClient:
+def site(web, seen: list | None = None, jobs=JOBS, page=PAGE) -> httpx.AsyncClient:
     def handler(request):
         if seen is not None:
             seen.append(request.headers.get("host", "") + request.url.raw_path.decode())
@@ -71,11 +71,12 @@ def site(seen: list | None = None, jobs=JOBS, page=PAGE) -> httpx.AsyncClient:
             return httpx.Response(200, html=page)
         return httpx.Response(404)
 
-    return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    handle(web, handler)
+    return httpx.AsyncClient()
 
 
-async def run_rung(fake, *, allow_llm=True, seen=None):
-    async with site(seen) as c:
+async def run_rung(web, fake, *, allow_llm=True, seen=None):
+    async with site(web, seen) as c:
         ctx = ResolveContext(PASTED, c, allow_llm=allow_llm, ai=AITasks(fake))
         return await LlmRung().run(ctx), ctx
 
@@ -191,9 +192,9 @@ def test_hostile_strings_as_paths_or_selectors_are_refused(payload):
 
 # --- the rung ------------------------------------------------------------------------------------------------
 
-async def test_rung_validates_and_returns_a_recipe_hit():
+async def test_rung_validates_and_returns_a_recipe_hit(web):
     fake, seen = FakeClaude(induced()), []
-    hit, ctx = await run_rung(fake, seen=seen)
+    hit, ctx = await run_rung(web, fake, seen=seen)
     assert isinstance(hit, RecipeHit) and hit.domain == "acme.com", ctx.notes
     assert [p.title for p in hit.postings] == ["Senior Robotics Engineer", "Controls Engineer", "Test Engineer"]
     prov = hit.recipe.provenance
@@ -207,9 +208,9 @@ async def test_rung_validates_and_returns_a_recipe_hit():
     assert not any("other.example" in u or "evil.example" in u for u in seen)  # off-site URLs never fetched
 
 
-async def test_rung_retries_once_with_the_failure():
+async def test_rung_retries_once_with_the_failure(web):
     fake = FakeClaude(induced(items="$.data[*]"), induced())
-    hit, ctx = await run_rung(fake)
+    hit, ctx = await run_rung(web, fake)
     assert isinstance(hit, RecipeHit) and len(fake.calls) == 2
     retry = fake.calls[1]["prompt"]
     assert '<data kind="failure">\nrecipe returned no jobs\n</data>' in retry
@@ -217,53 +218,53 @@ async def test_rung_retries_once_with_the_failure():
     assert any("attempt 1: recipe returned no jobs" in n for n in ctx.notes)
 
 
-async def test_rung_rejects_off_domain_recipe_and_feeds_reason_back():
+async def test_rung_rejects_off_domain_recipe_and_feeds_reason_back(web):
     fake = FakeClaude(induced(list={"url": "https://evil.example/api/jobs"}),
                       induced(list={"url": "https://evil.example/api/jobs"}))
     seen = []
-    hit, ctx = await run_rung(fake, seen=seen)
+    hit, ctx = await run_rung(web, fake, seen=seen)
     assert hit is None and len(fake.calls) == 2
     assert "not on acme.com" in fake.calls[1]["prompt"]
     assert any(n.startswith("llm: no working recipe") for n in ctx.notes)
     assert not any("evil.example" in u for u in seen)
 
 
-async def test_rung_requires_the_pasted_job_in_the_results():
+async def test_rung_requires_the_pasted_job_in_the_results(web):
     other = {"jobs": [{"id": 9001, "title": "Other A"}, {"id": 9002, "title": "Other B"}]}
     fake = FakeClaude(induced(), induced())
-    async with site(jobs=other) as c:
+    async with site(web, jobs=other) as c:
         ctx = ResolveContext(PASTED, c, allow_llm=True, ai=AITasks(fake))
         assert await LlmRung().run(ctx) is None
     assert "don't include the pasted job" in fake.calls[1]["prompt"]
 
 
 @pytest.mark.parametrize("kind", ["rate_limited", "auth", "timeout"])
-async def test_rung_passes_on_transient_ai_error_without_retrying(kind):
+async def test_rung_passes_on_transient_ai_error_without_retrying(kind, web):
     fake = FakeClaude(AIError(kind, "slow down"), induced())
-    hit, ctx = await run_rung(fake)
+    hit, ctx = await run_rung(web, fake)
     assert hit is None and len(fake.calls) == 1 and f"llm: AI unavailable ({kind})" in ctx.notes
 
 
-async def test_rung_passes_on_bad_output():
+async def test_rung_passes_on_bad_output(web):
     fake = FakeClaude(AIError("bad_output", "not json"))
-    hit, ctx = await run_rung(fake)
+    hit, ctx = await run_rung(web, fake)
     assert hit is None and len(fake.calls) == 1 and "llm: AI unavailable (bad_output)" in ctx.notes
 
 
-async def test_rung_passes_when_not_allowed_or_disabled(monkeypatch):
+async def test_rung_passes_when_not_allowed_or_disabled(monkeypatch, web):
     fake, seen = FakeClaude(induced()), []
-    hit, _ = await run_rung(fake, allow_llm=False, seen=seen)
+    hit, _ = await run_rung(web, fake, allow_llm=False, seen=seen)
     assert hit is None and fake.calls == [] and seen == []
     monkeypatch.setattr(get_settings(), "resolver_llm_enabled", False)
-    hit, _ = await run_rung(fake, seen=seen)
+    hit, _ = await run_rung(web, fake, seen=seen)
     assert hit is None and fake.calls == [] and seen == []
     monkeypatch.setattr(get_settings(), "resolver_llm_enabled", True)
-    async with site() as c:
+    async with site(web) as c:
         ctx = ResolveContext(PASTED, c, allow_llm=True)  # no AI handed in
         assert await LlmRung().run(ctx) is None and "llm: no AI available" in ctx.notes
 
 
-async def test_resolve_link_stores_the_induced_recipe_board(maker):
+async def test_resolve_link_stores_the_induced_recipe_board(maker, web):
     async with maker() as db:
         user = await make_user(db)
         link = JobLink(user_id=user.id, url=PASTED)
@@ -272,7 +273,7 @@ async def test_resolve_link_stores_the_induced_recipe_board(maker):
         recipe = induced(list={"method": "POST", "url": "https://careers.acme.com/api/search",
                                "json_body": {"q": ""}})
         page = PAGE.replace("/api/jobs?size=50", "/api/search")
-        out = await resolve_link(db, link.id, client=site(page=page), allow_llm=True,
+        out = await resolve_link(db, link.id, client=site(web, page=page), allow_llm=True,
                                  ai=AITasks(FakeClaude(recipe)))
         company = await db.get(Company, out["company_id"])
         jobs = (await db.scalars(sa.select(Job).where(Job.company_id == company.id))).all()
@@ -283,9 +284,9 @@ async def test_resolve_link_stores_the_induced_recipe_board(maker):
     assert len(jobs) == 3
 
 
-async def test_rung_reuses_json_an_earlier_rung_fetched():
+async def test_rung_reuses_json_an_earlier_rung_fetched(web):
     fake, seen = FakeClaude(induced()), []
-    async with site(seen) as c:
+    async with site(web, seen) as c:
         ctx = ResolveContext(PASTED, c, allow_llm=True, ai=AITasks(fake))
         ctx.json_samples.append(("https://careers.acme.com/api/jobs?size=50", json.dumps(JOBS)))
         ctx.json_tried.add("https://careers.acme.com/api/jobs?size=50")
@@ -294,7 +295,7 @@ async def test_rung_reuses_json_an_earlier_rung_fetched():
     assert fake.calls[0]["prompt"].count('kind="json_sample"') == 1
 
 
-async def test_existing_recipe_board_is_reused_without_asking_the_llm(maker):
+async def test_existing_recipe_board_is_reused_without_asking_the_llm(maker, web):
     fake = FakeClaude()
     page = PAGE.replace("/api/jobs?size=50", "/api/search")
     async with maker() as db:
@@ -304,7 +305,7 @@ async def test_existing_recipe_board_is_reused_without_asking_the_llm(maker):
         link = JobLink(user_id=user.id, url=PASTED)
         db.add_all([board, link])
         await db.commit()
-        out = await resolve_link(db, link.id, client=site(page=page), allow_llm=True, ai=AITasks(fake))
+        out = await resolve_link(db, link.id, client=site(web, page=page), allow_llm=True, ai=AITasks(fake))
     assert out["status"] == "resolved" and out["company_id"] == board.id and out["rung"] == "recipe_board"
     assert fake.calls == []
 

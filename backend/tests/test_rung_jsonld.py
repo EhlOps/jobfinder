@@ -17,7 +17,7 @@ from jobfinder.ingest.resolve.rungs.jsonld import (
     posting_from_ld,
 )
 from jobfinder.models import Job, JobLink, Task
-from tests.fakes import fake_resolve_public
+from tests.fakes import fake_resolve_public, handle
 
 FIX = Path(__file__).parent / "fixtures"
 LD_JOB = (FIX / "jsonld_job.html").read_text()
@@ -30,7 +30,7 @@ def public_dns(monkeypatch):
     monkeypatch.setattr(http_safety, "resolve_public", fake_resolve_public(refuse_private=True))
 
 
-def page_client(body: str, seen: list | None = None) -> httpx.AsyncClient:
+def page_client(web, body: str, seen: list | None = None) -> httpx.AsyncClient:
     def handler(request):
         if seen is not None:
             seen.append(request.url.path)
@@ -38,11 +38,12 @@ def page_client(body: str, seen: list | None = None) -> httpx.AsyncClient:
             return httpx.Response(404)
         return httpx.Response(200, html=body)
 
-    return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    handle(web, handler)
+    return httpx.AsyncClient()
 
 
-async def run(body: str, url: str = PAGE):
-    async with page_client(body) as c:
+async def run(web, body: str, url: str = PAGE):
+    async with page_client(web, body) as c:
         ctx = ResolveContext(url, c)
         return await JsonLdRung().run(ctx), ctx
 
@@ -52,8 +53,8 @@ def ld_page(*objs, raw: str = "") -> str:
     return f"<html><head>{blocks}{raw}</head><body></body></html>"
 
 
-async def test_graph_job_posting_becomes_a_single_job():
-    hit, ctx = await run(LD_JOB)
+async def test_graph_job_posting_becomes_a_single_job(web):
+    hit, ctx = await run(web, LD_JOB)
     assert isinstance(hit, SingleJob)
     p = hit.posting
     assert p.source == "jsonld" and p.url == PAGE and p.company_name == "Acme Robotics"
@@ -67,8 +68,8 @@ async def test_graph_job_posting_becomes_a_single_job():
     assert not ctx.notes  # sameAs is the page's own registrable domain
 
 
-async def test_malformed_blocks_are_skipped_and_wrappers_tolerated():
-    hit, _ = await run(LD_MALFORMED)
+async def test_malformed_blocks_are_skipped_and_wrappers_tolerated(web):
+    hit, _ = await run(web, LD_MALFORMED)
     p = hit.posting
     assert p.title == "Warehouse Associate" and p.company_name == "Contoso Logistics" and p.location == "Reno, NV"
     assert "raw newline" in p.description_text
@@ -102,31 +103,31 @@ def test_nested_cdata_and_partial_salary():
     assert (p.salary_min, p.salary_max, p.salary_currency) == (None, 150000, "USD")
 
 
-async def test_valid_through_today_is_kept():
+async def test_valid_through_today_is_kept(web):
     today = datetime.now(UTC).date().isoformat()
-    hit, _ = await run(ld_page({"@type": "JobPosting", "title": "Today", "validThrough": today}))
+    hit, _ = await run(web, ld_page({"@type": "JobPosting", "title": "Today", "validThrough": today}))
     assert hit.posting.title == "Today"
 
 
-async def test_expired_posting_is_dropped():
-    hit, ctx = await run(ld_page({"@type": "JobPosting", "title": "Old", "validThrough": "2020-01-01"}))
+async def test_expired_posting_is_dropped(web):
+    hit, ctx = await run(web, ld_page({"@type": "JobPosting", "title": "Old", "validThrough": "2020-01-01"}))
     assert hit is None and "expired" in ctx.notes[0]
 
 
-async def test_aggregator_page_is_noted_not_fetched():
+async def test_aggregator_page_is_noted_not_fetched(web):
     seen: list[str] = []
     org = {"@type": "Organization", "name": "Acme", "sameAs": ["https://www.acme.com/"]}
-    async with page_client(ld_page({"@type": "JobPosting", "title": "Eng", "hiringOrganization": org}), seen) as c:
+    async with page_client(web, ld_page({"@type": "JobPosting", "title": "Eng", "hiringOrganization": org}), seen) as c:
         ctx = ResolveContext("https://www.jobaggregator.example/view/1", c)
         hit = await JsonLdRung().run(ctx)
     assert hit.posting.company_name == "Acme" and any("acme.com" in n for n in ctx.notes)
     assert seen == ["/robots.txt", "/view/1"]
 
 
-async def test_no_json_ld_passes():
-    hit, ctx = await run("<html><body><h1>Careers</h1></body></html>")
+async def test_no_json_ld_passes(web):
+    hit, ctx = await run(web, "<html><body><h1>Careers</h1></body></html>")
     assert hit is None and not ctx.notes
-    hit, _ = await run(ld_page({"@type": "JobPosting", "title": "<script>x</script>"}))
+    hit, _ = await run(web, ld_page({"@type": "JobPosting", "title": "<script>x</script>"}))
     assert hit is None  # no usable title
 
 
@@ -164,20 +165,20 @@ def test_json_ld_bombs_are_bounded():
 
 
 @pytest.mark.parametrize("url", PRIVATE_URLS)
-async def test_private_url_passes_without_fetching(url):
+async def test_private_url_passes_without_fetching(url, web):
     seen: list[str] = []
-    async with page_client(LD_JOB, seen) as c:
+    async with page_client(web, LD_JOB, seen) as c:
         ctx = ResolveContext(url, c)
         assert await JsonLdRung().run(ctx) is None
     assert seen == [] and ctx.page_error
 
 
-async def test_json_ld_only_page_keeps_the_single_job(authed, maker):
+async def test_json_ld_only_page_keeps_the_single_job(authed, maker, web):
     r = await authed.post("/api/job-links", json={"url": PAGE})
     assert r.status_code == 202, r.text
     async with maker() as db:
         [task] = (await db.scalars(sa.select(Task).where(Task.kind == "resolve_job_link"))).all()
-        out = await resolve_link(db, task.payload["link_id"], client=page_client(LD_JOB))
+        out = await resolve_link(db, task.payload["link_id"], client=page_client(web, LD_JOB))
         link = await db.get(JobLink, task.payload["link_id"])
         job = await db.get(Job, link.job_id)
     assert out["status"] == "unresolved" and out["job_id"] == job.id

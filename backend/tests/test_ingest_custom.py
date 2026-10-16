@@ -22,7 +22,7 @@ from jobfinder.ingest.sources.custom import (
 )
 from jobfinder.ingest.validate import SLUG_RE
 from jobfinder.models import JobLink, Task
-from tests.fakes import fake_resolve_public
+from tests.fakes import fake_resolve_public, handle, serve
 
 TERMS = Path(__file__).parents[1] / "jobfinder/ingest/sources/custom/TERMS.md"
 
@@ -134,7 +134,7 @@ def test_sqli_in_path_does_not_change_the_fixed_board(payload):
     assert refusal_for_url(f"https://www.amazon.jobs/en/jobs/{payload}") is not None
 
 
-async def test_pasted_refused_link_never_reaches_a_rung_or_the_network(maker, monkeypatch):
+async def test_pasted_refused_link_never_reaches_a_rung_or_the_network(maker, monkeypatch, web):
     calls = []
 
     class Spy:
@@ -149,7 +149,8 @@ async def test_pasted_refused_link_never_reaches_a_rung_or_the_network(maker, mo
         calls.append(str(request.url))
         return httpx.Response(200, text="<html></html>")
 
-    async with maker() as db, httpx.AsyncClient(transport=httpx.MockTransport(handler)) as c:
+    handle(web, handler)
+    async with maker() as db, httpx.AsyncClient() as c:
         u = await make_user(db)
         link = JobLink(user_id=u.id, url="https://www.amazon.jobs/en/jobs/2712345/sde-ii", status="resolving")
         db.add(link)
@@ -167,7 +168,7 @@ def public_dns(monkeypatch):
     monkeypatch.setattr(http_safety, "resolve_public", fake_resolve_public())
 
 
-async def test_safe_fetch_refuses_a_redirect_onto_a_refused_site(public_dns):
+async def test_safe_fetch_refuses_a_redirect_onto_a_refused_site(public_dns, web):
     seen = []
 
     def handler(request):
@@ -177,7 +178,8 @@ async def test_safe_fetch_refuses_a_redirect_onto_a_refused_site(public_dns):
             return httpx.Response(301, headers={"location": "https://jobs.apple.com/en-us/details/1"})
         return httpx.Response(200, text="apple page")
 
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as c:
+    handle(web, handler)
+    async with httpx.AsyncClient() as c:
         with pytest.raises(FetchError, match="Apple"):
             await safe_fetch(c, "https://short.example/abc")
         with pytest.raises(FetchError, match="Amazon"):
@@ -185,7 +187,7 @@ async def test_safe_fetch_refuses_a_redirect_onto_a_refused_site(public_dns):
     assert seen == ["short.example"]
 
 
-async def test_failed_custom_board_stops_the_ladder(maker, monkeypatch):
+async def test_failed_custom_board_stops_the_ladder(maker, monkeypatch, web):
     later = []
 
     class Later:
@@ -195,7 +197,8 @@ async def test_failed_custom_board_stops_the_ladder(maker, monkeypatch):
             later.append(ctx.url)
 
     monkeypatch.setattr(resolve, "RUNGS", [UrlPatternRung(), Later()])
-    client = httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(404, json={})))
+    serve(web, status=404, json={})
+    client = httpx.AsyncClient()
     async with maker() as db:
         u = await make_user(db)
         link = JobLink(user_id=u.id, url="https://jobs.intel.com/en/job/x/y/599/1", status="resolving")

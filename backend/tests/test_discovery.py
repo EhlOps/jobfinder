@@ -11,7 +11,7 @@ from jobfinder.ingest.discovery import board_from_url, boards_from_text, github_
 from jobfinder.ingest.discovery.robots import USER_AGENT, PoliteFetcher, RobotsDisallowed
 from jobfinder.models import Company
 from jobfinder.scheduling.handlers import HANDLERS
-from tests.fakes import fake_resolve_public
+from tests.fakes import fake_resolve_public, handle, serve
 
 
 @pytest.fixture(autouse=True)
@@ -69,63 +69,67 @@ def robots_site(robots: str | None, routes: dict[str, httpx.Response] | None = N
     return handler
 
 
-async def test_robots_disallow_blocks_fetch():
+async def test_robots_disallow_blocks_fetch(web):
     seen: list = []
     handler = robots_site("User-agent: *\nDisallow: /\n", {"/": httpx.Response(200, text="x")}, seen)
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as c:
+    handle(web, handler)
+    async with httpx.AsyncClient() as c:
         f = PoliteFetcher(c)
         with pytest.raises(RobotsDisallowed):
             await f.get("https://raw.githubusercontent.com/a/b/dev/README.md")
     assert [r.url.path for r in seen] == ["/robots.txt"]  # the page itself was never requested
 
 
-async def test_robots_missing_allows_and_unreachable_blocks():
+async def test_robots_missing_allows_and_unreachable_blocks(web):
     handler = robots_site(None, {"/ok": httpx.Response(200, text="hi")})
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as c:
+    handle(web, handler)
+    async with httpx.AsyncClient() as c:
         assert (await PoliteFetcher(c).get("https://example.com/ok")).text == "hi"
 
-    def broken(request):
-        return httpx.Response(503)
-
-    async with httpx.AsyncClient(transport=httpx.MockTransport(broken)) as c:
+    serve(web, status=503)
+    async with httpx.AsyncClient() as c:
         assert not await PoliteFetcher(c).allowed("https://example.com/ok")
 
 
-async def test_robots_partial_disallow():
+async def test_robots_partial_disallow(web):
     handler = robots_site("User-agent: *\nDisallow: /api/\n")
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as c:
+    handle(web, handler)
+    async with httpx.AsyncClient() as c:
         f = PoliteFetcher(c)
         assert not await f.allowed("https://example.com/api/v1/x")
         assert await f.allowed("https://example.com/readme")
 
 
-async def test_github_list_source():
+async def test_github_list_source(web):
     md = "| Acme | [Apply](https://jobs.lever.co/acme/1?utm_source=Simplify&ref=Simplify) |\n"
     handler = robots_site(None, {"/SimplifyJobs": httpx.Response(200, text=md)})
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as c:
+    handle(web, handler)
+    async with httpx.AsyncClient() as c:
         assert await github_lists.fetch(PoliteFetcher(c)) == [("lever", "acme")]
 
 
-async def test_github_lists_cover_many_lists_and_survive_a_dead_one():
+async def test_github_lists_cover_many_lists_and_survive_a_dead_one(web):
     listing = '[{"category": "Hardware", "url": "https://job-boards.greenhouse.io/spacey/jobs/9"}]'
     routes = {
         "/SimplifyJobs/New-Grad-Positions/dev/.github": httpx.Response(200, text=listing),
         "/SimplifyJobs/Summer2026-Internships": httpx.Response(500),
         "/speedyapply": httpx.Response(200, text="[Apply](https://jobs.ashbyhq.com/Quant-Co?x=1)"),
     }
-    async with httpx.AsyncClient(transport=httpx.MockTransport(robots_site(None, routes))) as c:
+    handle(web, robots_site(None, routes))
+    async with httpx.AsyncClient() as c:
         boards = await github_lists.fetch(PoliteFetcher(c))
     assert boards == [("greenhouse", "spacey"), ("ashby", "Quant-Co")]
     assert len(github_lists.URLS) == len(set(github_lists.URLS)) > 10
 
 
-async def test_github_lists_all_failing_raises():
-    async with httpx.AsyncClient(transport=httpx.MockTransport(robots_site(None))) as c:
+async def test_github_lists_all_failing_raises(web):
+    handle(web, robots_site(None))
+    async with httpx.AsyncClient() as c:
         with pytest.raises(httpx.HTTPStatusError):
             await github_lists.fetch(PoliteFetcher(c))
 
 
-async def test_github_lists_partial_failure_is_reported_not_just_logged(maker):
+async def test_github_lists_partial_failure_is_reported_not_just_logged(maker, web):
     class Boom(Exception):
         pass
 
@@ -147,22 +151,22 @@ async def test_github_lists_partial_failure_is_reported_not_just_logged(maker):
         return boards
 
     src = discovery.Source("github_lists", "n/a", True, fetch_partial)
-    async with maker() as db, router({"acme": httpx.Response(404)}, "") as c:
+    async with maker() as db, router(web, {"acme": httpx.Response(404)}, "") as c:
         res = await discovery.discover_boards(db, c, sources=[src])
     assert res.sources[0].status == "partial" and res.sources[0].warnings == boards.warnings
     assert res.as_dict()["sources"][0]["warnings"] == boards.warnings
 
 
-async def test_over_cap_candidates_are_shuffled(maker, monkeypatch):
+async def test_over_cap_candidates_are_shuffled(maker, monkeypatch, web):
     md = " ".join(f"https://boards.greenhouse.io/b{i}" for i in range(5))
     boards = {f"b{i}": httpx.Response(200, json=GH_GOOD) for i in range(5)}
     monkeypatch.setattr(discovery.random, "shuffle", lambda xs: xs.reverse())
-    async with maker() as db, router(boards, md) as c:
+    async with maker() as db, router(web, boards, md) as c:
         res = await discovery.discover_boards(db, c, max_candidates=2, sources=[github_lists.SOURCE])
     assert sorted(res.added) == ["greenhouse/b3", "greenhouse/b4"]
 
 
-async def test_hn_source_picks_latest_thread_and_unescapes():
+async def test_hn_source_picks_latest_thread_and_unescapes(web):
     search = {"hits": [
         {"objectID": "2", "title": "Ask HN: Who wants to be hired? (May 2026)"},
         {"objectID": "3", "title": "Ask HN: Who is hiring? (May 2026)"},
@@ -183,13 +187,14 @@ async def test_hn_source_picks_latest_thread_and_unescapes():
             return httpx.Response(200, json=search)
         return httpx.Response(200, json=item)
 
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as c:
+    handle(web, handler)
+    async with httpx.AsyncClient() as c:
         boards = await hn_hiring.fetch(PoliteFetcher(c))
     assert boards == [("greenhouse", "acme"), ("ashby", "beta")]
     assert "/api/v1/items/3" in asked
 
 
-def router(boards: dict[str, httpx.Response], md: str):
+def router(web, boards: dict[str, httpx.Response], md: str):
     """One transport for the whole run: robots, the list source and the ATS board APIs."""
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -203,10 +208,11 @@ def router(boards: dict[str, httpx.Response], md: str):
             return boards.get(slug, httpx.Response(404, json={}))
         return httpx.Response(404, json={})
 
-    return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    handle(web, handler)
+    return httpx.AsyncClient()
 
 
-async def test_discovery_validates_dedupes_and_adds(maker):
+async def test_discovery_validates_dedupes_and_adds(maker, web):
     md = (
         "https://boards.greenhouse.io/acme/jobs/1 https://boards.greenhouse.io/ACME/jobs/2 "
         "https://boards.greenhouse.io/empty https://boards.greenhouse.io/gone https://boards.greenhouse.io/known"
@@ -219,7 +225,7 @@ async def test_discovery_validates_dedupes_and_adds(maker):
     async with maker() as db:
         db.add(Company(name="Known", ats="greenhouse", slug="known"))
         await db.commit()
-        async with router(boards, md) as c:
+        async with router(web, boards, md) as c:
             res = await discovery.discover_boards(db, c, max_candidates=10, sources=[github_lists.SOURCE, yc.SOURCE, yc.WELLFOUND])
         rows = (await db.execute(sa.select(Company).order_by(Company.slug))).scalars().all()
     assert res.added == ["greenhouse/acme"]
@@ -231,26 +237,27 @@ async def test_discovery_validates_dedupes_and_adds(maker):
     assert all(s.reason for s in res.sources if s.status == "skipped")
 
 
-async def test_discovery_caps_candidates_and_survives_source_errors(maker):
+async def test_discovery_caps_candidates_and_survives_source_errors(maker, web):
     md = " ".join(f"https://boards.greenhouse.io/b{i}" for i in range(5))
     boards = {f"b{i}": httpx.Response(200, json=GH_GOOD) for i in range(5)}
     broken = discovery.Source("broken", "n/a", True, hn_hiring.fetch)
 
-    async with maker() as db, router(boards, md) as c:
+    async with maker() as db, router(web, boards, md) as c:
         # the hn fetch gets a 404 for its API call and must be reported as an error, not abort the run
         res = await discovery.discover_boards(db, c, max_candidates=2, sources=[broken, github_lists.SOURCE])
     assert len(res.added) == 2 and res.checked == 2 and res.candidates == 5
     assert res.sources[0].status == "error" and res.sources[1].status == "ok"
 
 
-async def test_robots_blocked_source_is_skipped_and_nothing_added(maker):
+async def test_robots_blocked_source_is_skipped_and_nothing_added(maker, web):
     seen: list[httpx.Request] = []
 
     def handler(request):
         seen.append(request)
         return httpx.Response(200, text="User-agent: *\nDisallow: /\n")
 
-    async with maker() as db, httpx.AsyncClient(transport=httpx.MockTransport(handler)) as c:
+    handle(web, handler)
+    async with maker() as db, httpx.AsyncClient() as c:
         res = await discovery.discover_boards(db, c, sources=[github_lists.SOURCE])
         assert await db.scalar(sa.select(sa.func.count()).select_from(Company)) == 0
     assert res.sources[0].status == "skipped" and "robots.txt" in res.sources[0].reason
@@ -292,11 +299,12 @@ def probe_handler(robots: dict[str, str], stats: dict, delay: float = 0.0, md: s
     return handler
 
 
-async def test_validate_candidates_list_only_robots_and_bounded_concurrency():
+async def test_validate_candidates_list_only_robots_and_bounded_concurrency(web):
     stats = {"urls": [], "inflight": 0, "max": 0}
     boards = [("bamboohr", f"b{i}") for i in range(6)] + [("smartrecruiters", "sr1"), ("bamboohr", "blocked")]
     handler = probe_handler({"blocked.bamboohr.com": "User-agent: *\nDisallow: /\n"}, stats, delay=0.02)
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as c:
+    handle(web, handler)
+    async with httpx.AsyncClient() as c:
         results = await discovery.validate_candidates(PoliteFetcher(c), boards, concurrency=3)
     assert [r.ok for r in results] == [True] * 7 + [False]
     assert "robots.txt" in results[-1].reason
@@ -305,11 +313,12 @@ async def test_validate_candidates_list_only_robots_and_bounded_concurrency():
     assert 1 < stats["max"] <= 3
 
 
-async def test_discover_boards_uses_probe_for_detail_heavy_ats(maker):
+async def test_discover_boards_uses_probe_for_detail_heavy_ats(maker, web):
     stats = {"urls": [], "inflight": 0, "max": 0}
     md = "https://acme.bamboohr.com/careers/1 https://jobs.smartrecruiters.com/Sr1/5"
     handler = probe_handler({}, stats, md=md)
-    async with maker() as db, httpx.AsyncClient(transport=httpx.MockTransport(handler)) as c:
+    handle(web, handler)
+    async with maker() as db, httpx.AsyncClient() as c:
         res = await discovery.discover_boards(db, c, sources=[github_lists.SOURCE])
     assert sorted(res.added) == ["bamboohr/acme", "smartrecruiters/Sr1"] and not res.rejected
     assert not any("/detail" in u or u.endswith("/postings/9") for u in stats["urls"])

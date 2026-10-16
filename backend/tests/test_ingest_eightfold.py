@@ -21,7 +21,7 @@ from jobfinder.ingest.sources.eightfold import (
     parse_eightfold,
     parse_slug,
 )
-from tests.fakes import fake_resolve_public
+from tests.fakes import fake_resolve_public, handle
 
 FIX = Path(__file__).parent / "fixtures"
 PCSX_LIST = json.loads((FIX / "eightfold_pcsx_search.json").read_text())
@@ -234,13 +234,14 @@ def _site(pcsx=True, total=None, robots=ROBOTS, fail_details=False, calls=None, 
     return handler
 
 
-def client_for(handler):
-    return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+def client_for(web, handler):
+    handle(web, handler)
+    return httpx.AsyncClient()
 
 
-async def test_fetch_pcsx_with_details():
+async def test_fetch_pcsx_with_details(web):
     calls: list = []
-    async with client_for(_site(calls=calls)) as c:
+    async with client_for(web, _site(calls=calls)) as c:
         jobs = await fetch_eightfold(c, MS, "Microsoft")
     assert [j.external_id for j in jobs] == [f"microsoft.com:{p['id']}" for p in PCSX_LIST["data"]["positions"]]
     assert all("MCAPS" in j.description_text for j in jobs)
@@ -248,9 +249,9 @@ async def test_fetch_pcsx_with_details():
     assert ef._api_for[MS] == "pcsx"
 
 
-async def test_fetch_falls_back_to_v2_when_pcsx_is_disabled():
+async def test_fetch_falls_back_to_v2_when_pcsx_is_disabled(web):
     calls: list = []
-    async with client_for(_site(pcsx=False, calls=calls)) as c:
+    async with client_for(web, _site(pcsx=False, calls=calls)) as c:
         jobs = await fetch_eightfold(c, NF, "Netflix")
         assert len(jobs) == 3 and all("Netflix" in j.description_text for j in jobs)
         assert ef._api_for[NF] == "v2"
@@ -259,80 +260,80 @@ async def test_fetch_falls_back_to_v2_when_pcsx_is_disabled():
     assert calls == ["/robots.txt", "/api/apply/v2/jobs"]
 
 
-async def test_fetch_pages_until_count_and_caps_pages(monkeypatch):
-    async with client_for(_site(total=25)) as c:
+async def test_fetch_pages_until_count_and_caps_pages(web, monkeypatch):
+    async with client_for(web, _site(total=25)) as c:
         assert len(await fetch_eightfold(c, MS, "Microsoft", list_only=True)) == 10  # probe: one page
         jobs = await fetch_eightfold(c, MS, "Microsoft")
         assert len(jobs) == 25 and len({j.external_id for j in jobs}) == 25
     monkeypatch.setattr(ef, "MAX_PAGES", 2)
     monkeypatch.setattr(ef, "MAX_DETAILS", 5)
     calls: list = []
-    async with client_for(_site(total=25, calls=calls)) as c:
+    async with client_for(web, _site(total=25, calls=calls)) as c:
         jobs = await fetch_eightfold(c, MS, "Microsoft")
     assert len(jobs) == 20 and calls.count("/api/pcsx/search") == 2
     assert calls.count("/api/pcsx/position_details") == 5
     assert sum(1 for j in jobs if j.description_text) == 5  # the rest keep listing data only
 
 
-async def test_fetch_list_only_makes_no_detail_calls():
+async def test_fetch_list_only_makes_no_detail_calls(web):
     calls: list = []
-    async with client_for(_site(pcsx=False, calls=calls)) as c:
+    async with client_for(web, _site(pcsx=False, calls=calls)) as c:
         jobs = await fetch_eightfold(c, NF, "Netflix", list_only=True)
     assert len(jobs) == 3 and all(j.description_text == "" for j in jobs)
     assert not any(p.startswith("/api/apply/v2/jobs/") for p in calls)
 
 
-async def test_fetch_keeps_listing_when_details_fail_but_raises_if_all_fail():
-    async with client_for(_site(fail_details=True)) as c:
+async def test_fetch_keeps_listing_when_details_fail_but_raises_if_all_fail(web):
+    async with client_for(web, _site(fail_details=True)) as c:
         with pytest.raises(RuntimeError, match="detail requests failed"):
             await fetch_eightfold(c, MS, "Microsoft")
 
 
-async def test_rate_limit_retried_with_the_cookie_it_set():
-    async with client_for(_site(rate_limit=True)) as c:
+async def test_rate_limit_retried_with_the_cookie_it_set(web):
+    async with client_for(web, _site(rate_limit=True)) as c:
         jobs = await fetch_eightfold(c, MS, "Microsoft", list_only=True)
     assert len(jobs) == 3
 
 
-async def test_http_errors_propagate():
+async def test_http_errors_propagate(web):
     def handler(req):
         if req.url.path == "/robots.txt":
             return httpx.Response(404)
         return httpx.Response(404, json={"message": "not found"})
 
-    async with client_for(handler) as c:
+    async with client_for(web, handler) as c:
         with pytest.raises(httpx.HTTPStatusError) as e:
             await fetch_eightfold(c, MS, "Microsoft")
     assert e.value.response.status_code == 404
 
 
-async def test_robots_disallow_blocks_api_calls():
+async def test_robots_disallow_blocks_api_calls(web):
     calls: list = []
-    async with client_for(_site(robots="User-agent: *\nDisallow: /api/\n", calls=calls)) as c:
+    async with client_for(web, _site(robots="User-agent: *\nDisallow: /api/\n", calls=calls)) as c:
         with pytest.raises(FetchError, match="robots"):
             await fetch_eightfold(c, MS, "Microsoft")
     assert calls == ["/robots.txt"]
 
 
-async def test_private_host_refused_before_any_request():
+async def test_private_host_refused_before_any_request(web):
     calls: list = []
-    async with client_for(_site(calls=calls)) as c:
+    async with client_for(web, _site(calls=calls)) as c:
         with pytest.raises(FetchError):
             await fetch_eightfold(c, "jobs.internal.acme.com__acme.com", "Acme")
     assert calls == []
 
 
 @pytest.mark.parametrize("slug", ["localhost__acme.com", *[f"x.com__{s}" for s in SQLI]])
-async def test_malformed_slug_never_fetches(slug):
+async def test_malformed_slug_never_fetches(web, slug):
     calls: list = []
-    async with client_for(_site(calls=calls)) as c:
+    async with client_for(web, _site(calls=calls)) as c:
         with pytest.raises(ValueError):
             await fetch_eightfold(c, slug, "Acme")
     assert calls == []
 
 
-async def test_works_through_discoverys_polite_client():
-    async with client_for(_site(pcsx=False)) as c:
+async def test_works_through_discoverys_polite_client(web):
+    async with client_for(web, _site(pcsx=False)) as c:
         jobs = await PROBE_FETCHERS["eightfold"](_PoliteClient(PoliteFetcher(c)), NF, NF)
     assert len(jobs) == 3
 
@@ -347,12 +348,12 @@ async def test_works_through_discoverys_polite_client():
     ("/api/other", False),
     ("/static/js/app.js", False),
 ])
-async def test_real_eightfold_robots_allows_only_the_api_and_careers(path, ok):
+async def test_real_eightfold_robots_allows_only_the_api_and_careers(web, path, ok):
     """RFC 9309: the longest matching rule wins, so "Allow: /api/pcsx" beats the earlier "Disallow: /"."""
     parser = RobotFileParser()
     parser.parse(ROBOTS.splitlines())
     assert can_fetch(parser, ROBOTS_TOKEN, f"https://explore.jobs.netflix.net{path}") is ok
-    async with client_for(_site()) as c:
+    async with client_for(web, _site()) as c:
         assert await PoliteFetcher(c).allowed(f"https://explore.jobs.netflix.net{path}") is ok
 
 
@@ -389,23 +390,23 @@ def test_review_edge_cases():
     assert [j.workplace_type for j in jobs] == ["onsite", "remote"]
 
 
-async def test_a_403_that_is_not_pcsx_disabled_propagates():
+async def test_a_403_that_is_not_pcsx_disabled_propagates(web):
     def handler(req):
         if req.url.path == "/robots.txt":
             return httpx.Response(404)
         return httpx.Response(403, text="Forbidden")
 
-    async with client_for(handler) as c:
+    async with client_for(web, handler) as c:
         with pytest.raises(httpx.HTTPStatusError):
             await fetch_eightfold(c, MS, "Microsoft")
 
 
-async def test_non_numeric_count_does_not_break_paging():
+async def test_non_numeric_count_does_not_break_paging(web):
     def handler(req):
         if req.url.path == "/robots.txt":
             return httpx.Response(404)
         positions = [] if int(req.url.params["start"]) else PCSX_LIST["data"]["positions"]
         return httpx.Response(200, json={"data": {"count": "2,400", "positions": positions}})
 
-    async with client_for(handler) as c:
+    async with client_for(web, handler) as c:
         assert len(await fetch_eightfold(c, MS, "Microsoft", list_only=True)) == 3

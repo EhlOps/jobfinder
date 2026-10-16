@@ -15,7 +15,7 @@ from jobfinder.ingest.resolve.rungs.llm import reinduce_company
 from jobfinder.ingest.service import ingest_company
 from jobfinder.models import AICall, Company, Job, Task
 from jobfinder.scheduling import handlers
-from tests.fakes import FakeClaude, fake_resolve_public
+from tests.fakes import FakeClaude, fake_resolve_public, handle
 from tests.test_rung_llm import induced
 
 PAGE_URL = "https://careers.acme.com/jobs/4021"
@@ -37,7 +37,7 @@ def public_dns(monkeypatch):
     monkeypatch.setattr(http_safety, "resolve_public", fake_resolve_public())
 
 
-def site(n_jobs: int) -> httpx.AsyncClient:
+def site(web, n_jobs: int) -> httpx.AsyncClient:
     def handler(request):
         if request.url.path == "/robots.txt":
             return httpx.Response(404)
@@ -47,7 +47,8 @@ def site(n_jobs: int) -> httpx.AsyncClient:
             return httpx.Response(200, html=PAGE)
         return httpx.Response(404)  # the old endpoint is gone
 
-    return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    handle(web, handler)
+    return httpx.AsyncClient()
 
 
 async def degraded_board(db, baseline=4, **health_over) -> Company:
@@ -66,11 +67,11 @@ async def active_titles(db, company_id):
     return sorted((await db.scalars(sa.select(Job.title).where(Job.company_id == company_id, Job.is_active))).all())
 
 
-async def test_reinduce_happy_path(maker):
+async def test_reinduce_happy_path(maker, web):
     fake = FakeClaude(NEW)
     async with maker() as db:
         c = await degraded_board(db)
-        out = await reinduce_company(db, AITasks(fake), c.id, client=site(3))
+        out = await reinduce_company(db, AITasks(fake), c.id, client=site(web, 3))
         company = await db.get(Company, c.id)
         titles = await active_titles(db, c.id)
     assert out["ok"] is True and out["fetched"] == 3 and out["state"] == "active"
@@ -86,11 +87,11 @@ async def test_reinduce_happy_path(maker):
     assert 'kind="json_sample" url="https://careers.acme.com/api/v2/jobs"' in p
 
 
-async def test_reinduce_needs_half_the_baseline_and_disables_on_failure(maker):
+async def test_reinduce_needs_half_the_baseline_and_disables_on_failure(maker, web):
     fake = FakeClaude(NEW, NEW)
     async with maker() as db:
         c = await degraded_board(db, baseline=10)
-        out = await reinduce_company(db, AITasks(fake), c.id, client=site(3))
+        out = await reinduce_company(db, AITasks(fake), c.id, client=site(web, 3))
         company = await db.get(Company, c.id)
         titles = await active_titles(db, c.id)
     assert out["ok"] is False and "expected at least 5" in out["reason"] and len(fake.calls) == 2
@@ -99,20 +100,20 @@ async def test_reinduce_needs_half_the_baseline_and_disables_on_failure(maker):
     assert titles == []  # a disabled board's jobs don't stay up with dead links
 
 
-async def test_reinduce_respects_the_weekly_cap(maker):
+async def test_reinduce_respects_the_weekly_cap(maker, web):
     fake = FakeClaude()
     async with maker() as db:
         c = await degraded_board(db, reinduce_window_start=datetime.now(UTC).isoformat(),
                                  reinduce_count_7d=health.REINDUCE_CAP)
-        out = await reinduce_company(db, AITasks(fake), c.id, client=site(3))
+        out = await reinduce_company(db, AITasks(fake), c.id, client=site(web, 3))
     assert out["skipped"] == "not due" and fake.calls == []
 
 
-async def test_reinduce_on_rate_limit_leaves_the_board_degraded(maker):
+async def test_reinduce_on_rate_limit_leaves_the_board_degraded(maker, web):
     fake = FakeClaude(AIError("rate_limited", "usage limit"))
     async with maker() as db:
         c = await degraded_board(db)
-        out = await reinduce_company(db, AITasks(fake), c.id, client=site(3))
+        out = await reinduce_company(db, AITasks(fake), c.id, client=site(web, 3))
         company = await db.get(Company, c.id)
     assert out["skipped"] == "AI unavailable (rate_limited)" and len(fake.calls) == 1
     assert company.recipe_state == "degraded" and not company.recipe_health.get("reinduce_count_7d")
@@ -159,31 +160,31 @@ async def test_handler_runs_the_heal_and_honours_backoff(maker, monkeypatch):
     assert got == [3]
 
 
-async def test_shrunk_site_heals_with_what_it_still_has(maker):
+async def test_shrunk_site_heals_with_what_it_still_has(maker, web):
     """Baseline 10, the site now really has 3 jobs (degraded by the 60% rule, but the old recipe ran cleanly):
     a new recipe returning those 3 is accepted rather than disabling the board."""
     async with maker() as db:
         c = await degraded_board(db, baseline=10, last_yield=3, last_error=None, zero_runs=0)
-        out = await reinduce_company(db, AITasks(FakeClaude(NEW)), c.id, client=site(3))
+        out = await reinduce_company(db, AITasks(FakeClaude(NEW)), c.id, client=site(web, 3))
     assert out["ok"] is True and out["fetched"] == 3
 
 
-async def test_unreachable_site_is_no_verdict(maker):
+async def test_unreachable_site_is_no_verdict(maker, web):
     def down(request):
         return httpx.Response(404) if request.url.path == "/robots.txt" else httpx.Response(503)
 
+    handle(web, down)
     fake = FakeClaude()
     async with maker() as db:
         c = await degraded_board(db)
-        out = await reinduce_company(db, AITasks(fake), c.id, client=httpx.AsyncClient(
-            transport=httpx.MockTransport(down)))
+        out = await reinduce_company(db, AITasks(fake), c.id, client=httpx.AsyncClient())
         company = await db.get(Company, c.id)
         titles = await active_titles(db, c.id)
     assert out["retry"] is True and out["skipped"].startswith("page unavailable") and fake.calls == []
     assert company.recipe_state == "degraded" and titles == ["Old job"]
 
 
-async def test_falls_back_to_the_site_root_when_the_job_page_is_gone(maker):
+async def test_falls_back_to_the_site_root_when_the_job_page_is_gone(maker, web):
     seen = []
 
     def handler(request):
@@ -196,20 +197,20 @@ async def test_falls_back_to_the_site_root_when_the_job_page_is_gone(maker):
             return httpx.Response(200, json=jobs(4))
         return httpx.Response(404)
 
+    handle(web, handler)
     async with maker() as db:
         c = await degraded_board(db)
-        out = await reinduce_company(db, AITasks(FakeClaude(NEW)), c.id,
-                                     client=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+        out = await reinduce_company(db, AITasks(FakeClaude(NEW)), c.id, client=httpx.AsyncClient())
     assert out["ok"] is True and "/jobs/4021" in seen and "/" in seen
 
 
-async def test_ingest_queues_a_reinduction_once_the_recipe_degrades(maker):
+async def test_ingest_queues_a_reinduction_once_the_recipe_degrades(maker, web):
     async with maker() as db:
         c = Company(name="Acme", ats="recipe", slug="acme.com", origin="user", recipe=OLD, recipe_state="active",
                     recipe_health={"baseline_yield": 4, "last_yield": 4})
         db.add(c)
         await db.commit()
-        async with site(3) as client:  # OLD's endpoint now 404s
+        async with site(web, 3) as client:  # OLD's endpoint now 404s
             await ingest_company(db, client, c)
             assert (await db.scalars(sa.select(Task).where(Task.kind == "reinduce_recipe"))).all() == []
             await ingest_company(db, client, c)  # second failure in a row: degraded
@@ -220,14 +221,14 @@ async def test_ingest_queues_a_reinduction_once_the_recipe_degrades(maker):
     assert [t.payload for t in tasks] == [{"company_id": c.id}]
 
 
-async def test_ingest_does_not_queue_when_llm_is_off(maker, monkeypatch):
+async def test_ingest_does_not_queue_when_llm_is_off(maker, monkeypatch, web):
     monkeypatch.setattr(get_settings(), "resolver_llm_enabled", False)
     async with maker() as db:
         c = Company(name="Acme", ats="recipe", slug="acme.com", origin="user", recipe=OLD, recipe_state="active",
                     recipe_health={"baseline_yield": 4, "zero_runs": 1})
         db.add(c)
         await db.commit()
-        async with site(3) as client:
+        async with site(web, 3) as client:
             await ingest_company(db, client, c)
         assert (await db.get(Company, c.id)).recipe_state == "degraded"
         assert (await db.scalars(sa.select(Task).where(Task.kind == "reinduce_recipe"))).all() == []

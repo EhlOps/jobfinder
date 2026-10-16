@@ -14,7 +14,7 @@ from jobfinder.ingest.recipes.html import (
     parse_document,
     select,
 )
-from tests.fakes import fake_resolve_public
+from tests.fakes import fake_resolve_public, handle
 
 FIXTURES = Path(__file__).parent / "fixtures"
 LISTING = (FIXTURES / "recipe_listing.html").read_text()
@@ -38,7 +38,7 @@ def public_dns(monkeypatch):
     monkeypatch.setattr(http_safety, "resolve_public", fake_resolve_public())
 
 
-def site(pages: dict[str, str], calls: list | None = None, robots: str | None = None):
+def site(web, pages: dict[str, str], calls: list | None = None, robots: str | None = None):
     def handler(request):
         if request.url.path == "/robots.txt":
             return httpx.Response(200, text=robots) if robots else httpx.Response(404)
@@ -50,7 +50,8 @@ def site(pages: dict[str, str], calls: list | None = None, robots: str | None = 
             return httpx.Response(404)
         return httpx.Response(200, text=body, headers={"content-type": "text/html; charset=utf-8"})
 
-    return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    handle(web, handler)
+    return httpx.AsyncClient()
 
 
 def doc(html):
@@ -90,9 +91,9 @@ def test_selectors_outside_the_subset_are_refused(bad):
         compile_selector(bad)
 
 
-async def test_bad_selector_refused_before_any_request():
+async def test_bad_selector_refused_before_any_request(web):
     calls = []
-    async with site({"": LISTING}, calls) as c:
+    async with site(web, {"": LISTING}, calls) as c:
         with pytest.raises(RecipeError):
             await run_recipe(c, "acme.com", "Acme", recipe(items="li:has(script)"))
         with pytest.raises(RecipeError):
@@ -101,8 +102,8 @@ async def test_bad_selector_refused_before_any_request():
     assert calls == []
 
 
-async def test_html_runner_maps_fields():
-    async with site({"": LISTING}) as c:
+async def test_html_runner_maps_fields(web):
+    async with site(web, {"": LISTING}) as c:
         jobs = await run_recipe(c, "acme.com", "Acme", recipe())
     by = {j.title: j for j in jobs}
     assert list(by) == ["Robotics Engineer", "Controls Engineer", "Senior Test Engineer",
@@ -147,18 +148,18 @@ def test_nested_descendant_matches_are_not_duplicated():
     assert len(select(d, compile_selector("div div"))) == 2
 
 
-async def test_url_template_and_scope_fields():
+async def test_url_template_and_scope_fields(web):
     r = recipe(items="a.job-title", fields={"external_id": "@href", "title": ":scope",
                                             "url": "/apply?job={external_id}"})
-    async with site({"": LISTING}) as c:
+    async with site(web, {"": LISTING}) as c:
         jobs = await run_recipe(c, "acme.com", "Acme", r)
     assert jobs[0].url == "https://careers.acme.com/apply?job=/jobs/4021-robotics-engineer"
 
 
 @pytest.mark.parametrize("href", SCRIPT_URLS)
-async def test_script_hrefs_never_become_links(href):
+async def test_script_hrefs_never_become_links(href, web):
     page = f'<ul class="jobs"><li class="job"><a class="job-title" href="{href}">Engineer</a></li></ul>'
-    async with site({"": page}) as c:
+    async with site(web, {"": page}) as c:
         jobs = await run_recipe(c, "acme.com", "Acme", recipe())
     assert len(jobs) == 1
     if href.startswith("//"):  # protocol-relative: a real (if foreign) http(s) link
@@ -173,52 +174,53 @@ def _page(n):
     return f'<ul class="jobs">{lis}</ul>'
 
 
-async def test_pagination_stops_on_empty_and_repeating_pages():
+async def test_pagination_stops_on_empty_and_repeating_pages(web):
     calls = []
     pg = {"kind": "page", "param": "page", "start": 1, "max_pages": 10}
-    async with site({"1": _page(1), "2": _page(2), "3": "<p>no jobs</p>"}, calls) as c:
+    async with site(web, {"1": _page(1), "2": _page(2), "3": "<p>no jobs</p>"}, calls) as c:
         jobs = await run_recipe(c, "acme.com", "Acme", recipe(pagination=pg))
     assert len(jobs) == 4 and len(calls) == 3
     calls.clear()
-    async with site({"1": _page(1), "2": _page(1)}, calls) as c:  # site ignores ?page: same page again
+    async with site(web, {"1": _page(1), "2": _page(1)}, calls) as c:  # site ignores ?page: same page again
         jobs = await run_recipe(c, "acme.com", "Acme", recipe(pagination=pg))
     assert len(jobs) == 2 and len(calls) == 2
 
 
-async def test_robots_disallow_is_honoured():
-    async with site({"": LISTING}, robots="User-agent: *\nDisallow: /jobs/\n") as c:
+async def test_robots_disallow_is_honoured(web):
+    async with site(web, {"": LISTING}, robots="User-agent: *\nDisallow: /jobs/\n") as c:
         with pytest.raises(FetchError, match="robots"):
             await run_recipe(c, "acme.com", "Acme", recipe())
 
 
-async def test_huge_page_is_capped():
-    async with site({"": "<p>" + "x" * 3_100_000 + "</p>"}) as c:
+async def test_huge_page_is_capped(web):
+    async with site(web, {"": "<p>" + "x" * 3_100_000 + "</p>"}) as c:
         with pytest.raises(FetchError, match="too large"):
             await run_recipe(c, "acme.com", "Acme", recipe())
 
 
-async def test_non_html_content_refused():
+async def test_non_html_content_refused(web):
     def handler(request):
         if request.url.path == "/robots.txt":
             return httpx.Response(404)
         return httpx.Response(200, content=b"\x89PNG", headers={"content-type": "image/png"})
 
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as c:
+    handle(web, handler)
+    async with httpx.AsyncClient() as c:
         with pytest.raises(FetchError, match="content type"):
             await run_recipe(c, "acme.com", "Acme", recipe())
 
 
 @pytest.mark.parametrize("url", ["http://127.0.0.1/", "http://10.0.0.5/admin", "http://[::1]/"])
-async def test_private_list_urls_are_never_fetched(url, monkeypatch):
+async def test_private_list_urls_are_never_fetched(url, monkeypatch, web):
     monkeypatch.undo()  # real resolve_public: literal private IPs are refused without DNS
     calls = []
-    async with site({"": LISTING}, calls) as c:
+    async with site(web, {"": LISTING}, calls) as c:
         with pytest.raises(FetchError):
             await run_recipe(c, "acme.com", "Acme", recipe(list={"url": url}))
     assert calls == []
 
 
-async def test_empty_and_comment_only_pages_yield_nothing():
+async def test_empty_and_comment_only_pages_yield_nothing(web):
     for body in ("", "<!-- nothing -->", "   "):
-        async with site({"": body}) as c:
+        async with site(web, {"": body}) as c:
             assert await run_recipe(c, "acme.com", "Acme", recipe()) == []

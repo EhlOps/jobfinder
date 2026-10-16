@@ -17,7 +17,7 @@ from jobfinder.ingest.coveted import (
 from jobfinder.ingest.discovery import DiscoveryResult, Source, discover_boards
 from jobfinder.models import Company, CovetedTarget, Job, JobLink, Task
 from jobfinder.scheduling import handlers
-from tests.fakes import fake_resolve_public
+from tests.fakes import fake_resolve_public, handle
 
 GOOD = {"jobs": [
     {"id": 1, "title": "Robotics Engineer", "absolute_url": "https://boards.greenhouse.io/acme/jobs/1",
@@ -30,7 +30,7 @@ def public_dns(monkeypatch):
     monkeypatch.setattr(http_safety, "resolve_public", fake_resolve_public())
 
 
-def site(routes: dict[str, httpx.Response], calls: list[str] | None = None):
+def site(web, routes: dict[str, httpx.Response], calls: list[str] | None = None):
     """A mock web: exact URL -> response; greenhouse's API answers GOOD for 'acme'; everything else 404."""
     def handler(request: httpx.Request):
         host = request.headers.get("host", request.url.host)  # safe_fetch connects to the pinned IP
@@ -44,7 +44,8 @@ def site(routes: dict[str, httpx.Response], calls: list[str] | None = None):
         if host == "boards.greenhouse.io":
             return httpx.Response(200, html="<html>Acme jobs</html>")
         return httpx.Response(404, text="not found")
-    return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    handle(web, handler)
+    return httpx.AsyncClient()
 
 
 def redirect(to):
@@ -156,14 +157,14 @@ async def test_score_all_uses_every_signal(maker):
     assert rows["Hidden"].coveted_score == 0 and rows["Hidden"].coveted_tier == 3
 
 
-async def test_discovery_records_curated_list_boards(maker):
+async def test_discovery_records_curated_list_boards(maker, web):
     async def curated(_):
         return [("greenhouse", "Acme"), ("lever", "beta")]
 
     async def other(_):
         return [("ashby", "gamma")]
 
-    async with maker() as db, site({}) as c:
+    async with maker() as db, site(web, {}) as c:
         res: DiscoveryResult = await discover_boards(db, c, max_candidates=0, sources=[
             Source("lists", "t", True, curated, curated=True), Source("hn", "t", True, other)])
     assert res.as_dict()["listed"] == ["greenhouse/acme", "lever/beta"]
@@ -171,9 +172,9 @@ async def test_discovery_records_curated_list_boards(maker):
 
 # ---- the audit ----
 
-async def test_pinned_target_resolves_through_its_careers_page(maker):
+async def test_pinned_target_resolves_through_its_careers_page(maker, web):
     routes = {"https://acme.com/careers": redirect("https://boards.greenhouse.io/acme")}
-    async with maker() as db, site(routes) as c:
+    async with maker() as db, site(web, routes) as c:
         t = CovetedTarget(name="Acme", domain="acme.com", source="admin", score=100)
         db.add(t)
         await db.commit()
@@ -188,9 +189,9 @@ async def test_pinned_target_resolves_through_its_careers_page(maker):
     assert len(jobs) == 1  # fetched right away
 
 
-async def test_failed_target_records_why_and_tries_one_family(maker):
+async def test_failed_target_records_why_and_tries_one_family(maker, web):
     calls: list[str] = []
-    async with maker() as db, site({}, calls) as c:
+    async with maker() as db, site(web, {}, calls) as c:
         t = CovetedTarget(name="Nope", domain="nope.com", source="admin")
         db.add(t)
         await db.commit()
@@ -203,9 +204,9 @@ async def test_failed_target_records_why_and_tries_one_family(maker):
     assert pages == ["https://nope.com/careers", "https://careers.nope.com/", "https://jobs.nope.com/"]
 
 
-async def test_audit_picks_coveted_gaps_oldest_first_and_respects_limit(maker):
+async def test_audit_picks_coveted_gaps_oldest_first_and_respects_limit(maker, web):
     now = datetime.now(UTC)
-    async with maker() as db, site({}) as c:
+    async with maker() as db, site(web, {}) as c:
         broken = Company(name="Broken Co", ats="greenhouse", slug="brokenco", enabled=False, coveted_tier=1,
                          coveted_score=80)
         failing = Company(name="Failing", ats="lever", slug="failing", consecutive_failures=3, coveted_tier=2,
@@ -225,9 +226,9 @@ async def test_audit_picks_coveted_gaps_oldest_first_and_respects_limit(maker):
     assert tried == {"brokenco.com", "failing.com", "stale.com"}  # never-tried first, then the oldest
 
 
-async def test_same_failing_board_is_not_a_fix(maker):
+async def test_same_failing_board_is_not_a_fix(maker, web):
     routes = {"https://brokenco.com/careers": redirect("https://boards.greenhouse.io/brokenco")}
-    async with maker() as db, site(routes) as c:
+    async with maker() as db, site(web, routes) as c:
         broken = Company(name="BrokenCo", ats="greenhouse", slug="brokenco", enabled=False, coveted_tier=1)
         db.add(broken)
         await db.commit()
@@ -237,12 +238,12 @@ async def test_same_failing_board_is_not_a_fix(maker):
     assert "same failing board" in t.last_error
 
 
-async def test_audit_survives_a_crash(maker, monkeypatch):
+async def test_audit_survives_a_crash(maker, monkeypatch, web):
     async def boom(*a, **k):
         raise RuntimeError("bug")
 
     monkeypatch.setattr(coveted, "resolve_target", boom)
-    async with maker() as db, site({}) as c:
+    async with maker() as db, site(web, {}) as c:
         db.add(CovetedTarget(name="X", domain="x.com"))
         await db.commit()
         out = await coveted.audit_coverage(db, client=c)
@@ -266,9 +267,9 @@ async def test_handlers_chain_score_into_audit(maker):
     assert {"score_coveted", "audit_coverage"} <= set(handlers.HANDLERS)
 
 
-async def test_target_resolves_from_a_link_on_its_careers_page(maker):
+async def test_target_resolves_from_a_link_on_its_careers_page(maker, web):
     page = httpx.Response(200, html='<a href="https://boards.greenhouse.io/acme/jobs/1">Apply</a>')
-    async with maker() as db, site({"https://acme.com/careers": page}) as c:
+    async with maker() as db, site(web, {"https://acme.com/careers": page}) as c:
         t = CovetedTarget(name="Acme", domain="acme.com", source="admin")
         db.add(t)
         await db.commit()
@@ -279,9 +280,9 @@ async def test_target_resolves_from_a_link_on_its_careers_page(maker):
     assert (company.ats, company.slug) == ("greenhouse", "acme")
 
 
-async def test_another_broken_board_is_not_a_fix_either(maker):
+async def test_another_broken_board_is_not_a_fix_either(maker, web):
     routes = {"https://acme.com/careers": redirect("https://boards.greenhouse.io/acme")}
-    async with maker() as db, site(routes) as c:
+    async with maker() as db, site(web, routes) as c:
         db.add(Company(name="Acme old", ats="greenhouse", slug="acme", enabled=False))
         t = CovetedTarget(name="Acme", domain="acme.com", source="admin")
         db.add(t)
@@ -291,9 +292,9 @@ async def test_another_broken_board_is_not_a_fix_either(maker):
     assert out["resolved"] == 0 and t.company_id is None and "isn't working either" in t.last_error
 
 
-async def test_refused_sites_are_never_fetched(maker):
+async def test_refused_sites_are_never_fetched(maker, web):
     calls: list[str] = []
-    async with maker() as db, site({}, calls) as c:
+    async with maker() as db, site(web, {}, calls) as c:
         t = CovetedTarget(name="Apple", domain="apple.com", source="admin")
         db.add(t)
         await db.commit()

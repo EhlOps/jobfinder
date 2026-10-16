@@ -12,7 +12,7 @@ from jobfinder.ingest.resolve.rungs import RUNGS
 from jobfinder.ingest.service import ingest_company
 from jobfinder.ingest.sources.detect import HTML_DETECTORS, detect_board
 from jobfinder.models import Company, Job, JobLink
-from tests.fakes import fake_resolve_public
+from tests.fakes import fake_resolve_public, handle, serve
 
 URL = "https://careers.acme.com/jobs/4021"
 API = {"jobs": [{"id": 4021, "title": "Robotics Engineer"}, {"id": 4022, "title": "Controls Engineer"}]}
@@ -38,8 +38,9 @@ class Fixed:
         return self.hit
 
 
-def api_client():
-    return httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(200, json=API)))
+def api_client(web):
+    serve(web, json=API)
+    return httpx.AsyncClient()
 
 
 async def make_link(db, url=URL):
@@ -61,13 +62,13 @@ def test_registrable_domain():
     assert registrable_domain("https://acme.io") == "acme.io"
 
 
-async def test_recipe_hit_becomes_a_recipe_board(maker, monkeypatch):
+async def test_recipe_hit_becomes_a_recipe_board(maker, monkeypatch, web):
     posting = JobPosting(source="recipe", external_id="acme.com:4021", company_name="Acme", title="R", url=URL)
     hit = RecipeHit(Recipe.model_validate(RECIPE), domain="acme.com", name="Acme Robotics", postings=[posting])
     broken, passes, wins = Fixed("broken", 2, boom=True), Fixed("passes", 3), Fixed("wins", 4, hit)
     never = Fixed("never", 9, BoardHit("greenhouse", "acme"))
     monkeypatch.setattr(resolve, "RUNGS", [broken, passes, wins, never])
-    async with maker() as db, api_client() as c:
+    async with maker() as db, api_client(web) as c:
         link = await make_link(db)
         out = await resolve_link(db, link.id, client=c)
         await db.refresh(link)
@@ -81,12 +82,12 @@ async def test_recipe_hit_becomes_a_recipe_board(maker, monkeypatch):
     assert {j.external_id for j in jobs} == {"acme.com:4021", "acme.com:4022"} and all(j.source == "recipe" for j in jobs)
 
 
-async def test_single_job_is_kept_when_no_board(maker, monkeypatch):
+async def test_single_job_is_kept_when_no_board(maker, monkeypatch, web):
     posting = JobPosting(source="jsonld", external_id="x", company_name="Acme", title="Robotics Engineer", url="")
     monkeypatch.setattr(resolve, "RUNGS", [Fixed("jsonld", 3, SingleJob(posting)), Fixed("later", 4)])
     async with maker() as db:
         link = await make_link(db)
-        out = await resolve_link(db, link.id, client=api_client())
+        out = await resolve_link(db, link.id, client=api_client(web))
         await db.refresh(link)
         job = await db.get(Job, link.job_id)
     assert out["status"] == "unresolved" and out["job_id"] == job.id
@@ -94,7 +95,7 @@ async def test_single_job_is_kept_when_no_board(maker, monkeypatch):
     assert job.source == "link" and job.company_id is None and job.url == URL and job.title == "Robotics Engineer"
 
 
-async def test_failed_board_falls_through_to_next_rung(maker, monkeypatch):
+async def test_failed_board_falls_through_to_next_rung(maker, monkeypatch, web):
     posting = JobPosting(source="recipe", external_id="acme.com:4021", company_name="Acme", title="R", url=URL)
     bad = Fixed("bad", 1, BoardHit("greenhouse", "nope"))
     good = Fixed("good", 2, RecipeHit(Recipe.model_validate(RECIPE), domain="acme.com", postings=[posting]))
@@ -105,15 +106,17 @@ async def test_failed_board_falls_through_to_next_rung(maker, monkeypatch):
             return httpx.Response(404, json={})
         return httpx.Response(200, json=API)
 
-    async with maker() as db, httpx.AsyncClient(transport=httpx.MockTransport(handler)) as c:
+    handle(web, handler)
+    async with maker() as db, httpx.AsyncClient() as c:
         link = await make_link(db)
         out = await resolve_link(db, link.id, client=c)
     assert out["status"] == "resolved" and out["rung"] == "good"
 
 
-async def test_board_error_reported_when_nothing_else_works(maker, monkeypatch):
+async def test_board_error_reported_when_nothing_else_works(maker, monkeypatch, web):
     monkeypatch.setattr(resolve, "RUNGS", [Fixed("bad", 1, BoardHit("greenhouse", "nope"))])
-    client = httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(404, json={})))
+    serve(web, status=404, json={})
+    client = httpx.AsyncClient()
     async with maker() as db:
         link = await make_link(db)
         await resolve_link(db, link.id, client=client)
@@ -121,7 +124,7 @@ async def test_board_error_reported_when_nothing_else_works(maker, monkeypatch):
     assert link.status == "unresolved" and "couldn't be read" in link.error and "404" in link.error
 
 
-async def test_context_fetches_page_once_and_notes_failures(monkeypatch):
+async def test_context_fetches_page_once_and_notes_failures(monkeypatch, web):
     calls = []
 
     def handler(request):
@@ -130,11 +133,13 @@ async def test_context_fetches_page_once_and_notes_failures(monkeypatch):
             return httpx.Response(404)
         return httpx.Response(200, html="<html>hi</html>")
 
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as c:
+    handle(web, handler)
+    async with httpx.AsyncClient() as c:
         ctx = ResolveContext(URL, c)
         assert "hi" in (await ctx.page()).text and (await ctx.page()) is not None
         assert calls.count("/jobs/4021") == 1
-    async with httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(500))) as c:
+    serve(web, status=500)
+    async with httpx.AsyncClient() as c:
         ctx = ResolveContext(URL, c)
         assert await ctx.page() is None and ctx.page_error and ctx.notes
 
@@ -149,8 +154,8 @@ async def test_unknown_ats_is_a_board_failure_not_a_crash(maker):
     assert "unknown ATS" in stats.error and c.consecutive_failures == 1 and "unknown ATS" in c.last_error
 
 
-async def test_recipe_board_ingests_through_run_recipe(maker):
-    async with maker() as db, api_client() as client:
+async def test_recipe_board_ingests_through_run_recipe(maker, web):
+    async with maker() as db, api_client(web) as client:
         c = Company(name="Acme", ats="recipe", slug="acme.com", recipe=RECIPE, origin="user")
         db.add(c)
         await db.commit()

@@ -4,6 +4,7 @@ import httpx
 import pytest
 
 from jobfinder.profile import web_page
+from tests.fakes import handle, redirects, refuse, serve
 
 PUBLIC = "93.184.216.34"
 
@@ -28,7 +29,7 @@ def page(html="<html><body><article><p>Hello portfolio world, this is a long eno
     return httpx.Response(200, headers={"content-type": "text/html; charset=utf-8"}, content=html.encode(), **kw)
 
 
-async def test_connects_to_the_validated_ip_but_keeps_name_for_host_and_tls(monkeypatch):
+async def test_connects_to_the_validated_ip_but_keeps_name_for_host_and_tls(monkeypatch, web):
     resolve, _ = resolver({"me.dev": [PUBLIC]})
     monkeypatch.setattr(web_page, "resolve_public", resolve)
     seen = {}
@@ -37,24 +38,24 @@ async def test_connects_to_the_validated_ip_but_keeps_name_for_host_and_tls(monk
         seen.update(host=req.url.host, header=req.headers["host"], sni=req.extensions.get("sni_hostname"))
         return page()
 
-    text = await web_page.fetch_page_text("https://me.dev/about", transport=httpx.MockTransport(handler))
+    handle(web, handler)
+    text = await web_page.fetch_page_text("https://me.dev/about")
     assert "Hello portfolio world" in text
     assert seen == {"host": PUBLIC, "header": "me.dev", "sni": "me.dev"}
 
 
-async def test_dns_rebinding_to_a_private_address_is_refused(monkeypatch):
+async def test_dns_rebinding_to_a_private_address_is_refused(monkeypatch, web):
     # public on the first lookup, internal on the next: the redirect hop must be re-checked and refused
     resolve, _ = resolver({"a.dev": [PUBLIC], "evil.dev": ["169.254.169.254"]})
     monkeypatch.setattr(web_page, "resolve_public", resolve)
 
-    def handler(req):
-        return httpx.Response(302, headers={"location": "http://evil.dev/latest/meta-data"})
+    redirects(web, "http://a.dev/", "http://evil.dev/latest/meta-data")
 
     with pytest.raises(web_page.FetchError, match="non-public"):
-        await web_page.fetch_page_text("http://a.dev/", transport=httpx.MockTransport(handler))
+        await web_page.fetch_page_text("http://a.dev/")
 
 
-async def test_relative_redirects_are_followed_and_loops_stop(monkeypatch):
+async def test_relative_redirects_are_followed_and_loops_stop(monkeypatch, web):
     resolve, calls = resolver({"a.dev": [PUBLIC]})
     monkeypatch.setattr(web_page, "resolve_public", resolve)
     hops = iter(["/next", None])
@@ -63,25 +64,25 @@ async def test_relative_redirects_are_followed_and_loops_stop(monkeypatch):
         nxt = next(hops)
         return httpx.Response(302, headers={"location": nxt}) if nxt else page()
 
-    assert "Hello portfolio" in await web_page.fetch_page_text("http://a.dev/", transport=httpx.MockTransport(handler))
+    handle(web, handler)
+    assert "Hello portfolio" in await web_page.fetch_page_text("http://a.dev/")
     assert calls == ["a.dev", "a.dev"]  # re-resolved per hop
 
+    serve(web, status=302, headers={"location": "/x"})
     with pytest.raises(web_page.FetchError, match="Too many redirects"):
-        await web_page.fetch_page_text(
-            "http://a.dev/", transport=httpx.MockTransport(lambda r: httpx.Response(302, headers={"location": "/x"}))
-        )
+        await web_page.fetch_page_text("http://a.dev/")
 
 
-async def test_oversized_body_is_cut_off(monkeypatch):
+async def test_oversized_body_is_cut_off(monkeypatch, web):
     resolve, _ = resolver({"a.dev": [PUBLIC]})
     monkeypatch.setattr(web_page, "resolve_public", resolve)
     monkeypatch.setattr(web_page, "MAX_BYTES", 1000)
-    big = httpx.Response(200, headers={"content-type": "text/html"}, content=b"x" * 5000)
+    serve(web, headers={"content-type": "text/html"}, content=b"x" * 5000)
     with pytest.raises(web_page.FetchError, match="too large"):
-        await web_page.fetch_page_text("http://a.dev/", transport=httpx.MockTransport(lambda r: big))
+        await web_page.fetch_page_text("http://a.dev/")
 
 
-async def test_slow_drip_hits_the_overall_deadline(monkeypatch):
+async def test_slow_drip_hits_the_overall_deadline(monkeypatch, web):
     resolve, _ = resolver({"a.dev": [PUBLIC]})
     monkeypatch.setattr(web_page, "resolve_public", resolve)
     monkeypatch.setattr(web_page, "DEADLINE_S", 0.3)
@@ -94,28 +95,27 @@ async def test_slow_drip_hits_the_overall_deadline(monkeypatch):
     def handler(req):
         return httpx.Response(200, headers={"content-type": "text/html"}, content=drip())
 
+    handle(web, handler)
     with pytest.raises(web_page.FetchError, match="too long"):
-        await web_page.fetch_page_text("http://a.dev/", transport=httpx.MockTransport(handler))
+        await web_page.fetch_page_text("http://a.dev/")
 
 
 @pytest.mark.parametrize("status, ctype, msg", [(404, "text/html", "HTTP 404"), (200, "application/pdf", "isn't a web page")])
-async def test_errors_and_non_pages(monkeypatch, status, ctype, msg):
+async def test_errors_and_non_pages(monkeypatch, web, status, ctype, msg):
     resolve, _ = resolver({"a.dev": [PUBLIC]})
     monkeypatch.setattr(web_page, "resolve_public", resolve)
-    resp = httpx.Response(status, headers={"content-type": ctype}, content=b"data")
+    serve(web, status=status, headers={"content-type": ctype}, content=b"data")
     with pytest.raises(web_page.FetchError, match=msg):
-        await web_page.fetch_page_text("http://a.dev/", transport=httpx.MockTransport(lambda r: resp))
+        await web_page.fetch_page_text("http://a.dev/")
 
 
-async def test_transport_errors_become_fetch_errors(monkeypatch):
+async def test_transport_errors_become_fetch_errors(monkeypatch, web):
     resolve, _ = resolver({"a.dev": [PUBLIC]})
     monkeypatch.setattr(web_page, "resolve_public", resolve)
 
-    def boom(req):
-        raise httpx.ConnectError("refused")
-
+    refuse(web)
     with pytest.raises(web_page.FetchError, match="Could not fetch"):
-        await web_page.fetch_page_text("http://a.dev/", transport=httpx.MockTransport(boom))
+        await web_page.fetch_page_text("http://a.dev/")
 
 
 async def test_every_resolved_address_must_be_public(monkeypatch):

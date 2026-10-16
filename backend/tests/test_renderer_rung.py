@@ -20,7 +20,7 @@ from jobfinder.ingest.resolve.rungs.rendered import (
     rendered_html_recipe,
 )
 from jobfinder.models import Company, Task
-from tests.fakes import FakeRenderer, fake_resolve_public
+from tests.fakes import FakeRenderer, fake_resolve_public, handle
 
 FIX = Path(__file__).parent / "fixtures" / "renderer"
 POST_URL = "https://careers.acme.com/us/en/job/R-10234/senior-robotics-engineer"
@@ -46,7 +46,7 @@ def public_dns(monkeypatch):
     monkeypatch.setattr(http_safety, "resolve_public", fake_resolve_public())
 
 
-def search_api(calls):
+def search_api(web, calls):
     page0 = load("search_page0.json")
 
     def handler(request: httpx.Request):
@@ -56,7 +56,8 @@ def search_api(calls):
             return httpx.Response(200, json=page0 if body.get("from") == 0 else {"data": {"jobs": []}})
         return httpx.Response(404)
 
-    return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    handle(web, handler)
+    return httpx.AsyncClient()
 
 
 def test_rung_is_registered_between_listing_sniff_and_llm():
@@ -113,10 +114,10 @@ def test_offset_without_size_steps_by_the_sample_length():
 
 
 @pytest.mark.real_commit
-async def test_captured_json_becomes_validated_recipe(maker, enabled):
+async def test_captured_json_becomes_validated_recipe(maker, enabled, web):
     calls = []
     async with FakeRenderer(maker, {"render_capture": load("capture_post_search.json")}) as fake, \
-            search_api(calls) as client:
+            search_api(web, calls) as client:
         hit = await RenderedRung().run(ResolveContext(POST_URL, client))
     assert isinstance(hit, RecipeHit) and hit.domain == "acme.com"
     assert hit.recipe.kind == "json_api" and hit.recipe.list.method == "POST"
@@ -128,10 +129,10 @@ async def test_captured_json_becomes_validated_recipe(maker, enabled):
 
 
 @pytest.mark.real_commit
-async def test_recipe_that_misses_the_pasted_job_is_not_used(maker, enabled):
+async def test_recipe_that_misses_the_pasted_job_is_not_used(maker, enabled, web):
     other = "https://careers.acme.com/us/en/job/R-99999/not-in-the-results"
     async with FakeRenderer(maker, {"render_capture": load("capture_post_search.json")}), \
-            search_api([]) as client:
+            search_api(web, []) as client:
         ctx = ResolveContext(other, client)
         assert await RenderedRung().run(ctx) is None
     assert any("don't include the pasted job" in n for n in ctx.notes)
@@ -141,12 +142,12 @@ async def test_recipe_that_misses_the_pasted_job_is_not_used(maker, enabled):
 
 
 @pytest.mark.real_commit
-async def test_truncated_capture_is_refetched_safely(maker, enabled):
+async def test_truncated_capture_is_refetched_safely(maker, enabled, web):
     cap = load("capture_post_search.json")
     search = cap["json_responses"][1]
     search.update(body_preview=search["body_preview"][:50], truncated=True)
     calls = []
-    async with FakeRenderer(maker, {"render_capture": cap}), search_api(calls) as client:
+    async with FakeRenderer(maker, {"render_capture": cap}), search_api(web, calls) as client:
         hit = await RenderedRung().run(ResolveContext(POST_URL, client))
     assert isinstance(hit, RecipeHit) and len(calls) >= 2  # one re-fetch for the sample, then the run
 

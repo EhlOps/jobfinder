@@ -17,6 +17,7 @@ from jobfinder.ingest.sources.oracle_hcm import (
     parse_slug,
 )
 from jobfinder.ingest.validate import SLUG_RE
+from tests.fakes import handle
 
 FIX = Path(__file__).parent / "fixtures"
 SLUG = "eeho.fa.us2__CX_45001"
@@ -161,14 +162,15 @@ def _handler(calls=None, fail_details=False, total=None, pages=None):
     return handler
 
 
-async def _run(handler, **kw):
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+async def _run(web, handler, **kw):
+    handle(web, handler)
+    async with httpx.AsyncClient() as client:
         return await fetch_oracle_hcm(client, SLUG, "Oracle", **kw)
 
 
-async def test_request_urls_are_exact():
+async def test_request_urls_are_exact(web):
     calls: list[str] = []
-    await _run(_handler(calls=calls))
+    await _run(web, _handler(calls=calls))
     assert calls[0] == (
         f"https://{HOST}{LIST_PATH}?onlyData=true&expand=requisitionList.secondaryLocations"
         "&finder=findReqs;siteNumber=CX_45001,limit=50,offset=0,sortBy=POSTING_DATES_DESC"
@@ -179,67 +181,67 @@ async def test_request_urls_are_exact():
     assert len(calls) == 1 + 3 and not any("admin" in c for c in calls)
 
 
-async def test_fetch_with_details_tolerates_a_failed_detail():
-    jobs = await _run(_handler())
+async def test_fetch_with_details_tolerates_a_failed_detail(web):
+    jobs = await _run(web, _handler())
     assert len(jobs) == 3
     assert "Role Purpose" in jobs[0].description_text
     assert jobs[2].description_text.startswith("The Oracle Health")  # 404 detail: short description kept
 
 
-async def test_list_only_makes_one_request():
+async def test_list_only_makes_one_request(web):
     calls: list[str] = []
-    jobs = await _run(_handler(calls=calls), list_only=True)
+    jobs = await _run(web, _handler(calls=calls), list_only=True)
     assert len(jobs) == 3 and len(calls) == 1 and LIST_PATH in calls[0]
     assert jobs[0].description_text.startswith("Resolve critical product data issues")
 
 
-async def test_raises_when_every_detail_fails():
+async def test_raises_when_every_detail_fails(web):
     with pytest.raises(RuntimeError, match="detail requests failed"):
-        await _run(_handler(fail_details=True))
+        await _run(web, _handler(fail_details=True))
 
 
 def _page(start, n):
     return [{"Id": str(i), "Title": f"Engineer {i}"} for i in range(start, start + n)]
 
 
-async def test_paging_stops_at_total(monkeypatch):
+async def test_paging_stops_at_total(web, monkeypatch):
     monkeypatch.setattr(oracle_hcm, "MAX_DETAILS", 0)
     calls: list[str] = []
     pages = [_page(0, 50), _page(50, 50), _page(100, 50)]
-    jobs = await _run(_handler(calls=calls, total=100, pages=pages))
+    jobs = await _run(web, _handler(calls=calls, total=100, pages=pages))
     assert len(jobs) == 100 and len(calls) == 2
     assert "offset=50," in calls[1]
 
 
-async def test_paging_stops_on_empty_page_or_short_page_without_total(monkeypatch):
+async def test_paging_stops_on_empty_page_or_short_page_without_total(web, monkeypatch):
     monkeypatch.setattr(oracle_hcm, "MAX_DETAILS", 0)
     calls: list[str] = []
     # TotalJobsCount over-reports: an empty page ends paging
-    jobs = await _run(_handler(calls=calls, total=1000, pages=[_page(0, 50), _page(50, 7)]))
+    jobs = await _run(web, _handler(calls=calls, total=1000, pages=[_page(0, 50), _page(50, 7)]))
     assert len(jobs) == 57 and len(calls) == 3
     calls.clear()
     # no total: a short page is the last one
-    jobs = await _run(_handler(calls=calls, total=None, pages=[_page(0, 50), _page(50, 7)]))
+    jobs = await _run(web, _handler(calls=calls, total=None, pages=[_page(0, 50), _page(50, 7)]))
     assert len(jobs) == 57 and len(calls) == 2
 
 
-async def test_paging_steps_by_rows_returned(monkeypatch):
+async def test_paging_steps_by_rows_returned(web, monkeypatch):
     # a pod that caps `limit` at 25 still gets paged completely
     monkeypatch.setattr(oracle_hcm, "MAX_DETAILS", 0)
     calls: list[str] = []
-    jobs = await _run(_handler(calls=calls, total=60, pages=[_page(0, 25), _page(25, 25), _page(50, 10)]))
+    jobs = await _run(web, _handler(calls=calls, total=60, pages=[_page(0, 25), _page(25, 25), _page(50, 10)]))
     assert len(jobs) == 60 and [c.split("offset=")[1].split(",")[0] for c in calls] == ["0", "25", "50"]
 
 
-async def test_paging_is_capped(monkeypatch):
+async def test_paging_is_capped(web, monkeypatch):
     monkeypatch.setattr(oracle_hcm, "MAX_DETAILS", 0)
     monkeypatch.setattr(oracle_hcm, "MAX_PAGES", 3)
     calls: list[str] = []
-    jobs = await _run(_handler(calls=calls, total=10_000, pages=[_page(i * 50, 50) for i in range(10)]))
+    jobs = await _run(web, _handler(calls=calls, total=10_000, pages=[_page(i * 50, 50) for i in range(10)]))
     assert len(calls) == 3 and len(jobs) == 150
 
 
-async def test_paging_stops_when_offset_is_ignored(monkeypatch):
+async def test_paging_stops_when_offset_is_ignored(web, monkeypatch):
     monkeypatch.setattr(oracle_hcm, "MAX_DETAILS", 0)
     calls: list[str] = []
 
@@ -247,34 +249,34 @@ async def test_paging_stops_when_offset_is_ignored(monkeypatch):
         calls.append(str(req.url))
         return httpx.Response(200, json={"items": [{"TotalJobsCount": 10_000, "requisitionList": _page(0, 50)}]})
 
-    jobs = await _run(handler)
+    jobs = await _run(web, handler)
     assert len(calls) == 2 and len(jobs) == 50  # no duplicates, no loop to MAX_PAGES
 
 
-async def test_string_total_is_tolerated(monkeypatch):
+async def test_string_total_is_tolerated(web, monkeypatch):
     monkeypatch.setattr(oracle_hcm, "MAX_DETAILS", 0)
-    jobs = await _run(lambda r: httpx.Response(200, json={"items": [{"TotalJobsCount": "3", "requisitionList": _page(0, 3)}]}))
+    jobs = await _run(web, lambda r: httpx.Response(200, json={"items": [{"TotalJobsCount": "3", "requisitionList": _page(0, 3)}]}))
     assert len(jobs) == 3
 
 
-async def test_one_failed_detail_on_a_tiny_board_keeps_the_posting():
+async def test_one_failed_detail_on_a_tiny_board_keeps_the_posting(web):
     def handler(req):
         if req.url.path == LIST_PATH:
             return httpx.Response(200, json={"items": [{"TotalJobsCount": 1, "requisitionList": _page(0, 1)}]})
         return httpx.Response(404)
 
-    jobs = await _run(handler)
+    jobs = await _run(web, handler)
     assert [j.title for j in jobs] == ["Engineer 0"]
 
 
-async def test_detail_cap(monkeypatch):
+async def test_detail_cap(web, monkeypatch):
     monkeypatch.setattr(oracle_hcm, "MAX_DETAILS", 2)
     calls: list[str] = []
-    jobs = await _run(_handler(calls=calls))
+    jobs = await _run(web, _handler(calls=calls))
     assert len(jobs) == 3 and sum(DETAIL_PATH in c for c in calls) == 2
 
 
-async def test_backs_off_on_429(monkeypatch):
+async def test_backs_off_on_429(web, monkeypatch):
     sleeps: list[float] = []
 
     async def fake_sleep(s):
@@ -290,24 +292,25 @@ async def test_backs_off_on_429(monkeypatch):
             return httpx.Response(429, headers={"Retry-After": "2"})
         return inner(req)
 
-    jobs = await _run(handler, list_only=True)
+    jobs = await _run(web, handler, list_only=True)
     assert len(jobs) == 3 and sleeps == [2.0]
 
 
-async def test_first_page_error_propagates():
+async def test_first_page_error_propagates(web):
     with pytest.raises(httpx.HTTPStatusError):
-        await _run(lambda req: httpx.Response(404))
+        await _run(web, lambda req: httpx.Response(404))
 
 
-async def test_unexpected_shapes_yield_nothing():
+async def test_unexpected_shapes_yield_nothing(web):
     for body in ({}, {"items": []}, {"items": [None]}, {"items": [{"requisitionList": "nope"}]}, []):
-        assert await _run(lambda req, b=body: httpx.Response(200, json=b), list_only=True) == []
+        assert await _run(web, lambda req, b=body: httpx.Response(200, json=b), list_only=True) == []
 
 
-async def test_invalid_slug_makes_no_request():
+async def test_invalid_slug_makes_no_request(web):
     calls: list[str] = []
+    handle(web, _handler(calls=calls))
     for bad in ["nonsense", *SQLI]:
         with pytest.raises(ValueError):
-            async with httpx.AsyncClient(transport=httpx.MockTransport(_handler(calls=calls))) as c:
+            async with httpx.AsyncClient() as c:
                 await fetch_oracle_hcm(c, bad, "X")
     assert calls == []

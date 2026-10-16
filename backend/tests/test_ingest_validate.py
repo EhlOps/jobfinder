@@ -4,12 +4,15 @@ import sqlalchemy as sa
 
 from jobfinder.ingest.validate import add_board, validate_board
 from jobfinder.models import Company
+from tests.fakes import handle
 
 GOOD = {"jobs": [{"id": 1, "title": "Engineer", "absolute_url": "https://x/1", "location": {"name": "Remote"}}]}
 
 
-def client_for(handler):
-    return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+def client_for(web, handler):
+    """A client whose requests all go to `handler` (replacing any earlier handler)."""
+    handle(web, handler)
+    return httpx.AsyncClient()
 
 
 def respond(status=200, json=None, content=None):
@@ -21,36 +24,36 @@ def respond(status=200, json=None, content=None):
     return handler
 
 
-async def test_valid_board():
-    async with client_for(respond(json=GOOD)) as c:
+async def test_valid_board(web):
+    async with client_for(web, respond(json=GOOD)) as c:
         r = await validate_board("greenhouse", "acme", c)
     assert r.ok and r.job_count == 1 and r.reason == ""
 
 
-async def test_empty_board():
-    async with client_for(respond(json={"jobs": []})) as c:
+async def test_empty_board(web):
+    async with client_for(web, respond(json={"jobs": []})) as c:
         r = await validate_board("greenhouse", "acme", c)
     assert not r.ok and r.job_count == 0 and "no postings" in r.reason
 
 
-async def test_404_board():
-    async with client_for(respond(404, json={"error": "nope"})) as c:
+async def test_404_board(web):
+    async with client_for(web, respond(404, json={"error": "nope"})) as c:
         r = await validate_board("greenhouse", "acme", c)
     assert not r.ok and "404" in r.reason
 
 
 @pytest.mark.parametrize("content", [b"<html>not json</html>", b"[1, 2]"])
-async def test_malformed_board(content):
-    async with client_for(respond(content=content)) as c:
+async def test_malformed_board(content, web):
+    async with client_for(web, respond(content=content)) as c:
         r = await validate_board("greenhouse", "acme", c)
     assert not r.ok and "malformed" in r.reason
 
 
-async def test_network_error_and_bad_input():
+async def test_network_error_and_bad_input(web):
     def boom(request):
         raise httpx.ConnectError("down")
 
-    async with client_for(boom) as c:
+    async with client_for(web, boom) as c:
         assert not (await validate_board("greenhouse", "acme", c)).ok
         assert "unknown ATS" in (await validate_board("nope", "acme", c)).reason
         assert "invalid slug" in (await validate_board("greenhouse", "../x?y", c)).reason
@@ -60,30 +63,30 @@ async def count(db):
     return await db.scalar(sa.select(sa.func.count()).select_from(Company))
 
 
-async def test_add_board_inserts_valid(maker):
-    async with maker() as db, client_for(respond(json=GOOD)) as c:
+async def test_add_board_inserts_valid(maker, web):
+    async with maker() as db, client_for(web, respond(json=GOOD)) as c:
         company, reason = await add_board(db, "greenhouse", "acme", "Acme", client=c)
         assert company and company.origin == "discovered" and company.validated_at is not None
         assert "1 postings" in reason and await count(db) == 1
 
 
-async def test_add_board_refuses_invalid(maker):
+async def test_add_board_refuses_invalid(maker, web):
     async with maker() as db:
         for handler in (respond(404, json={}), respond(json={"jobs": []}), respond(content=b"garbage")):
-            async with client_for(handler) as c:
+            async with client_for(web, handler) as c:
                 company, reason = await add_board(db, "greenhouse", "acme", "Acme", client=c)
             assert company is None and reason
         assert await count(db) == 0
 
 
-async def test_duplicates_ignored_without_fetch(maker):
+async def test_duplicates_ignored_without_fetch(maker, web):
     calls = []
 
     def handler(request):
         calls.append(request)
         return httpx.Response(200, json=GOOD)
 
-    async with maker() as db, client_for(handler) as c:
+    async with maker() as db, client_for(web, handler) as c:
         first, _ = await add_board(db, "greenhouse", "acme", "Acme", origin="seed", client=c)
         second, reason = await add_board(db, "greenhouse", "acme", "Acme Again", client=c)
         assert first and first.origin == "seed" and second is None and "duplicate" in reason

@@ -11,6 +11,7 @@ from jobfinder.ingest import runner, service
 from jobfinder.ingest.base import JobPosting
 from jobfinder.ingest.sources import usajobs
 from jobfinder.models import Job, Profile, User
+from tests.fakes import handle, serve
 
 FIX = json.loads((Path(__file__).parent / "fixtures" / "usajobs_search.json").read_text())
 
@@ -37,17 +38,18 @@ def test_parse_usajobs_empty():
     assert usajobs.parse_usajobs({}) == [] and usajobs.parse_usajobs({"SearchResult": None}) == []
 
 
-async def test_fetch_noop_without_key(monkeypatch):
+async def test_fetch_noop_without_key(monkeypatch, web):
     monkeypatch.setattr(get_settings(), "usajobs_api_key", "")
 
     def boom(request):
         raise AssertionError("no request expected")
 
-    async with httpx.AsyncClient(transport=httpx.MockTransport(boom)) as c:
+    handle(web, boom)
+    async with httpx.AsyncClient() as c:
         assert await usajobs.fetch_usajobs(c) == []
 
 
-async def test_fetch_headers_paging_and_failure_isolation(monkeypatch):
+async def test_fetch_headers_paging_and_failure_isolation(monkeypatch, web):
     s = get_settings()
     monkeypatch.setattr(s, "usajobs_api_key", "KEY")
     monkeypatch.setattr(s, "usajobs_email", "me@example.com")
@@ -66,13 +68,14 @@ async def test_fetch_headers_paging_and_failure_isolation(monkeypatch):
         chunk = [items[0], items[1]] if page == 1 else [{**items[0], "MatchedObjectId": "790000009"}]
         return httpx.Response(200, json={"SearchResult": {"SearchResultCountAll": 3, "SearchResultItems": chunk}})
 
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as c:
+    handle(web, handler)
+    async with httpx.AsyncClient() as c:
         out = await usajobs.fetch_usajobs(c, [None, "Bad", "Boston"])
     assert [p.external_id for p in out] == ["790000001", "790000002", "790000009"] * 2
     assert seen == [(None, "1"), (None, "2"), ("Bad", "1"), ("Boston", "1"), ("Boston", "2")]
 
 
-async def test_fetch_retries_rate_limit(monkeypatch):
+async def test_fetch_retries_rate_limit(monkeypatch, web):
     monkeypatch.setattr(get_settings(), "usajobs_api_key", "KEY")
     monkeypatch.setattr(get_settings(), "usajobs_email", "me@example.com")
     calls = []
@@ -81,14 +84,16 @@ async def test_fetch_retries_rate_limit(monkeypatch):
         calls.append(1)
         return httpx.Response(429) if len(calls) == 1 else httpx.Response(200, json=FIX)
 
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as c:
+    handle(web, handler)
+    async with httpx.AsyncClient() as c:
         assert len(await usajobs.fetch_usajobs(c)) == 2 and len(calls) == 2
 
 
-async def test_fetch_raises_when_every_query_fails(monkeypatch):
+async def test_fetch_raises_when_every_query_fails(monkeypatch, web):
     monkeypatch.setattr(get_settings(), "usajobs_api_key", "BAD")
     monkeypatch.setattr(get_settings(), "usajobs_email", "me@example.com")
-    async with httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(401))) as c:
+    serve(web, status=401)
+    async with httpx.AsyncClient() as c:
         with pytest.raises(httpx.HTTPStatusError):
             await usajobs.fetch_usajobs(c, [None, "Boston"])
 
@@ -109,20 +114,20 @@ async def test_build_locations(maker):
         assert await usajobs.build_locations(db, limit=1) == [None, "Boston"]
 
 
-async def test_ingest_usajobs_upserts_and_expires(maker, monkeypatch):
+async def test_ingest_usajobs_upserts_and_expires(maker, monkeypatch, web):
     monkeypatch.setattr(get_settings(), "usajobs_api_key", "KEY")
     monkeypatch.setattr(get_settings(), "usajobs_email", "me@example.com")
     state = {"payload": FIX}
-    transport = httpx.MockTransport(lambda request: httpx.Response(200, json=state["payload"]))
+    handle(web, lambda request: httpx.Response(200, json=state["payload"]))
     async with maker() as db:  # a stale job from an earlier run, never seen again
         old = JobPosting(source="usajobs", external_id="old", company_name="X", title="Old", url="https://x/o")
         await service.upsert_postings(db, [old], None)
         await db.execute(sa.update(Job).where(Job.external_id == "old").values(last_seen_at=datetime.now(UTC) - timedelta(days=30)))
         await db.commit()
 
-    st = await runner.ingest_usajobs(maker, transport)
+    st = await runner.ingest_usajobs(maker)
     assert (st.fetched, st.new, st.updated, st.deactivated, st.error) == (2, 2, 0, 1, None)
-    st = await runner.ingest_usajobs(maker, transport)
+    st = await runner.ingest_usajobs(maker)
     assert (st.new, st.updated, st.deactivated) == (0, 2, 0)
     async with maker() as db:
         active = set((await db.scalars(sa.select(Job.external_id).where(Job.is_active.is_(True), Job.source == "usajobs"))).all())
@@ -131,7 +136,7 @@ async def test_ingest_usajobs_upserts_and_expires(maker, monkeypatch):
         assert job.salary_min == 99172 and "citizenship" in job.description_text
 
     state["payload"] = {"SearchResult": {"SearchResultItems": []}}  # empty answer must not expire anything
-    st = await runner.ingest_usajobs(maker, transport)
+    st = await runner.ingest_usajobs(maker)
     assert st.fetched == 0 and st.deactivated == 0 and st.error is None
 
 
@@ -146,7 +151,7 @@ async def test_run_ingest_skips_usajobs_without_key(maker, monkeypatch):
     assert out["companies"] == 0
 
 
-async def test_key_without_email_is_disabled(monkeypatch):
+async def test_key_without_email_is_disabled(monkeypatch, web):
     s = get_settings()
     monkeypatch.setattr(s, "usajobs_api_key", "KEY")
     monkeypatch.setattr(s, "usajobs_email", "")
@@ -155,5 +160,6 @@ async def test_key_without_email_is_disabled(monkeypatch):
     def boom(request):
         raise AssertionError("no request expected")
 
-    async with httpx.AsyncClient(transport=httpx.MockTransport(boom)) as c:
+    handle(web, boom)
+    async with httpx.AsyncClient() as c:
         assert await usajobs.fetch_usajobs(c) == []

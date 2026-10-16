@@ -15,6 +15,7 @@ from jobfinder.ingest.sources.workday import (
     parse_slug,
     parse_workday,
 )
+from tests.fakes import handle
 
 FIX = Path(__file__).parent / "fixtures"
 SLUG = "acme.wd1.EXT"
@@ -95,33 +96,35 @@ def _handler(fail_details=False, calls=None, offset_cap=None):
     return handler
 
 
-def _run(coro_fn, handler):
+def _run(web, coro_fn, handler):
+    handle(web, handler)
+
     async def go():
-        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        async with httpx.AsyncClient() as client:
             return await coro_fn(client)
 
     return asyncio.run(go())
 
 
-def test_fetch_with_details_tolerates_a_failed_detail():
-    jobs = _run(lambda c: fetch_workday(c, SLUG, "Acme"), _handler())
+def test_fetch_with_details_tolerates_a_failed_detail(web):
+    jobs = _run(web, lambda c: fetch_workday(c, SLUG, "Acme"), _handler())
     assert len(jobs) == 3
     assert "flight software" in jobs[0].description_text and jobs[2].description_text == ""  # 404 detail kept
 
 
-def test_fetch_list_only_makes_no_detail_calls():
+def test_fetch_list_only_makes_no_detail_calls(web):
     calls: list = []
-    jobs = _run(lambda c: fetch_workday(c, SLUG, "Acme", list_only=True), _handler(calls=calls))
+    jobs = _run(web, lambda c: fetch_workday(c, SLUG, "Acme", list_only=True), _handler(calls=calls))
     assert len(jobs) == 3 and all(m == "POST" for m, _ in calls) and len(calls) == 1
     assert all(j.description_text == "" for j in jobs)
 
 
-def test_fetch_raises_when_every_detail_fails():
+def test_fetch_raises_when_every_detail_fails(web):
     with pytest.raises(RuntimeError, match="detail requests failed"):
-        _run(lambda c: fetch_workday(c, SLUG, "Acme"), _handler(fail_details=True))
+        _run(web, lambda c: fetch_workday(c, SLUG, "Acme"), _handler(fail_details=True))
 
 
-def test_paging_stops_gracefully_at_offset_cap():
+def test_paging_stops_gracefully_at_offset_cap(web):
     # total claims more than the cap allows: page 2 is refused, page 1 results are kept
     data = {"total": 40, "jobPostings": DATA["list"]["jobPostings"] * 7}  # 21 items
 
@@ -133,19 +136,19 @@ def test_paging_stops_gracefully_at_offset_cap():
             return httpx.Response(400)
         return httpx.Response(200, json={"jobPostingInfo": {}})
 
-    jobs = _run(lambda c: fetch_workday(c, SLUG, "Acme"), handler)
+    jobs = _run(web, lambda c: fetch_workday(c, SLUG, "Acme"), handler)
     assert len(jobs) == 20
 
 
-def test_first_page_error_propagates():
+def test_first_page_error_propagates(web):
     handler = lambda req: httpx.Response(404)
     with pytest.raises(httpx.HTTPStatusError):
-        _run(lambda c: fetch_workday(c, SLUG, "Acme"), handler)
+        _run(web, lambda c: fetch_workday(c, SLUG, "Acme"), handler)
 
 
-def test_invalid_slug_raises():
+def test_invalid_slug_raises(web):
     with pytest.raises(ValueError):
-        _run(lambda c: fetch_workday(c, "nonsense", "Acme"), _handler())
+        _run(web, lambda c: fetch_workday(c, "nonsense", "Acme"), _handler())
 
 
 @pytest.mark.parametrize(
@@ -171,7 +174,7 @@ def test_unsafe_external_path_is_skipped():
     assert [j.title for j in parse_workday(items, "Acme", SLUG, NOW)] == ["A"]
 
 
-def test_429_is_retried_with_retry_after(monkeypatch):
+def test_429_is_retried_with_retry_after(web, monkeypatch):
     waits = []
 
     async def fake_sleep(s):
@@ -188,17 +191,17 @@ def test_429_is_retried_with_retry_after(monkeypatch):
                 return httpx.Response(429, headers={"Retry-After": "7"})
         return inner(req)
 
-    jobs = _run(lambda c: fetch_workday(c, SLUG, "Acme", list_only=True), handler)
+    jobs = _run(web, lambda c: fetch_workday(c, SLUG, "Acme", list_only=True), handler)
     assert len(jobs) == 3 and waits == [7.0]
 
 
-def test_persistent_429_raises(monkeypatch):
+def test_persistent_429_raises(web, monkeypatch):
     async def fake_sleep(s):
         pass
 
     monkeypatch.setattr("jobfinder.ingest.sources.workday.asyncio.sleep", fake_sleep)
     with pytest.raises(httpx.HTTPStatusError):
-        _run(lambda c: fetch_workday(c, SLUG, "Acme", list_only=True), lambda req: httpx.Response(429))
+        _run(web, lambda c: fetch_workday(c, SLUG, "Acme", list_only=True), lambda req: httpx.Response(429))
 
 
 def test_thirty_plus_days_falls_back_to_detail_start_date():
