@@ -12,12 +12,12 @@ from typing import TYPE_CHECKING, Protocol
 import httpx
 
 from jobfinder.ingest.base import JobPosting
-from jobfinder.ingest.discovery.robots import PoliteFetcher
 from jobfinder.ingest.http_safety import TEXT_TYPES, FetchError, SafeResponse, safe_fetch
-from jobfinder.ingest.recipes import Recipe
+from jobfinder.integrations.recipes import Recipe
+from jobfinder.integrations.robots import PoliteFetcher
 
 if TYPE_CHECKING:
-    from jobfinder.ai.tasks import AITasks
+    from jobfinder.integrations.claude.tasks import AITasks
 
 PAGE_MAX_BYTES = 3_000_000
 

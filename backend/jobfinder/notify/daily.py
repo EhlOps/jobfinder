@@ -14,8 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from jobfinder.core.config import settings
 from jobfinder.ingest.base import safe_http_url
+from jobfinder.integrations import smtp as mail
 from jobfinder.models import ClarifyingQuestion, Job, JobMatch, Profile, User
-from jobfinder.notify import email as mail
 from jobfinder.notify.tokens import make_token
 from jobfinder.questions.service import OPEN
 

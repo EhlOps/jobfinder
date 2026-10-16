@@ -13,15 +13,20 @@ import time
 from datetime import UTC, datetime
 from urllib.parse import urljoin, urlsplit
 
+from lxml import etree
+from lxml import html as lxml_html
 from pydantic import ValidationError
 
 from jobfinder.core.config import settings
+from jobfinder.core.urls import registrable_domain
 from jobfinder.ingest.http_safety import JSON_TYPES, FetchError, safe_fetch
-from jobfinder.ingest.recipes import Recipe, RecipeError, run_recipe, validate_recipe
-from jobfinder.ingest.recipes.rendered import count_rendered_boards, run_rendered
-from jobfinder.ingest.recipes.sniff import explain_json_sample
 from jobfinder.ingest.resolve.ladder import RecipeHit, ResolveContext
+from jobfinder.ingest.resolve.names import name_from_domain
 from jobfinder.ingest.resolve.rungs.listing import MAX_SAMPLE_CHARS, job_pattern
+from jobfinder.integrations.recipes import Recipe, RecipeError, run_recipe, validate_recipe
+from jobfinder.integrations.recipes.rendered import count_rendered_boards, run_rendered
+from jobfinder.integrations.recipes.sniff import explain_json_sample
+from jobfinder.renderer import CAPTURE, RenderError, RenderUnavailable, request_render
 from jobfinder.renderer.guard import check_selector
 
 log = logging.getLogger("jobfinder.resolve")
@@ -49,11 +54,6 @@ def listing_url(url: str) -> str | None:
 def rendered_html_recipe(html: str, page_url: str, pasted_url: str) -> tuple[dict | None, str]:
     """A rendered_html recipe when the rendered DOM repeats links shaped like the pasted job's. Links are
     counted exactly as the recipe's selector will match them (on the raw href)."""
-    from lxml import etree
-    from lxml import html as lxml_html
-
-    from jobfinder.ingest.resolve import registrable_domain
-
     pattern = job_pattern(pasted_url)
     if pattern is None:
         return None, "the pasted URL has no listing-like path"
@@ -88,9 +88,6 @@ class RenderedRung:
     async def run(self, ctx: ResolveContext) -> RecipeHit | None:
         if not settings.renderer_enabled:
             return None
-        from jobfinder.ingest.resolve import registrable_domain
-        from jobfinder.renderer import CAPTURE, RenderError, RenderUnavailable, request_render
-
         deadline = time.monotonic() + RUNG_BUDGET_S
         domain = registrable_domain(ctx.url)
         pages = [ctx.url]
@@ -125,8 +122,6 @@ class RenderedRung:
 
     async def _from_json(self, ctx: ResolveContext, capture: dict, domain: str, deadline: float
                          ) -> RecipeHit | None:
-        from jobfinder.ingest.resolve import registrable_domain
-
         tried = 0
         responses = [r for r in capture.get("json_responses") or [] if isinstance(r, dict)]
         for r in responses:  # what the page itself called: hints for the LLM rung if nothing here works
@@ -174,8 +169,6 @@ class RenderedRung:
 
     async def _validate(self, ctx: ResolveContext, data: dict | Recipe, domain: str, deadline: float
                         ) -> RecipeHit | None:
-        from jobfinder.ingest.resolve import name_from_domain
-
         provenance = {"induced_by": "rendered", "induced_at": datetime.now(UTC).isoformat(),
                       "validated_with": ctx.url}
         data = data.model_dump(mode="json") if isinstance(data, Recipe) else dict(data)

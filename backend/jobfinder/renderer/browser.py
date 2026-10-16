@@ -17,7 +17,7 @@ from urllib.parse import urljoin, urlsplit
 
 import httpx
 
-from jobfinder.profile.web_page import FetchError, resolve_public
+from jobfinder.core.http import FetchError, resolve_public
 from jobfinder.renderer import net
 from jobfinder.renderer.guard import (
     SKIPPED_TYPES,
@@ -360,7 +360,7 @@ async def render_capture(renderer: Renderer, url: str, *, http: httpx.AsyncClien
 def list_spec(recipe: dict) -> tuple[str, str, dict[str, str]]:
     """(url, items selector, {field: spec}) of a rendered_html recipe, checked. Raises ValueError.
     URL templates are left out: the backend fills those itself."""
-    from jobfinder.ingest.recipes import RecipeError, parse_recipe
+    from jobfinder.integrations.recipes import RecipeError, parse_recipe
 
     try:
         r = parse_recipe(recipe)

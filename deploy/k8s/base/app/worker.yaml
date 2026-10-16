@@ -1,0 +1,93 @@
+# The worker (compose: worker): the Postgres task queue, the APScheduler jobs and every Claude call.
+# Exactly one: the loop and APScheduler assume a single instance until #48 replaces them, so the
+# strategy is Recreate (the old pod stops before the new one starts; a RollingUpdate would overlap them).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  labels:
+    jobfinder.io/rollout: app
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: worker
+        app.kubernetes.io/component: worker
+        jobfinder.io/postgres-client: "true"
+        jobfinder.io/valkey-client: "true"   # the task streams (#48)
+    spec:
+      automountServiceAccountToken: false
+      # Lets a running task finish its current step; the reaper requeues anything cut off.
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        # The image's `jobfinder` user (backend/Dockerfile.worker).
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: worker
+          image: ghcr.io/ehlops/jobfinder-worker
+          envFrom:
+            - configMapRef:
+                name: jobfinder-config
+            - secretRef:
+                name: jobfinder-env
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: POSTGRES_PASSWORD
+          # No HTTP endpoint until #48. tini (PID 1) exits when the worker dies, which restarts the
+          # container anyway; this checks the worker process is still there. [.] keeps the probe's own
+          # command line from matching.
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "grep -qs 'jobfinder[.]worker' /proc/[0-9]*/cmdline"]
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              # Python plus up to AI_MAX_CONCURRENCY node `claude` processes.
+              memory: 2Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: store
+              mountPath: /data/store
+            - name: claude-auth
+              mountPath: /data/claude
+            # CLAUDE_SCRATCH_DIR, and temp files of ingestion and exports.
+            - name: tmp
+              mountPath: /tmp
+            # The claude CLI keeps its state under $HOME; fresh per pod, like a recreated compose container.
+            - name: home
+              mountPath: /home/jobfinder
+      volumes:
+        - name: store
+          persistentVolumeClaim:
+            claimName: store
+        - name: claude-auth
+          persistentVolumeClaim:
+            claimName: claude-auth
+        - name: tmp
+          emptyDir:
+            sizeLimit: 1Gi
+        - name: home
+          emptyDir:
+            sizeLimit: 256Mi

@@ -7,7 +7,6 @@ from fastapi import APIRouter, BackgroundTasks, Cookie, Depends, HTTPException, 
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import delete, select
 
-from jobfinder.auth import ratelimit
 from jobfinder.auth.security import (
     COOKIE_NAME,
     create_session,
@@ -19,14 +18,15 @@ from jobfinder.auth.security import (
 from jobfinder.core.config import settings
 from jobfinder.core.db import DbSession
 from jobfinder.core.urls import public_link
+from jobfinder.integrations import smtp as mail
 from jobfinder.models import Profile, Session, User
-from jobfinder.notify import email as mail
 from jobfinder.notify.tokens import (
     InvalidToken,
     make_password_token,
     password_fingerprint,
     read_password_token,
 )
+from jobfinder.services import ratelimit
 
 log = logging.getLogger("jobfinder.auth")
 router = APIRouter(prefix="/api/auth", tags=["auth"])

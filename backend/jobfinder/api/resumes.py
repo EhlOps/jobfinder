@@ -6,56 +6,30 @@ from typing import Annotated, Literal
 import sqlalchemy as sa
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import Response
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from jobfinder.ai.schemas import TailoredResume
-from jobfinder.api.deps import CurrentUser, DbSession
+from jobfinder.api.deps import CurrentUser, DbSession, Store
 from jobfinder.models import Job, JobMatch, Profile, Task, User
 from jobfinder.resumes import keywords, service
 from jobfinder.resumes.export import render_docx, render_pdf, resume_to_text
 from jobfinder.scheduling import queue
-from jobfinder.storage.documents import DocumentMeta, DocumentStore, NotFound, get_store
+from jobfinder.schemas.common import TaskRef
+from jobfinder.schemas.resumes import (
+    CoverageOut,
+    EditIn,
+    ResumeGenerateIn,
+    ResumeOut,
+    ResumeState,
+    TailoredResumeOut,
+)
+from jobfinder.storage.documents import DocumentMeta, DocumentStore, NotFound
 
 router = APIRouter(prefix="/api/matches/{match_id}/resume", tags=["resumes"])
 
 DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 PDF = "application/pdf"
 EDITED_TAG = service.EDITED_TAG
-
-
-class CoverageOut(BaseModel):
-    percent: int
-    covered: list[str]
-    missing: list[str]
-    loose: list[str]  # present only in another spelling; missing for literal-matching ATSes
-    ats: str
-    notes: list[str]
-
-
-class ResumeOut(BaseModel):
-    content: TailoredResume
-    edited: bool
-    coverage: CoverageOut  # computed from the saved text, so it follows every edit
-    generated_at: datetime
-    updated_at: datetime
-
-
-class ResumeState(BaseModel):
-    resume: ResumeOut | None
-    pending_task_id: int | None  # a tailoring run is in progress right now
-
-
-class GenerateIn(BaseModel):
-    force: bool = False  # required to overwrite a resume the user has edited
-
-
-class EditIn(BaseModel):
-    content: TailoredResume = Field(description="The complete edited resume")
-
-
-class TaskRef(BaseModel):
-    task_id: int
 
 
 async def _job(db: AsyncSession, user: User, match_id: int) -> Job:
@@ -69,18 +43,18 @@ async def _job(db: AsyncSession, user: User, match_id: int) -> Job:
     return job
 
 
-def _current(store: DocumentStore, user_id: int, match_id: int) -> tuple[DocumentMeta, TailoredResume] | None:
+def _current(store: DocumentStore, user_id: int, match_id: int) -> tuple[DocumentMeta, TailoredResumeOut] | None:
     metas = store.list(user_id, kind="resume", tags=service.match_tags(match_id))
     if not metas:
         return None
     meta = max(metas, key=lambda m: m.created_at)
-    try:
-        return meta, TailoredResume.model_validate(json.loads(store.read_text(user_id, meta.id)))
+    try:  # the file holds ai.schemas.TailoredResume JSON, which has the same fields (test_api_architecture checks)
+        return meta, TailoredResumeOut.model_validate(json.loads(store.read_text(user_id, meta.id)))
     except (ValueError, ValidationError, NotFound):
         return None  # unreadable file: treat as no resume so the user can regenerate
 
 
-def _out(job: Job, meta: DocumentMeta, resume: TailoredResume) -> ResumeOut:
+def _out(job: Job, meta: DocumentMeta, resume: TailoredResumeOut) -> ResumeOut:
     terms = keywords.extract_terms(f"{job.title}\n{job.description_text}")
     cov = keywords.coverage(resume_to_text(resume), terms, job.source)  # the ATS comes from the job's source
     return ResumeOut(
@@ -91,9 +65,9 @@ def _out(job: Job, meta: DocumentMeta, resume: TailoredResume) -> ResumeOut:
 
 
 @router.get("", response_model=ResumeState)
-async def get_resume(match_id: int, user: CurrentUser, db: DbSession):
+async def get_resume(match_id: int, user: CurrentUser, db: DbSession, store: Store):
     job = await _job(db, user, match_id)
-    found = _current(get_store(), user.id, match_id)
+    found = _current(store, user.id, match_id)
     pending = (
         await db.execute(
             sa.select(Task.id)
@@ -109,13 +83,13 @@ async def get_resume(match_id: int, user: CurrentUser, db: DbSession):
 
 
 @router.post("", response_model=TaskRef, status_code=202)
-async def generate(match_id: int, body: GenerateIn, user: CurrentUser, db: DbSession):
+async def generate(match_id: int, body: ResumeGenerateIn, user: CurrentUser, db: DbSession, store: Store):
     """Tailor (or re-tailor) the resume in the worker. Poll GET /api/tasks/{id}, then GET this resource."""
     await _job(db, user, match_id)
     profile = await db.get(Profile, user.id)
     if not profile or not profile.background:
         raise HTTPException(422, "Finish your profile first (onboarding)")
-    found = _current(get_store(), user.id, match_id)
+    found = _current(store, user.id, match_id)
     if found and found[0].tags.get(EDITED_TAG) == "1" and not body.force:
         raise HTTPException(409, "You've edited this resume; regenerating would replace your changes.")
     payload = {"match_id": match_id, "force": True} if body.force else {"match_id": match_id}
@@ -124,9 +98,8 @@ async def generate(match_id: int, body: GenerateIn, user: CurrentUser, db: DbSes
 
 
 @router.put("", response_model=ResumeOut)
-async def save_edits(match_id: int, body: EditIn, user: CurrentUser, db: DbSession):
+async def save_edits(match_id: int, body: EditIn, user: CurrentUser, db: DbSession, store: Store):
     job = await _job(db, user, match_id)
-    store = get_store()
     found = _current(store, user.id, match_id)
     if not found:
         raise HTTPException(404, "No resume yet")
@@ -142,9 +115,8 @@ async def save_edits(match_id: int, body: EditIn, user: CurrentUser, db: DbSessi
 
 
 @router.delete("", status_code=204)
-async def delete_resume(match_id: int, user: CurrentUser, db: DbSession):
+async def delete_resume(match_id: int, user: CurrentUser, db: DbSession, store: Store):
     await _job(db, user, match_id)
-    store = get_store()
     for meta in store.list(user.id, kind="resume", tags=service.match_tags(match_id)):
         try:
             store.delete(user.id, meta.id)
@@ -153,9 +125,9 @@ async def delete_resume(match_id: int, user: CurrentUser, db: DbSession):
 
 
 @router.get("/download")
-async def download(match_id: int, user: CurrentUser, db: DbSession, format: Annotated[Literal["docx", "pdf"], Query()] = "docx"):
+async def download(match_id: int, user: CurrentUser, db: DbSession, store: Store, format: Annotated[Literal["docx", "pdf"], Query()] = "docx"):
     job = await _job(db, user, match_id)
-    found = _current(get_store(), user.id, match_id)
+    found = _current(store, user.id, match_id)
     if not found:
         raise HTTPException(404, "No resume yet")
     base = re.sub(r"\s+", " ", re.sub(r"[^A-Za-z0-9 ._-]+", "", f"Resume - {job.company_name} - {job.title}").strip())

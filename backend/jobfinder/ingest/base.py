@@ -4,7 +4,9 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 from html.parser import HTMLParser
-from urllib.parse import urlparse
+
+# safe_http_url moved to core (the API schemas use it too); re-exported for ingest code that imports it from here
+from jobfinder.core.urls import safe_http_url  # noqa: F401
 
 MAX_DESCRIPTION_CHARS = 20_000
 
@@ -29,14 +31,6 @@ class JobPosting:
     @property
     def dedupe_hash(self) -> str:
         return dedupe_hash(self.company_name, self.title, self.location)
-
-
-def safe_http_url(url: str | None) -> str:
-    """The URL if it is an absolute http(s) link, else "". Job data comes from third parties, so a
-    javascript: or data: link must never reach an href."""
-    url = (url or "").strip()
-    p = urlparse(url)
-    return url if p.scheme in ("http", "https") and p.netloc else ""
 
 
 # ── text ──────────────────────────────────────────────────────────────────

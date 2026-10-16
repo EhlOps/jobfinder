@@ -1,7 +1,7 @@
 """Rung 1: the URL itself names a known ATS board (no page fetch)."""
-from jobfinder.ingest.discovery import board_from_url
 from jobfinder.ingest.resolve.ladder import BoardHit, ResolveContext
-from jobfinder.ingest.sources.custom import site_for_url
+from jobfinder.integrations.ats.custom import site_for_url
+from jobfinder.integrations.directories import board_from_url
 
 
 class UrlPatternRung:

@@ -2,47 +2,14 @@
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import HTMLResponse
-from pydantic import BaseModel, Field
 
 from jobfinder.api.deps import CurrentUser, DbSession
 from jobfinder.models import User
 from jobfinder.notify.tokens import InvalidToken, read_token
 from jobfinder.questions import service
+from jobfinder.schemas.questions import AnswerResult, QuestionAnswersIn, QuestionList
 
 router = APIRouter(tags=["questions"])
-
-
-class QuestionJob(BaseModel):
-    match_id: int
-    title: str
-    company: str
-
-
-class QuestionOut(BaseModel):
-    id: int
-    question: str
-    why: str
-    jobs: list[QuestionJob]
-
-
-class QuestionList(BaseModel):
-    questions: list[QuestionOut]
-
-
-class AnswerIn(BaseModel):
-    id: int
-    answer: str = Field(default="", max_length=service.MAX_ANSWER_CHARS)
-    skip: bool = False
-
-
-class AnswersIn(BaseModel):
-    answers: list[AnswerIn] = Field(max_length=30)
-
-
-class AnswerResult(BaseModel):
-    answered: int
-    skipped: int
-    remaining: int
 
 
 def _user_from_token(purpose: str, token: str) -> int:
@@ -61,7 +28,7 @@ async def my_questions(user: CurrentUser, db: DbSession):
 
 
 @router.post("/api/questions/answers", response_model=AnswerResult)
-async def answer_mine(body: AnswersIn, user: CurrentUser, db: DbSession):
+async def answer_mine(body: QuestionAnswersIn, user: CurrentUser, db: DbSession):
     return AnswerResult(**await service.answer_questions(db, user.id, [a.model_dump() for a in body.answers]))
 
 
@@ -72,7 +39,7 @@ async def questions_by_token(token: str, db: DbSession):
 
 
 @router.post("/api/q/{token}/answers", response_model=AnswerResult)
-async def answer_by_token(token: str, body: AnswersIn, db: DbSession):
+async def answer_by_token(token: str, body: QuestionAnswersIn, db: DbSession):
     uid = _user_from_token("questions", token)
     return AnswerResult(**await service.answer_questions(db, uid, [a.model_dump() for a in body.answers]))
 

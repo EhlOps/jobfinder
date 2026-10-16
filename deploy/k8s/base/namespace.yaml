@@ -1,6 +1,16 @@
 # The namespace every JobFinder workload lives in. Overlays may rename it
 # (staging uses jobfinder-staging) via their `namespace:` field.
+# Pod Security (#43): "baseline" is enforced, so no pod here can be privileged or mount the host
+# (deploys from dev apply these manifests unattended). "restricted" is only warned about and
+# audited: smtp's postfix needs root.
 apiVersion: v1
 kind: Namespace
 metadata:
   name: jobfinder
+  labels:
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/enforce-version: v1.33
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: v1.33
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: v1.33

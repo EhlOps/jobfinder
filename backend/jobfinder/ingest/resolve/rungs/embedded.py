@@ -1,7 +1,7 @@
 """Rung 2: the page behind the link is, embeds or points at a known ATS board.
 
 In order: the final URL after redirects (a careers link that redirects to the ATS), a custom-domain platform
-recognised from the HTML (sources/detect.py: Phenom, Oracle CE, SuccessFactors, ...), then every board URL the
+recognised from the HTML (ats/detect.py: Phenom, Oracle CE, SuccessFactors, ...), then every board URL the
 HTML mentions (href, iframe/script src, data-* attributes, inline JS and JSON) plus the embed snippets that
 only carry a token (Grnhse.Settings.boardToken, leverJobsOptions.accountName). Nothing else is fetched here.
 """
@@ -9,10 +9,11 @@ import html as htmllib
 import re
 from collections import Counter
 
-from jobfinder.ingest.discovery import URL_RE, board_from_url
+from jobfinder.core.urls import registrable_domain
 from jobfinder.ingest.resolve.ladder import BoardHit, ResolveContext
-from jobfinder.ingest.sources.detect import detect_board
 from jobfinder.ingest.validate import SLUG_RE
+from jobfinder.integrations.ats.detect import detect_board
+from jobfinder.integrations.directories import URL_RE, board_from_url
 
 MAX_SCAN_CHARS = 3_000_000
 MAX_REFS = 5_000  # board references counted per page
@@ -90,8 +91,6 @@ def pick_board(counts: Counter, page_url: str) -> tuple[str, str] | None:
     other companies' boards (a news article, an aggregator or a blog post listing companies)."""
     if not counts:
         return None
-    from jobfinder.ingest.resolve import registrable_domain  # resolve/__init__ imports the rungs
-
     label = registrable_domain(page_url).split(".")[0]
     for board in counts:
         if _resembles(board[1], label):

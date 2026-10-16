@@ -56,3 +56,6 @@ backups/
 
 # ── sealed-secrets controller key backup (docs/k3s.md); never commit ─────
 sealed-secrets-key*.yaml
+
+# deploy/k8s/deploy.sh scratch kustomizations (removed on exit; left behind only if it is killed)
+deploy/k8s/.deploy.*/

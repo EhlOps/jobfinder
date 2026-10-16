@@ -40,9 +40,10 @@ os.environ["PUBLIC_BASE_URL"] = "http://test"
 
 from jobfinder import db as dbmod
 from jobfinder.api.app import create_app
+from jobfinder.context import build_context, default_context
 from jobfinder.core.config import get_settings
-from jobfinder.core.context import build_context
 from jobfinder.core.db import Base
+from jobfinder.storage.documents import DocumentStore
 from tests.fakes import MockWeb
 
 
@@ -205,15 +206,23 @@ async def db(maker):
 
 
 @pytest_asyncio.fixture
-async def client(maker, tmp_path, monkeypatch):
-    """The real app (create_app) on a context whose sessions are the test's."""
-    monkeypatch.setattr(get_settings(), "store_dir", str(tmp_path / "store"))
+async def client(maker, isolated_store):
+    """The real app (create_app) on a context whose sessions are the test's, and the test's store."""
     bind = maker.kw["bind"]  # the savepoint-mode connection, or the real_commit engine
-    ctx = build_context(get_settings(), engine=getattr(bind, "engine", bind), sessions=maker)
+    ctx = build_context(get_settings(), engine=getattr(bind, "engine", bind), sessions=maker, store=isolated_store)
     app = create_app(ctx=ctx)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         yield c
     await ctx.http.aclose()  # the maker fixture owns the engine
+
+
+@pytest.fixture(autouse=True)
+def isolated_store(tmp_path, monkeypatch):
+    """Never let a test touch a real document store: the process's (handlers, get_store()) is the test's."""
+    store = DocumentStore(tmp_path / "store")
+    monkeypatch.setattr(get_settings(), "store_dir", str(store.root))
+    monkeypatch.setattr(default_context(), "store", store)
+    return store
 
 
 @pytest.fixture(autouse=True)

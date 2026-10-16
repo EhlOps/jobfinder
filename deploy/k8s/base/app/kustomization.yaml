@@ -1,0 +1,47 @@
+# Today's app on k8s (#43): the same five processes as docker-compose.yml.
+#   web (Caddy, SPA + /api proxy) -> api (2 replicas) ; worker (1, Recreate) ; renderer (0, opt-in) ; smtp
+# plus the alembic Job that migrates before every rollout (deploy/k8s/deploy.sh).
+#
+# Config: ConfigMap `jobfinder-config` = backend/.env.defaults (backend/kustomization.yaml) with the
+# k8s overrides below; overlays merge their own on top. Secrets: each overlay supplies Secret
+# `jobfinder-env` (SECRET_KEY, CLAUDE_CODE_OAUTH_TOKEN) as a SealedSecret; POSTGRES_PASSWORD comes
+# from `postgres-credentials` (#40), so the database password exists in exactly one place.
+# Pods load envFrom [configmap, secret] and then env, so the Secret wins over the ConfigMap's empty
+# defaults and the postgres password wins over both.
+#
+# Images: ghcr.io/ehlops/jobfinder-{api,worker,renderer,web}. The overlay names a default tag and
+# deploy.sh pins each one to sha-<commit> (or the digest it falls back to) at deploy time.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../../../backend   # ConfigMap jobfinder-config from backend/.env.defaults
+  - api.yaml
+  - worker.yaml
+  - renderer.yaml
+  - web.yaml
+  - smtp.yaml
+  - migrate-job.yaml
+  - ingress.yaml
+  - networkpolicy.yaml   # only Traefik -> web -> api
+
+configMapGenerator:
+  - name: jobfinder-config
+    behavior: merge
+    literals:
+      # Services and PVC mounts in this namespace (compose: db, /data/store, /data/claude).
+      - POSTGRES_HOST=postgres
+      - STORE_DIR=/data/store
+      - CLAUDE_AUTH_DIR=/data/claude
+      # /tmp is an emptyDir in every pod (read-only root filesystem).
+      - CLAUDE_SCRATCH_DIR=/tmp
+      - SMTP_HOST=smtp
+      # .env.defaults quotes this value and kustomize would keep the quotes.
+      - EMAIL_FROM=JobFinder <jobs@localhost>
+      # uvicorn --proxy-headers: trust the pod network only (networkpolicy.yaml: web is the api's only
+      # client).
+      # It walks X-Forwarded-For from the right and keeps the first untrusted hop, the client IP that
+      # host Caddy set. Compose uses "*" because only the web container can reach its api.
+      - FORWARDED_ALLOW_IPS=10.42.0.0/16
+      # The migrate Job runs alembic once per deploy; api pods must not race it (docker-entrypoint.sh).
+      - MIGRATE_ON_START=false

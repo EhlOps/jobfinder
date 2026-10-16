@@ -2,29 +2,31 @@
 import logging
 from datetime import UTC, datetime, timedelta
 
-from jobfinder.auth import ratelimit
+import httpx
+
 from jobfinder.core.config import settings
 from jobfinder.ingest import service
 from jobfinder.ingest.service import IngestStats, SessionFactory
+from jobfinder.integrations import jobspy as jobspy_source
+from jobfinder.integrations import usajobs
+from jobfinder.services import ratelimit
 
 log = logging.getLogger("jobfinder.ingest")
 
 
 async def ingest_jobspy(session_factory: SessionFactory) -> IngestStats:
-    from jobfinder.ingest.sources.jobspy_source import SOURCE, build_queries, fetch_jobspy
-
-    stats = IngestStats(source=SOURCE, company="(linkedin/indeed)")
+    stats = IngestStats(source=jobspy_source.SOURCE, company="(linkedin/indeed)")
     try:
         async with session_factory() as db:
-            queries = await build_queries(db)
+            queries = await jobspy_source.build_queries(db)
             if not queries:
                 stats.error = "no target roles in any profile yet"
                 return stats
-            postings = await fetch_jobspy(queries)
+            postings = await jobspy_source.fetch_jobspy(queries)
             stats.fetched = len(postings)
             if postings:
                 stats.new, stats.updated = await service.upsert_postings(db, postings, None)
-            stats.deactivated = await service.expire_stale(db, SOURCE, service.JOBSPY_EXPIRE_AFTER)
+            stats.deactivated = await service.expire_stale(db, jobspy_source.SOURCE, service.JOBSPY_EXPIRE_AFTER)
     except Exception as e:
         log.exception("jobspy ingest failed")
         stats.error = f"{type(e).__name__}: {e}"[:300]
@@ -32,22 +34,18 @@ async def ingest_jobspy(session_factory: SessionFactory) -> IngestStats:
 
 
 async def ingest_usajobs(session_factory: SessionFactory, transport=None) -> IngestStats:
-    import httpx
-
-    from jobfinder.ingest.sources.usajobs import SOURCE, build_locations, fetch_usajobs
-
-    stats = IngestStats(source=SOURCE, company="(usajobs.gov)")
+    stats = IngestStats(source=usajobs.SOURCE, company="(usajobs.gov)")
     try:
         async with session_factory() as db:
-            locations = await build_locations(db)
+            locations = await usajobs.build_locations(db)
         async with httpx.AsyncClient(timeout=60, transport=transport) as client:  # no DB session held while crawling
-            postings = await fetch_usajobs(client, locations)
+            postings = await usajobs.fetch_usajobs(client, locations)
         stats.fetched = len(postings)
         async with session_factory() as db:
             if postings:
                 stats.new, stats.updated = await service.upsert_postings(db, postings, None)
                 # only a successful non-empty fetch may expire jobs, so an API outage never wipes them
-                stats.deactivated = await service.expire_stale(db, SOURCE, service.USAJOBS_EXPIRE_AFTER)
+                stats.deactivated = await service.expire_stale(db, usajobs.SOURCE, service.USAJOBS_EXPIRE_AFTER)
     except Exception as e:
         log.exception("usajobs ingest failed")
         stats.error = f"{type(e).__name__}: {e}"[:300]
