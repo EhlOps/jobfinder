@@ -24,7 +24,7 @@ from jobfinder.ingest.sources.successfactors import (
     parse_total,
 )
 from jobfinder.ingest.validate import SLUG_RE
-from tests.fakes import PUBLIC_IP, fake_resolve_public
+from tests.fakes import PUBLIC_IP, fake_resolve_public, handle
 
 FIX = Path(__file__).parent / "fixtures"
 SEARCH = (FIX / "successfactors_ey_search.html").read_text()
@@ -82,8 +82,9 @@ def _site(total: int, page_size: int = 25, detail_status: int = 200, calls: list
     return handler
 
 
-def _client(handler) -> httpx.AsyncClient:
-    return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+def _client(web, handler) -> httpx.AsyncClient:
+    handle(web, handler)
+    return httpx.AsyncClient()
 
 
 # ── registry / slugs ──────────────────────────────────────────────────────
@@ -113,18 +114,18 @@ def test_parse_slug_rejects_malformed(bad):
 
 
 @pytest.mark.parametrize("bad", ["careers.ey.com__ey;DROP", "localhost", *SQLI])
-async def test_fetch_refuses_malformed_slug_without_requests(bad):
+async def test_fetch_refuses_malformed_slug_without_requests(web, bad):
     def handler(req):
         raise AssertionError("no request may be made for a malformed slug")
 
-    async with _client(handler) as c:
+    async with _client(web, handler) as c:
         with pytest.raises(ValueError):
             await fetch_successfactors(c, bad, "X")
 
 
-async def test_fetch_refuses_private_host():
+async def test_fetch_refuses_private_host(web):
     # careers.localhost-free names are still resolved: a name pointing inside is refused before any request
-    async with _client(lambda r: httpx.Response(200, text="secret")) as c:
+    async with _client(web, lambda r: httpx.Response(200, text="secret")) as c:
         with pytest.raises(FetchError):
             await fetch_successfactors(c, "localhost.localdomain", "X")
 
@@ -237,10 +238,10 @@ def test_detect_rejects(url, html):
 
 
 # ── fetching ──────────────────────────────────────────────────────────────
-async def test_fetch_pages_and_details(public_dns, monkeypatch):
+async def test_fetch_pages_and_details(web, public_dns, monkeypatch):
     monkeypatch.setattr(sf, "MAX_DETAILS", 5)
     calls: list = []
-    async with _client(_site(total=60, calls=calls)) as c:
+    async with _client(web, _site(total=60, calls=calls)) as c:
         jobs = await fetch_successfactors(c, SLUG, "EY")
     assert len(jobs) == 60 and len({j.external_id for j in jobs}) == 60
     assert [p for p in calls if p.startswith("search@")] == ["search@0", "search@25", "search@50"]
@@ -250,18 +251,18 @@ async def test_fetch_pages_and_details(public_dns, monkeypatch):
     assert jobs[5].title == "Job 1005" and jobs[5].description_text == ""
 
 
-async def test_fetch_stops_at_max_pages(public_dns, monkeypatch):
+async def test_fetch_stops_at_max_pages(web, public_dns, monkeypatch):
     monkeypatch.setattr(sf, "MAX_PAGES", 2)
-    async with _client(_site(total=1000)) as c:
+    async with _client(web, _site(total=1000)) as c:
         jobs = await fetch_successfactors(c, SLUG, "EY", list_only=True)
     assert len(jobs) == 25  # list_only: one page
     monkeypatch.setattr(sf, "MAX_DETAILS", 0)
-    async with _client(_site(total=1000)) as c:
+    async with _client(web, _site(total=1000)) as c:
         jobs = await fetch_successfactors(c, SLUG, "EY")
     assert len(jobs) == 50
 
 
-async def test_fetch_without_total_stops_on_repeat(public_dns, monkeypatch):
+async def test_fetch_without_total_stops_on_repeat(web, public_dns, monkeypatch):
     """No pagination label: paging ends when a page brings nothing new (sites that ignore startrow)."""
     monkeypatch.setattr(sf, "MAX_DETAILS", 0)
     pages = {"n": 0}
@@ -272,35 +273,35 @@ async def test_fetch_without_total_stops_on_repeat(public_dns, monkeypatch):
         pages["n"] += 1
         return httpx.Response(200, html=_page([_row("1", "A"), _row("2", "B")]))
 
-    async with _client(handler) as c:
+    async with _client(web, handler) as c:
         jobs = await fetch_successfactors(c, SLUG, "EY")
     assert [j.external_id for j in jobs] == ["careers.ey.com:1", "careers.ey.com:2"] and pages["n"] == 2
 
 
-async def test_detail_failures_keep_listing(public_dns):
-    async with _client(_site(total=2, detail_status=500)) as c:
+async def test_detail_failures_keep_listing(web, public_dns):
+    async with _client(web, _site(total=2, detail_status=500)) as c:
         jobs = await fetch_successfactors(c, SLUG, "EY")  # < 3 details: no all-failed error
     assert [j.title for j in jobs] == ["Job 1000", "Job 1001"]
-    async with _client(_site(total=5, detail_status=500)) as c:
+    async with _client(web, _site(total=5, detail_status=500)) as c:
         with pytest.raises(RuntimeError, match="all 5"):
             await fetch_successfactors(c, SLUG, "EY")
 
 
-async def test_listing_http_error_propagates(public_dns):
+async def test_listing_http_error_propagates(web, public_dns):
     def handler(req):
         if req.url.path == "/robots.txt":
             return httpx.Response(200, text=ROBOTS)
         return httpx.Response(404)
 
-    async with _client(handler) as c:
+    async with _client(web, handler) as c:
         with pytest.raises(httpx.HTTPStatusError) as e:
             await fetch_successfactors(c, SLUG, "EY")
     assert e.value.response.status_code == 404
 
 
-async def test_robots_disallow_is_honoured(public_dns):
+async def test_robots_disallow_is_honoured(web, public_dns):
     calls: list = []
-    async with _client(_site(total=3, calls=calls, robots="User-agent: *\nDisallow: /ey/search/\n")) as c:
+    async with _client(web, _site(total=3, calls=calls, robots="User-agent: *\nDisallow: /ey/search/\n")) as c:
         with pytest.raises(FetchError, match="robots"):
             await fetch_successfactors(c, SLUG, "EY")
     assert calls == ["/robots.txt"]

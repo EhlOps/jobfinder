@@ -7,6 +7,7 @@ import pytest
 from jobfinder.ingest.sources import ATS_FETCHERS
 from jobfinder.ingest.sources.smartrecruiters import fetch_smartrecruiters, parse_smartrecruiters
 from jobfinder.ingest.sources.workable import fetch_workable, parse_workable
+from tests.fakes import handle
 
 FIX = Path(__file__).parent / "fixtures"
 
@@ -34,12 +35,13 @@ def test_workable_fixture():
     assert d.location == "London, England, United Kingdom" and d.workplace_type is None and d.employment_type == "Contract"
 
 
-async def test_fetch_workable_mock_transport():
+async def test_fetch_workable_mock_transport(web):
     def handler(req: httpx.Request) -> httpx.Response:
         assert req.url.path.endswith("/accounts/exco") and req.url.params["details"] == "true"
         return httpx.Response(200, json=load("workable_sample.json"))
 
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as c:
+    handle(web, handler)
+    async with httpx.AsyncClient() as c:
         assert len(await fetch_workable(c, "exco", "Example Co")) == 2
 
 
@@ -57,7 +59,7 @@ def test_smartrecruiters_fixture():
     assert jobs[1].workplace_type == "hybrid"
 
 
-async def test_fetch_smartrecruiters_mock_transport():
+async def test_fetch_smartrecruiters_mock_transport(web):
     fx = load("smartrecruiters_sample.json")
 
     def handler(req: httpx.Request) -> httpx.Response:
@@ -69,14 +71,15 @@ async def test_fetch_smartrecruiters_mock_transport():
             return httpx.Response(500)  # detail failure must not drop the posting
         return httpx.Response(200, json=fx["details"][pid])
 
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as c:
+    handle(web, handler)
+    async with httpx.AsyncClient() as c:
         jobs = await fetch_smartrecruiters(c, "ExampleCo", "Example Co")
     assert len(jobs) == 2
     assert "Spark" in jobs[0].description_text
     assert jobs[1].description_text == "" and jobs[1].url == "https://jobs.smartrecruiters.com/ExampleCo/743999000333444"
 
 
-async def test_fetch_smartrecruiters_raises_when_every_detail_fails():
+async def test_fetch_smartrecruiters_raises_when_every_detail_fails(web):
     fx = load("smartrecruiters_sample.json")
 
     def handler(req: httpx.Request) -> httpx.Response:
@@ -84,6 +87,7 @@ async def test_fetch_smartrecruiters_raises_when_every_detail_fails():
             return httpx.Response(200, json=fx["list"])
         return httpx.Response(500)
 
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as c:
+    handle(web, handler)
+    async with httpx.AsyncClient() as c:
         with pytest.raises(RuntimeError, match="detail requests failed"):
             await fetch_smartrecruiters(c, "ExampleCo", "Example Co")

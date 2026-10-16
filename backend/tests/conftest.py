@@ -44,6 +44,7 @@ from jobfinder.context import build_context, default_context
 from jobfinder.core.config import get_settings
 from jobfinder.core.db import Base
 from jobfinder.storage.documents import DocumentStore
+from tests.fakes import MockWeb
 
 
 async def _drop_leaked_connections(name):
@@ -230,6 +231,14 @@ def isolated_claude_auth(tmp_path, monkeypatch):
     s = get_settings()
     monkeypatch.setattr(s, "claude_auth_dir", str(tmp_path / "claude-auth"))
     monkeypatch.setattr(s, "claude_code_oauth_token", "")
+
+
+@pytest.fixture
+def web():
+    """The network, mocked with respx for this test; see the helpers in tests/fakes.py."""
+    with MockWeb() as router:
+        yield router
+    assert not router.stray, f"no route matched: {[(r.headers['host'], str(r.url)) for r in router.stray]}"
 
 
 @pytest.fixture

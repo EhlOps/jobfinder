@@ -19,7 +19,7 @@ from jobfinder.ingest.sources.phenom import (
     parse_slug,
 )
 from jobfinder.ingest.validate import SLUG_RE
-from tests.fakes import PUBLIC_IP, fake_resolve_public
+from tests.fakes import PUBLIC_IP, fake_resolve_public, handle
 
 FIX = Path(__file__).parent / "fixtures"
 HOST = "careers.mastercard.com"
@@ -161,14 +161,15 @@ def _handler(calls=None, total=3, jobs=None, fail_pages=False, list_status=200):
     return handler
 
 
-async def _run(fn, handler):
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+async def _run(web, fn, handler):
+    handle(web, handler)
+    async with httpx.AsyncClient() as client:
         return await fn(client)
 
 
-async def test_fetch_with_details():
+async def test_fetch_with_details(web):
     calls: list = []
-    jobs = await _run(lambda c: fetch_phenom(c, SLUG, "Mastercard"), _handler(calls))
+    jobs = await _run(web, lambda c: fetch_phenom(c, SLUG, "Mastercard"), _handler(calls))
     assert len(jobs) == 3 and all("Our Purpose" in j.description_text for j in jobs)
     post = next(b for m, p, b in calls if m == "POST")
     assert post["lang"] == "en_us" and post["country"] == "us" and post["from"] == 0 and post["size"] == 100
@@ -178,24 +179,24 @@ async def test_fetch_with_details():
     assert sum(p == "/robots.txt" for _, p, _ in calls) == 1  # robots cached per origin
 
 
-async def test_fetch_list_only_makes_no_page_calls():
+async def test_fetch_list_only_makes_no_page_calls(web):
     calls: list = []
-    jobs = await _run(lambda c: fetch_phenom(c, SLUG, "Mastercard", list_only=True), _handler(calls))
+    jobs = await _run(web, lambda c: fetch_phenom(c, SLUG, "Mastercard", list_only=True), _handler(calls))
     assert len(jobs) == 3 and {m for m, p, _ in calls if p != "/robots.txt"} == {"POST"}
     assert jobs[0].description_text.startswith("Internal alignment")
 
 
-async def test_fetch_pages_until_total(monkeypatch):
+async def test_fetch_pages_until_total(web, monkeypatch):
     monkeypatch.setattr(phenom, "PAGE", 2)
     many = [{"jobId": f"R-{i}", "title": f"Engineer {i}"} for i in range(5)]
     calls: list = []
-    jobs = await _run(lambda c: fetch_phenom(c, SLUG, "X", list_only=False),
+    jobs = await _run(web, lambda c: fetch_phenom(c, SLUG, "X", list_only=False),
                       _handler(calls, total=5, jobs=many))
     assert [j.external_id for j in jobs] == [f"{HOST}:R-{i}" for i in range(5)]
     assert [b["from"] for m, _, b in calls if m == "POST"] == [0, 2, 4]
 
 
-async def test_fetch_stops_when_server_repeats_pages(monkeypatch):
+async def test_fetch_stops_when_server_repeats_pages(web, monkeypatch):
     monkeypatch.setattr(phenom, "PAGE", 2)
     same = [{"jobId": "R-1", "title": "A"}, {"jobId": "R-2", "title": "B"}]
 
@@ -206,7 +207,7 @@ async def test_fetch_stops_when_server_repeats_pages(monkeypatch):
             return httpx.Response(200, json={"refineSearch": {"totalHits": 10_000, "data": {"jobs": same}}})
         return httpx.Response(200, html=JOB_HTML)
 
-    jobs = await _run(lambda c: fetch_phenom(c, SLUG, "X", list_only=True), handler)
+    jobs = await _run(web, lambda c: fetch_phenom(c, SLUG, "X", list_only=True), handler)
     assert len(jobs) == 2
     calls = {"n": 0}
 
@@ -214,41 +215,41 @@ async def test_fetch_stops_when_server_repeats_pages(monkeypatch):
         calls["n"] += req.method == "POST"
         return handler(req)
 
-    await _run(lambda c: fetch_phenom(c, SLUG, "X"), counting)
+    await _run(web, lambda c: fetch_phenom(c, SLUG, "X"), counting)
     assert calls["n"] == 2  # second page brought nothing new
 
 
-async def test_detail_failures_keep_listing_and_all_failing_raises():
+async def test_detail_failures_keep_listing_and_all_failing_raises(web):
     with pytest.raises(RuntimeError, match="job page requests failed"):
-        await _run(lambda c: fetch_phenom(c, SLUG, "Mastercard"), _handler(fail_pages=True))
-    jobs = await _run(lambda c: fetch_phenom(c, SLUG, "Mastercard"),
+        await _run(web, lambda c: fetch_phenom(c, SLUG, "Mastercard"), _handler(fail_pages=True))
+    jobs = await _run(web, lambda c: fetch_phenom(c, SLUG, "Mastercard"),
                       _handler(fail_pages=True, jobs=LIST["refineSearch"]["data"]["jobs"][:1], total=1))
     assert len(jobs) == 1 and jobs[0].description_text.startswith("Internal alignment")
 
 
 @pytest.mark.parametrize("status", [404, 500])
-async def test_listing_http_error_propagates(status):
+async def test_listing_http_error_propagates(web, status):
     with pytest.raises(httpx.HTTPStatusError) as e:
-        await _run(lambda c: fetch_phenom(c, SLUG, "X"), _handler(list_status=status))
+        await _run(web, lambda c: fetch_phenom(c, SLUG, "X"), _handler(list_status=status))
     assert e.value.response.status_code == status
 
 
-async def test_robots_disallow_is_honoured():
+async def test_robots_disallow_is_honoured(web):
     def handler(req):
         if req.url.path == "/robots.txt":
             return httpx.Response(200, text="User-agent: *\nDisallow: /widgets\n")
         raise AssertionError(f"fetched {req.url.path} despite robots.txt")
 
     with pytest.raises(FetchError, match="robots"):
-        await _run(lambda c: fetch_phenom(c, SLUG, "X"), handler)
+        await _run(web, lambda c: fetch_phenom(c, SLUG, "X"), handler)
 
 
-async def test_private_host_refused_before_any_request():
+async def test_private_host_refused_before_any_request(web):
     def handler(req):
         raise AssertionError("no request may be sent")
 
     with pytest.raises(FetchError):
-        await _run(lambda c: fetch_phenom(c, "careers.internal.acme.com__us__en", "X"), handler)
+        await _run(web, lambda c: fetch_phenom(c, "careers.internal.acme.com__us__en", "X"), handler)
 
 
 @pytest.mark.parametrize("url", PRIVATE_URLS)
@@ -257,7 +258,7 @@ def test_private_urls_never_become_boards(url):
     assert found is None
 
 
-async def test_server_capped_page_size_still_pages_through_everything():
+async def test_server_capped_page_size_still_pages_through_everything(web):
     many = [{"jobId": f"R-{i}", "title": f"Engineer {i}"} for i in range(25)]
     offsets = []
 
@@ -268,11 +269,11 @@ async def test_server_capped_page_size_still_pages_through_everything():
         offsets.append(off)
         return httpx.Response(200, json={"refineSearch": {"totalHits": 25, "data": {"jobs": many[off:off + 10]}}})
 
-    jobs = await _run(lambda c: fetch_phenom(c, SLUG, "X"), handler)
+    jobs = await _run(web, lambda c: fetch_phenom(c, SLUG, "X"), handler)
     assert len(jobs) == 25 and offsets == [0, 10, 20]
 
 
-async def test_later_page_failure_keeps_earlier_pages(monkeypatch):
+async def test_later_page_failure_keeps_earlier_pages(web, monkeypatch):
     monkeypatch.setattr(phenom, "PAGE", 2)
     many = [{"jobId": f"R-{i}", "title": f"Engineer {i}"} for i in range(6)]
 
@@ -284,11 +285,11 @@ async def test_later_page_failure_keeps_earlier_pages(monkeypatch):
             return httpx.Response(422, json={})
         return httpx.Response(200, json={"refineSearch": {"totalHits": 6, "data": {"jobs": many[off:off + 2]}}})
 
-    jobs = await _run(lambda c: fetch_phenom(c, SLUG, "X"), handler)
+    jobs = await _run(web, lambda c: fetch_phenom(c, SLUG, "X"), handler)
     assert [j.external_id for j in jobs] == [f"{HOST}:R-{i}" for i in range(4)]
 
 
-async def test_robots_blocking_job_pages_keeps_listing_without_page_fetches():
+async def test_robots_blocking_job_pages_keeps_listing_without_page_fetches(web):
     def handler(req):
         if req.url.path == "/robots.txt":
             return httpx.Response(200, text="User-agent: *\nDisallow: /us/en/job/\n")
@@ -296,19 +297,19 @@ async def test_robots_blocking_job_pages_keeps_listing_without_page_fetches():
             raise AssertionError("job page fetched despite robots.txt")
         return _handler()(req)
 
-    jobs = await _run(lambda c: fetch_phenom(c, SLUG, "Mastercard"), handler)
+    jobs = await _run(web, lambda c: fetch_phenom(c, SLUG, "Mastercard"), handler)
     assert len(jobs) == 3 and jobs[0].description_text.startswith("Internal alignment")
 
 
 @pytest.mark.parametrize("body", [[], {"other": 1}, {"refineSearch": "x"}])
-async def test_unexpected_first_page_raises(body):
+async def test_unexpected_first_page_raises(web, body):
     def handler(req):
         if req.url.path == "/robots.txt":
             return httpx.Response(404)
         return httpx.Response(200, json=body)
 
     with pytest.raises(TypeError):
-        await _run(lambda c: fetch_phenom(c, SLUG, "X"), handler)
+        await _run(web, lambda c: fetch_phenom(c, SLUG, "X"), handler)
 
 
 def test_detect_prefers_base_url_over_path():
@@ -332,6 +333,6 @@ def test_board_name_comes_from_the_domain():
     assert name_from_slug("phenom", "jobs.thermofisher.com__global__en") == "Thermofisher"
 
 
-async def test_invalid_slug_raises_before_network():
+async def test_invalid_slug_raises_before_network(web):
     with pytest.raises(ValueError):
-        await _run(lambda c: fetch_phenom(c, "nonsense", "X"), _handler())
+        await _run(web, lambda c: fetch_phenom(c, "nonsense", "X"), _handler())

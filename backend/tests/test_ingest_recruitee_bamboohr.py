@@ -8,6 +8,7 @@ import pytest
 from jobfinder.ingest.sources import ATS_FETCHERS
 from jobfinder.ingest.sources.bamboohr import fetch_bamboohr, parse_bamboohr
 from jobfinder.ingest.sources.recruitee import fetch_recruitee, parse_recruitee
+from tests.fakes import handle, serve
 
 FIX = Path(__file__).parent / "fixtures"
 
@@ -58,7 +59,7 @@ def test_bamboohr_fixture():
     assert jobs[2].workplace_type == "onsite" and jobs[2].posted_at is None
 
 
-def test_fetchers_over_mock_transport():
+def test_fetchers_over_mock_transport(web):
     data = load("bamboohr_sample.json")
 
     def handler(req: httpx.Request) -> httpx.Response:
@@ -74,8 +75,10 @@ def test_fetchers_over_mock_transport():
             return httpx.Response(200, json=load("recruitee_sample.json"))
         return httpx.Response(404)
 
+    handle(web, handler)
+
     async def run():
-        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        async with httpx.AsyncClient() as client:
             return (
                 await fetch_bamboohr(client, "acme", "Acme"),
                 await fetch_recruitee(client, "bunq", "bunq"),
@@ -86,16 +89,13 @@ def test_fetchers_over_mock_transport():
     assert len(rec) == 4
 
 
-def test_bamboohr_raises_when_every_detail_fails():
+def test_bamboohr_raises_when_every_detail_fails(web):
     data = load("bamboohr_sample.json")
-
-    def handler(req: httpx.Request) -> httpx.Response:
-        if req.url.path == "/careers/list":
-            return httpx.Response(200, json=data["list"])
-        return httpx.Response(500)
+    serve(web, "https://acme.bamboohr.com/careers/list", json=data["list"])
+    serve(web, status=500)
 
     async def run():
-        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        async with httpx.AsyncClient() as client:
             await fetch_bamboohr(client, "acme", "Acme")
 
     with pytest.raises(RuntimeError, match="detail requests failed"):

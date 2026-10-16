@@ -16,7 +16,7 @@ from jobfinder.ingest.recipes.health import (
 )
 from jobfinder.ingest.service import ingest_company
 from jobfinder.models import Company, Job
-from tests.fakes import fake_resolve_public
+from tests.fakes import fake_resolve_public, handle
 
 T0 = datetime(2026, 10, 1, tzinfo=UTC)
 
@@ -150,7 +150,7 @@ def public_dns(monkeypatch):
     monkeypatch.setattr(http_safety, "resolve_public", fake_resolve_public())
 
 
-def api(responses):
+def api(web, responses):
     """Serves the next canned response per call: that many jobs, or an HTTP status given as a string."""
     it = iter(responses)
 
@@ -160,11 +160,12 @@ def api(responses):
             return httpx.Response(int(r))
         return httpx.Response(200, json={"jobs": [{"id": i, "title": f"Job {i}"} for i in range(r)]})
 
-    return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    handle(web, handler)
+    return httpx.AsyncClient()
 
 
-async def test_ingest_records_recipe_health(maker):
-    async with maker() as db, api([8, 8, 0, 0, "404"]) as client:
+async def test_ingest_records_recipe_health(maker, web):
+    async with maker() as db, api(web, [8, 8, 0, 0, "404"]) as client:
         c = Company(name="Acme", ats="recipe", slug="acme.com", recipe=RECIPE, recipe_state=VALIDATED,
                     recipe_health={"baseline_yield": 8, "last_yield": 8})
         db.add(c)

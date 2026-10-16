@@ -11,7 +11,7 @@ from jobfinder.ingest.resolve.ladder import BoardHit, ResolveContext
 from jobfinder.ingest.resolve.rungs import RUNGS
 from jobfinder.ingest.resolve.rungs.embedded import EmbeddedRung, page_boards, pick_board
 from jobfinder.models import Company, Job, JobLink, Task
-from tests.fakes import fake_resolve_public
+from tests.fakes import fake_resolve_public, handle
 
 FIX = Path(__file__).parent / "fixtures"
 GH_EMBED = (FIX / "careers_greenhouse_embed.html").read_text()
@@ -30,7 +30,7 @@ def public_dns(monkeypatch):
     monkeypatch.setattr(http_safety, "resolve_public", fake_resolve_public(refuse_private=True))
 
 
-def site(pages: dict[str, httpx.Response], seen: list | None = None):
+def site(web, pages: dict[str, httpx.Response], seen: list | None = None):
     """Route by Host header (safe_fetch connects by IP) or URL host (ATS APIs); robots.txt is absent."""
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -44,7 +44,8 @@ def site(pages: dict[str, httpx.Response], seen: list | None = None):
                 return resp
         return httpx.Response(404, json={})
 
-    return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    handle(web, handler)
+    return httpx.AsyncClient()
 
 
 def html(body: str) -> httpx.Response:
@@ -103,56 +104,56 @@ def test_pick_board_prefers_the_pages_own_domain_then_the_most_referenced():
     assert pick_board(many, "https://co3.com/") == ("lever", "co3")
 
 
-async def test_greenhouse_iframe_page():
+async def test_greenhouse_iframe_page(web):
     hit, _ = await run("https://www.acmerobotics.com/careers",
-                       site({"www.acmerobotics.com/careers": html(GH_EMBED)}))
+                       site(web, {"www.acmerobotics.com/careers": html(GH_EMBED)}))
     assert hit == BoardHit("greenhouse", "acmerobotics")
 
 
-async def test_lever_link_list_ignores_script_urls():
-    hit, _ = await run("https://www.nwtraders.com/careers", site({"www.nwtraders.com/careers": html(LEVER_LINKS)}))
+async def test_lever_link_list_ignores_script_urls(web):
+    hit, _ = await run("https://www.nwtraders.com/careers", site(web, {"www.nwtraders.com/careers": html(LEVER_LINKS)}))
     assert hit == BoardHit("lever", "northwind")
 
 
-async def test_careers_link_redirecting_to_workday():
+async def test_careers_link_redirecting_to_workday(web):
     pages = {
         "acme.com/careers": httpx.Response(302, headers={"location": "https://acme.wd5.myworkdayjobs.com/en-US/External"}),
         "acme.wd5.myworkdayjobs.com/en-US/External": html("<html>Workday</html>"),
     }
-    hit, _ = await run("https://acme.com/careers", site(pages))
+    hit, _ = await run("https://acme.com/careers", site(web, pages))
     assert hit == BoardHit("workday", "acme.wd5.External")
 
 
-async def test_phenom_page_detected_from_html():
+async def test_phenom_page_detected_from_html(web):
     hit, _ = await run("https://careers.mastercard.com/us/en/job/R-1",
-                       site({"careers.mastercard.com/us/en/job/R-1": html(PHENOM_JOB)}))
+                       site(web, {"careers.mastercard.com/us/en/job/R-1": html(PHENOM_JOB)}))
     assert hit == BoardHit("phenom", "careers.mastercard.com__us__en")
 
 
-async def test_page_without_boards_passes():
-    hit, ctx = await run("https://acme.com/careers", site({"acme.com/careers": html("<a href='/jobs'>Jobs</a>")}))
+async def test_page_without_boards_passes(web):
+    hit, ctx = await run("https://acme.com/careers", site(web, {"acme.com/careers": html("<a href='/jobs'>Jobs</a>")}))
     assert hit is None and not ctx.notes
 
 
 @pytest.mark.parametrize("url", PRIVATE_URLS)
-async def test_private_url_is_never_fetched(url):
+async def test_private_url_is_never_fetched(url, web):
     seen: list[str] = []
-    hit, ctx = await run(url, site({"": html(GH_EMBED)}, seen))
+    hit, ctx = await run(url, site(web, {"": html(GH_EMBED)}, seen))
     assert hit is None and ctx.page_error and seen == []
 
 
-async def test_hostile_page_content_is_inert():
+async def test_hostile_page_content_is_inert(web):
     junk = "".join(f'<a href="{u}">x</a>' for u in SCRIPT_URLS)
     junk += "".join(f'<a href="https://jobs.lever.co/{s}">x</a>' for s in SQLI)
     junk += '<script>Grnhse.Settings = {boardToken: "x\'; DROP TABLE companies;--"}</script>'
     junk += "<a href='https://boards.greenhouse.io/embed/job_board?for=javascript:alert(1)'>x</a>"
-    hit, _ = await run("https://acme.com/careers", site({"acme.com/careers": html(junk)}))
+    hit, _ = await run("https://acme.com/careers", site(web, {"acme.com/careers": html(junk)}))
     # SQLI slugs are cut at the first character a slug can't hold; nothing else survives
     assert hit is None or (hit.ats == "lever" and all(c.isalnum() or c in "._-" for c in hit.slug))
     assert not page_boards("".join(f'<a href="{u}">x</a>' for u in SCRIPT_URLS))
 
 
-async def test_resolver_adds_the_embedded_board(authed, maker):
+async def test_resolver_adds_the_embedded_board(authed, maker, web):
     r = await authed.post("/api/job-links", json={"url": "https://www.acmerobotics.com/careers"})
     assert r.status_code == 202, r.text
     pages = {
@@ -161,7 +162,7 @@ async def test_resolver_adds_the_embedded_board(authed, maker):
     }
     async with maker() as db:
         [task] = (await db.scalars(sa.select(Task).where(Task.kind == "resolve_job_link"))).all()
-        out = await resolve_link(db, task.payload["link_id"], client=site(pages))
+        out = await resolve_link(db, task.payload["link_id"], client=site(web, pages))
         link = await db.get(JobLink, task.payload["link_id"])
         company = await db.get(Company, link.company_id)
         jobs = (await db.scalars(sa.select(Job).where(Job.company_id == company.id))).all()

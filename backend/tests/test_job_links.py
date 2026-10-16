@@ -12,6 +12,7 @@ from jobfinder.ingest.resolve.rungs.url_pattern import UrlPatternRung
 from jobfinder.ingest.selection import select_boards
 from jobfinder.models import Company, Job, JobLink, Task
 from jobfinder.scheduling import handlers
+from tests.fakes import serve
 
 GH = "https://boards.greenhouse.io/acme/jobs/123"
 GOOD = {"jobs": [
@@ -21,12 +22,9 @@ GOOD = {"jobs": [
 ]}
 
 
-def client_for(handler):
-    return httpx.AsyncClient(transport=httpx.MockTransport(handler))
-
-
-def board_json(json, status=200):
-    return client_for(lambda request: httpx.Response(status, json=json))
+def board_json(web, json, status=200):
+    serve(web, status=status, json=json)
+    return httpx.AsyncClient()
 
 
 async def tasks(db, kind):
@@ -59,14 +57,14 @@ def test_name_from_slug():
 
 # ── API ───────────────────────────────────────────────────────────────────
 
-async def test_unknown_link_goes_through_the_ladder(authed, maker, monkeypatch):
+async def test_unknown_link_goes_through_the_ladder(authed, maker, monkeypatch, web):
     r = await authed.post("/api/job-links", json={"url": "https://careers.example.com/jobs/42"})
     assert r.status_code == 202, r.text
     assert r.json()["status"] == "resolving" and r.json()["company"] is None
     monkeypatch.setattr(resolve, "RUNGS", [UrlPatternRung()])  # only rung 1: nothing can read this site
     async with maker() as db:
         [task] = await tasks(db, "resolve_job_link")
-        out = await resolve_link(db, task.payload["link_id"], client=board_json({}))
+        out = await resolve_link(db, task.payload["link_id"], client=board_json(web, {}))
     assert out["status"] == "unresolved"
     body = (await authed.get(f"/api/job-links/{r.json()['id']}")).json()
     assert body["status"] == "unresolved" and "can't read" in body["error"]
@@ -95,7 +93,7 @@ async def test_known_board_resolves_immediately(authed, maker):
         assert await tasks(db, "resolve_job_link") == []
 
 
-async def test_new_board_is_queued_resolved_and_shared(authed, maker):
+async def test_new_board_is_queued_resolved_and_shared(authed, maker, web):
     r = await authed.post("/api/job-links", json={"url": GH + "#top"})
     assert r.status_code == 202, r.text
     link_id = r.json()["id"]
@@ -104,7 +102,7 @@ async def test_new_board_is_queued_resolved_and_shared(authed, maker):
     async with maker() as db:
         [task] = await tasks(db, "resolve_job_link")
         assert task.payload == {"link_id": link_id}
-        async with board_json(GOOD) as c:
+        async with board_json(web, GOOD) as c:
             out = await resolve_link(db, link_id, client=c)
     assert out["status"] == "resolved" and out["added"] and out["new"] == 2 and out["rung"] == "url_pattern"
 
@@ -192,24 +190,24 @@ async def _link(db, url=GH, user_id=None):
     return link
 
 
-async def test_resolve_records_unreadable_board(maker):
+async def test_resolve_records_unreadable_board(maker, web):
     async with maker() as db:
         link = await _link(db)
-        async with board_json({"error": "nope"}, status=404) as c:
+        async with board_json(web, {"error": "nope"}, status=404) as c:
             out = await resolve_link(db, link.id, client=c)
         await db.refresh(link)
     assert out["status"] == "unresolved" and link.status == "unresolved" and "404" in link.error
     assert link.resolved_at is not None and link.company_id is None
 
 
-async def test_resolve_never_leaves_link_stuck(maker, monkeypatch):
+async def test_resolve_never_leaves_link_stuck(maker, monkeypatch, web):
     async def boom(*a, **k):
         raise RuntimeError("kaboom")
 
     monkeypatch.setattr(resolve, "add_board", boom)
     async with maker() as db:
         link = await _link(db)
-        out = await resolve_link(db, link.id, client=board_json(GOOD))
+        out = await resolve_link(db, link.id, client=board_json(web, GOOD))
         await db.refresh(link)
     assert out == {"error": "RuntimeError"} and link.status == "unresolved" and "went wrong" in link.error
 

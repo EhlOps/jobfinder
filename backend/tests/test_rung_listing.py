@@ -16,7 +16,7 @@ from jobfinder.ingest.resolve.rungs import RUNGS
 from jobfinder.ingest.resolve.rungs.listing import MAX_FETCHES, ListingRung, job_pattern
 from jobfinder.ingest.service import ingest_company
 from jobfinder.models import Company, Job, JobLink
-from tests.fakes import fake_resolve_public
+from tests.fakes import fake_resolve_public, handle
 
 FIXTURES = Path(__file__).parent / "fixtures"
 JOB_PAGE = (FIXTURES / "recipe_job_page.html").read_text()
@@ -55,8 +55,9 @@ class Site:
         ctype = "application/xml" if r.lstrip().startswith("<?xml") else "text/html; charset=utf-8"
         return httpx.Response(200, text=r, headers={"content-type": ctype})
 
-    def client(self):
-        return httpx.AsyncClient(transport=httpx.MockTransport(self.handler))
+    def client(self, web):
+        handle(web, self.handler)
+        return httpx.AsyncClient()
 
 
 def json_site(**extra):
@@ -64,8 +65,8 @@ def json_site(**extra):
                  "/api/v1/jobs?limit=2&offset=2": {"data": {"results": []}}, **extra})
 
 
-async def sniff(site: Site, url=f"https://{HOST}/jobs/4021"):
-    async with site.client() as c:
+async def sniff(web, site: Site, url=f"https://{HOST}/jobs/4021"):
+    async with site.client(web) as c:
         ctx = ResolveContext(url, c)
         return await ListingRung().run(ctx), ctx
 
@@ -144,9 +145,9 @@ def test_pagination_for():
     assert pagination_for("https://x/api", {"from": 0, "size": 50})["step"] == 50
 
 
-async def test_json_endpoint_in_page_becomes_a_validated_recipe():
+async def test_json_endpoint_in_page_becomes_a_validated_recipe(web):
     site = json_site()
-    hit, ctx = await sniff(site)
+    hit, ctx = await sniff(web, site)
     assert isinstance(hit, RecipeHit), ctx.notes
     assert hit.domain == "acme.com" and hit.name == "Acme Robotics" and len(hit.postings) == 2
     assert hit.recipe.kind == "json_api" and hit.recipe.list.url.endswith("/api/v1/jobs?limit=2&offset=0")
@@ -159,31 +160,31 @@ async def test_json_endpoint_in_page_becomes_a_validated_recipe():
     assert not any("graphql" in c or c.endswith((".js", ".css", ".png")) for c in site.calls)
 
 
-async def test_listing_page_becomes_an_html_recipe():
+async def test_listing_page_becomes_an_html_recipe(web):
     site = Site({"/jobs/4021-robotics-engineer": PLAIN_JOB_PAGE, "/jobs": LISTING})
-    hit, ctx = await sniff(site, f"https://{HOST}/jobs/4021-robotics-engineer")
+    hit, ctx = await sniff(web, site, f"https://{HOST}/jobs/4021-robotics-engineer")
     assert isinstance(hit, RecipeHit), ctx.notes
     r = hit.recipe
     assert r.kind == "html" and r.items == "a.job-title[href*='/jobs/']" and r.list.url == f"https://{HOST}/jobs"
     assert r.fields.title == ":scope" and r.fields.url == "@href"
     # 'jobs/4023-…' is a relative href without '/jobs/' in it: the anchor selector (rightly) skips it
     assert {p.title for p in hit.postings} == {"Robotics Engineer", "Controls Engineer"}
-    async with site.client() as c:  # the stored recipe runs on its own
+    async with site.client(web) as c:  # the stored recipe runs on its own
         again = await run_recipe(c, "acme.com", "Acme", r.model_dump(mode="json"))
     assert len(again) == 2
 
 
-async def test_rejected_candidates_are_noted_and_ladder_moves_on():
+async def test_rejected_candidates_are_noted_and_ladder_moves_on(web):
     other = {"data": {"results": [{"jobId": "9001", "jobTitle": "Chef", "url": "/jobs/9001"},
                                   {"jobId": "9002", "jobTitle": "Cook", "url": "/jobs/9002"}]}}
     site = Site({"/jobs/4021-robotics-engineer": JOB_PAGE, "/api/v1/jobs?limit=2&offset=0": other,
                  "/api/v1/jobs?limit=2&offset=2": [], "/jobs": LISTING})
-    hit, ctx = await sniff(site, f"https://{HOST}/jobs/4021-robotics-engineer")
+    hit, ctx = await sniff(web, site, f"https://{HOST}/jobs/4021-robotics-engineer")
     assert hit is not None and hit.recipe.kind == "html"
     assert any("don't include the pasted job" in n for n in ctx.notes), ctx.notes
 
 
-async def test_sitemap_names_the_listing_page():
+async def test_sitemap_names_the_listing_page(web):
     xml = (f'<?xml version="1.0"?><urlset><url><loc>https://{HOST}/en/open-positions</loc></url>'
            f'<url><loc>https://{HOST}/jobs/4021-robotics-engineer</loc></url>'
            f'<url><loc>https://{HOST}/jobs/4022-controls-engineer</loc></url>'
@@ -191,20 +192,20 @@ async def test_sitemap_names_the_listing_page():
     site = Site({"/jobs/4021-robotics-engineer": "<html><body>Job</body></html>", "/sm.xml": xml,
                  "/en/open-positions": LISTING},
                 robots=f"User-agent: *\nAllow: /\nSitemap: https://{HOST}/sm.xml\n")
-    hit, ctx = await sniff(site, f"https://{HOST}/jobs/4021-robotics-engineer")
+    hit, ctx = await sniff(web, site, f"https://{HOST}/jobs/4021-robotics-engineer")
     assert hit is not None and hit.recipe.list.url == f"https://{HOST}/en/open-positions", ctx.notes
     assert any("sitemap lists 2 URLs like /jobs/" in n for n in ctx.notes)
     assert all(c.startswith(HOST) for c in site.calls)
 
 
-async def test_listing_page_named_in_js_is_still_tried_as_a_page():
+async def test_listing_page_named_in_js_is_still_tried_as_a_page(web):
     page = '<html><body><script>var nav = {"careers": "/careers"};</script></body></html>'
     site = Site({"/jobs/4021-robotics-engineer": page, "/careers": LISTING})
-    hit, ctx = await sniff(site, f"https://{HOST}/jobs/4021-robotics-engineer")
+    hit, ctx = await sniff(web, site, f"https://{HOST}/jobs/4021-robotics-engineer")
     assert hit is not None and hit.recipe.list.url == f"https://{HOST}/careers", ctx.notes
 
 
-async def test_listing_selector_skips_nav_and_filter_links():
+async def test_listing_selector_skips_nav_and_filter_links(web):
     lis = "".join(f'<li><h3><a href="/jobs/{i}/">Engineer {i}</a></h3>'
                   f'<a href="/jobs/location/boston/">Boston</a> <a href="/jobs/{i}/apply">Apply</a></li>'
                   for i in (4021, 4022, 4023))
@@ -212,27 +213,27 @@ async def test_listing_selector_skips_nav_and_filter_links():
                f'<a href="/jobs/?page=2">Next</a>')
     site = Site({"/jobs/4021/": PLAIN_JOB_PAGE, "/jobs": listing, "/jobs?page=1": listing,
                  "/jobs?page=2": "<p>end</p>"})
-    hit, ctx = await sniff(site, f"https://{HOST}/jobs/4021/")
+    hit, ctx = await sniff(web, site, f"https://{HOST}/jobs/4021/")
     assert hit is not None, ctx.notes
     assert hit.recipe.items == "h3 > a[href*='/jobs/']"
     assert (hit.recipe.pagination.kind, hit.recipe.pagination.param) == ("page", "page")
     assert [p.title for p in hit.postings] == ["Engineer 4021", "Engineer 4022", "Engineer 4023"]
 
 
-async def test_fetch_budget_is_capped():
+async def test_fetch_budget_is_capped(web):
     refs = "".join(f'<script>var u{i} = "/api/jobs/{i}.json";</script>' for i in range(20))
     links = "".join(f'<a href="/x{i}/careers">c</a>' for i in range(20))
     site = Site({"/jobs/4021": f"<html><body>{refs}{links}</body></html>"})
-    hit, ctx = await sniff(site)
+    hit, ctx = await sniff(web, site)
     assert hit is None
     assert len(site.calls) - 1 <= MAX_FETCHES, site.calls  # minus the pasted page itself
     assert ctx.notes
 
 
-async def test_robots_disallowed_candidates_are_skipped():
+async def test_robots_disallowed_candidates_are_skipped(web):
     site = json_site()
     site.robots = "User-agent: *\nDisallow: /api/\n"
-    hit, ctx = await sniff(site)
+    hit, ctx = await sniff(web, site)
     assert not any("/api/" in c for c in site.calls)
     assert any("robots" in n for n in ctx.notes)
     assert hit is None or hit.recipe.kind == "html"
@@ -240,32 +241,32 @@ async def test_robots_disallowed_candidates_are_skipped():
 
 @pytest.mark.parametrize("bad", PRIVATE_URLS + ["https://evil.example/api/jobs.json",
                                                 "https://acme.com.evil.example/api/jobs"])
-async def test_foreign_and_private_endpoints_never_fetched(bad):
+async def test_foreign_and_private_endpoints_never_fetched(bad, web):
     page = f'<html><body><script>var api = "{bad}";</script><a href="{bad}careers">x</a></body></html>'
     site = Site({"/jobs/4021": page})
-    await sniff(site)
+    await sniff(web, site)
     assert all(c.startswith(HOST) for c in site.calls), site.calls
 
 
-async def test_huge_endpoint_is_capped_and_noted():
+async def test_huge_endpoint_is_capped_and_noted(web):
     big = httpx.Response(200, content=b"[" + b'{"id":1,"title":"x"},' * 200_000 + b"{}]",
                          headers={"content-type": "application/json"})
     site = json_site(**{"/api/v1/jobs?limit=2&offset=0": big})
-    hit, ctx = await sniff(site)
+    hit, ctx = await sniff(web, site)
     assert hit is None and any("too large" in n for n in ctx.notes)
 
 
-async def test_unfetchable_page_still_tries_listing_pages():
+async def test_unfetchable_page_still_tries_listing_pages(web):
     site = Site({"/jobs": LISTING})  # the job page itself 404s
-    hit, _ = await sniff(site, f"https://{HOST}/jobs/4021-robotics-engineer")
+    hit, _ = await sniff(web, site, f"https://{HOST}/jobs/4021-robotics-engineer")
     assert hit is not None and hit.recipe.kind == "html"
     assert hit.name is None
 
 
 # ── through the resolver and ingest ───────────────────────────────────────
-async def test_paste_resolves_to_recipe_board_and_goes_active(maker):
+async def test_paste_resolves_to_recipe_board_and_goes_active(maker, web):
     site = json_site()
-    async with maker() as db, site.client() as c:
+    async with maker() as db, site.client(web) as c:
         u = await make_user(db)
         link = JobLink(user_id=u.id, url=f"https://{HOST}/jobs/4021", status="resolving")
         db.add(link)

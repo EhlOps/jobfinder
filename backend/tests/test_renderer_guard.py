@@ -4,6 +4,7 @@ import pytest
 from jobfinder.profile.web_page import FetchError
 from jobfinder.renderer.browser import check_top_url, list_spec
 from jobfinder.renderer.guard import Blocked, Guard, check_field, check_selector, scheme_reason
+from tests.fakes import serve
 
 
 async def public_only(url):
@@ -118,7 +119,7 @@ async def test_top_level_url_is_checked_before_any_browser(url):
         await check_top_url(url)
 
 
-async def test_top_level_url_honours_robots(monkeypatch):
+async def test_top_level_url_honours_robots(monkeypatch, web):
     import httpx
 
     from jobfinder.renderer import browser
@@ -127,8 +128,8 @@ async def test_top_level_url_honours_robots(monkeypatch):
         return "careers.example.com", "93.184.216.34"
 
     monkeypatch.setattr(browser, "resolve_public", fake)
-    robots = httpx.MockTransport(lambda r: httpx.Response(200, text="User-agent: *\nDisallow: /jobs\n"))
-    async with httpx.AsyncClient(transport=robots) as client:
+    serve(web, text="User-agent: *\nDisallow: /jobs\n")
+    async with httpx.AsyncClient() as client:
         with pytest.raises(Blocked, match="robots"):
             await check_top_url("https://careers.example.com/jobs/1", client)
         await check_top_url("https://careers.example.com/about", client)

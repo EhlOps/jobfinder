@@ -20,7 +20,7 @@ from jobfinder.ingest.sources.taleo import (
     parse_taleo,
 )
 from jobfinder.ingest.validate import SLUG_RE, validate_board
-from tests.fakes import fake_resolve_public
+from tests.fakes import fake_resolve_public, handle
 
 FIX = Path(__file__).parent / "fixtures"
 SLUG = "cu__2"
@@ -47,7 +47,7 @@ def listing(reqs, total=None, page=1, size=25):
             "pagingData": {"currentPageNo": page, "pageSize": size, "totalCount": len(reqs) if total is None else total}}
 
 
-def transport(pages=None, *, search=SEARCH_HTML, job=JOB_HTML, robots=None, job_status=200, list_status=200,
+def tenant(web, pages=None, *, search=SEARCH_HTML, job=JOB_HTML, robots=None, job_status=200, list_status=200,
               calls=None):
     """Routes like the real tenant: search page, robots.txt, the searchjobs API (paged) and job pages."""
     pages = pages if pages is not None else [LIST]
@@ -70,11 +70,12 @@ def transport(pages=None, *, search=SEARCH_HTML, job=JOB_HTML, robots=None, job_
             return httpx.Response(job_status, text=job, headers={"content-type": "text/html"})
         return httpx.Response(404)
 
-    return httpx.MockTransport(handler)
+    handle(web, handler)
 
 
-def client(**kw) -> httpx.AsyncClient:
-    return httpx.AsyncClient(transport=transport(**kw), follow_redirects=True)
+def client(web, **kw) -> httpx.AsyncClient:
+    tenant(web, **kw)
+    return httpx.AsyncClient(follow_redirects=True)
 
 
 def test_registered():
@@ -208,9 +209,9 @@ def test_job_description_js_escapes():
     assert job_description(page).split() == ["It's", "great!", "More"]
 
 
-async def test_fetch_with_details():
+async def test_fetch_with_details(web):
     calls: list[httpx.Request] = []
-    async with client(calls=calls) as c:
+    async with client(web, calls=calls) as c:
         jobs = await fetch_taleo(c, SLUG, "CU")
     assert len(jobs) == 3
     assert all(j.description_text.startswith("University of Colorado") for j in jobs)
@@ -224,97 +225,97 @@ async def test_fetch_with_details():
     assert all(r.headers["accept-encoding"] == "identity" for r in calls if r.url.path.endswith(".ftl"))
 
 
-async def test_fetch_list_only_makes_no_page_calls():
+async def test_fetch_list_only_makes_no_page_calls(web):
     calls: list[httpx.Request] = []
     pages = [listing([req(str(i), str(i)) for i in range(3)], total=6, size=3),
              listing([req(str(i), str(i)) for i in range(3, 6)], total=6, size=3)]
-    async with client(pages=pages, calls=calls) as c:
+    async with client(web, pages=pages, calls=calls) as c:
         jobs = await fetch_taleo(c, SLUG, "CU", list_only=True)
     assert len(jobs) == 3
     assert not any(r.url.path.endswith("/jobdetail.ftl") for r in calls)
     assert sum(r.method == "POST" for r in calls) == 1
 
 
-async def test_fetch_pages_until_total():
+async def test_fetch_pages_until_total(web):
     calls: list[httpx.Request] = []
     pages = [listing([req(str(i), str(i)) for i in range(p * 3, p * 3 + 3)], total=7, size=3) for p in range(2)]
     pages.append(listing([req("6", "6")], total=7, size=3))
     pages.append(listing([req("99", "99")], total=7, size=3))  # never asked for
-    async with client(pages=pages, calls=calls) as c:
+    async with client(web, pages=pages, calls=calls) as c:
         jobs = await fetch_taleo(c, SLUG, "CU", list_only=False)
     assert sorted(int(j.external_id.split(":")[1]) for j in jobs) == list(range(7))
     assert [json.loads(r.content)["pageNo"] for r in calls if r.method == "POST"] == [1, 2, 3]
 
 
-async def test_fetch_stops_when_server_repeats_pages():
+async def test_fetch_stops_when_server_repeats_pages(web):
     same = listing([req("1", "1"), req("2", "2")], total=500, size=2)
-    async with client(pages=[same] * 10) as c:
+    async with client(web, pages=[same] * 10) as c:
         jobs = await fetch_taleo(c, SLUG, "CU", list_only=False)
     assert len(jobs) == 2
 
 
-async def test_detail_cap(monkeypatch):
+async def test_detail_cap(monkeypatch, web):
     monkeypatch.setattr(taleo, "MAX_DETAILS", 2)
     calls: list[httpx.Request] = []
-    async with client(calls=calls) as c:
+    async with client(web, calls=calls) as c:
         jobs = await fetch_taleo(c, SLUG, "CU")
     assert len(jobs) == 3 and sum(bool(j.description_text) for j in jobs) == 2
     assert sum(r.url.path.endswith("/jobdetail.ftl") for r in calls) == 2
 
 
-async def test_detail_failures_keep_listing_and_all_failing_raises():
-    async with client(job_status=500) as c:
+async def test_detail_failures_keep_listing_and_all_failing_raises(web):
+    async with client(web, job_status=500) as c:
         with pytest.raises(RuntimeError, match="job page requests failed"):
             await fetch_taleo(c, SLUG, "CU")
     one = listing([req("1", "1")])
-    async with client(pages=[one], job_status=500) as c:
+    async with client(web, pages=[one], job_status=500) as c:
         [j] = await fetch_taleo(c, SLUG, "CU")  # too few to call it a total failure
     assert j.description_text == ""
 
 
-async def test_robots_blocking_job_pages_keeps_listing():
+async def test_robots_blocking_job_pages_keeps_listing(web):
     calls: list[httpx.Request] = []
     robots = "User-agent: *\nDisallow: /careersection/2/jobdetail.ftl\n"
-    async with client(robots=robots, calls=calls) as c:
+    async with client(web, robots=robots, calls=calls) as c:
         jobs = await fetch_taleo(c, SLUG, "CU")
     assert len(jobs) == 3 and not any(r.url.path.endswith("/jobdetail.ftl") for r in calls)
 
 
-async def test_robots_blocking_search_page_refuses():
-    async with client(robots="User-agent: *\nDisallow: /\n") as c:
+async def test_robots_blocking_search_page_refuses(web):
+    async with client(web, robots="User-agent: *\nDisallow: /\n") as c:
         with pytest.raises(Exception, match="robots"):
             await fetch_taleo(c, SLUG, "CU")
 
 
-async def test_unavailable_section_is_refused():
-    async with client(search=DEAD_HTML) as c:
+async def test_unavailable_section_is_refused(web):
+    async with client(web, search=DEAD_HTML) as c:
         with pytest.raises(CareerSectionUnavailable):
             await fetch_taleo(c, "capps__ex", "Capps", list_only=True)
         result = await validate_board("taleo", "capps__ex", c, list_only=True)
     assert not result.ok and "unavailable" in result.reason
 
 
-async def test_api_saying_unavailable_is_refused():
+async def test_api_saying_unavailable_is_refused(web):
     dead = {"requisitionList": None, "pagingData": None, "careerSectionUnAvailable": True}
-    async with client(pages=[dead]) as c:
+    async with client(web, pages=[dead]) as c:
         with pytest.raises(CareerSectionUnavailable):
             await fetch_taleo(c, SLUG, "CU")
 
 
-async def test_missing_portal_is_refused():
-    async with client(search="<html><title>Job Search</title></html>") as c:
+async def test_missing_portal_is_refused(web):
+    async with client(web, search="<html><title>Job Search</title></html>") as c:
         with pytest.raises(CareerSectionUnavailable, match="portal"):
             await fetch_taleo(c, SLUG, "CU")
 
 
 @pytest.mark.parametrize("status", [404, 500])
-async def test_listing_http_error_propagates(status):
-    async with client(list_status=status) as c:
+async def test_listing_http_error_propagates(status, web):
+    async with client(web, list_status=status) as c:
         with pytest.raises(httpx.HTTPStatusError):
             await fetch_taleo(c, SLUG, "CU")
 
 
-async def test_empty_listing_body_raises():
+async def test_empty_listing_body_raises(web):
     def handler(request):
         if request.url.path.endswith("/jobsearch.ftl"):
             return httpx.Response(200, text=SEARCH_HTML)
@@ -322,12 +323,13 @@ async def test_empty_listing_body_raises():
             return httpx.Response(200, content=b"")  # what Taleo does without a tz header
         return httpx.Response(404)
 
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as c:
+    handle(web, handler)
+    async with httpx.AsyncClient() as c:
         with pytest.raises(ValueError):
             await fetch_taleo(c, SLUG, "CU")
 
 
-async def test_redirect_off_tenant_is_refused():
+async def test_redirect_off_tenant_is_refused(web):
     def handler(request):
         if request.url.host == HOST and request.url.path.endswith("/jobsearch.ftl"):
             return httpx.Response(302, headers={"location": "https://evil.example/careersection/x"})
@@ -341,13 +343,14 @@ async def test_redirect_off_tenant_is_refused():
         calls.append(request)
         return handler(request)
 
-    async with httpx.AsyncClient(transport=httpx.MockTransport(logged), follow_redirects=True) as c:
+    handle(web, logged)
+    async with httpx.AsyncClient(follow_redirects=True) as c:
         with pytest.raises(CareerSectionUnavailable, match="redirects"):
             await fetch_taleo(c, SLUG, "CU")
     assert all(r.headers["host"] == HOST for r in calls)  # the off-host target is never contacted
 
 
-async def test_redirect_within_tenant_is_followed():
+async def test_redirect_within_tenant_is_followed(web):
     calls: list[httpx.Request] = []
 
     def handler(request):
@@ -361,13 +364,14 @@ async def test_redirect_within_tenant_is_followed():
             return httpx.Response(200, json=LIST)
         return httpx.Response(404)
 
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as c:
+    handle(web, handler)
+    async with httpx.AsyncClient() as c:
         jobs = await fetch_taleo(c, "cu__cu_ext_ucd", "CU", list_only=True)
     assert len(jobs) == 3 and jobs[0].url.startswith("https://cu.taleo.net/careersection/cu_ext_ucd/jobdetail")
     assert "/careersection/2/moresearch.ftl" in [r.url.path for r in calls]
 
 
-async def test_later_page_transport_error_keeps_earlier_pages():
+async def test_later_page_transport_error_keeps_earlier_pages(web):
     first = listing([req("1", "1"), req("2", "2")], total=10, size=2)
 
     def handler(request):
@@ -379,23 +383,24 @@ async def test_later_page_transport_error_keeps_earlier_pages():
             raise httpx.ReadTimeout("slow", request=request)
         return httpx.Response(404)
 
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as c:
+    handle(web, handler)
+    async with httpx.AsyncClient() as c:
         jobs = await fetch_taleo(c, SLUG, "CU", list_only=True)
         jobs_all = await fetch_taleo(c, SLUG, "CU")  # job pages 404: listing data kept
     assert len(jobs) == 2 and len(jobs_all) == 2
 
 
-async def test_odd_paging_values_and_null_location():
+async def test_odd_paging_values_and_null_location(web):
     page = {"requisitionList": [req("1", "1", loc="null"), req("2", "2", loc="[null, 5]")],
             "pagingData": {"pageSize": "2", "totalCount": "2"}}
-    async with client(pages=[page]) as c:
+    async with client(web, pages=[page]) as c:
         jobs = await fetch_taleo(c, SLUG, "CU", list_only=True)
     assert [j.location for j in jobs] == ["", ""]
 
 
-async def test_invalid_slug_raises_before_network():
+async def test_invalid_slug_raises_before_network(web):
     calls: list[httpx.Request] = []
-    async with client(calls=calls) as c:
+    async with client(web, calls=calls) as c:
         for bad in [SQLI[0], "cu", "127.0.0.1__2", "cu__../../x"]:
             with pytest.raises(ValueError):
                 await fetch_taleo(c, bad, "X")

@@ -24,7 +24,7 @@ from jobfinder.ingest.sources.icims import (
     title_from_path,
 )
 from jobfinder.ingest.validate import validate_board
-from tests.fakes import fake_resolve_public
+from tests.fakes import fake_resolve_public, handle
 
 FIX = Path(__file__).parent / "fixtures"
 SLUG = "careers-scsengineers"
@@ -41,8 +41,8 @@ def public_dns(monkeypatch):
     monkeypatch.setattr(http_safety, "resolve_public", fake_resolve_public())
 
 
-def portal(routes: dict, seen: list | None = None, robots: str = ROBOTS):
-    """MockTransport client; safe_fetch connects by IP, so route on the Host header. `routes` maps
+def portal(web, routes: dict, seen: list | None = None, robots: str = ROBOTS):
+    """A client onto a portal mocked on `web`; safe_fetch connects by IP, so route on the Host header. `routes` maps
     "host/path?query" (or "host/path") to a Response or a callable returning one."""
     def handler(request: httpx.Request) -> httpx.Response:
         host = request.headers["host"]
@@ -56,7 +56,8 @@ def portal(routes: dict, seen: list | None = None, robots: str = ROBOTS):
         resp = resp() if callable(resp) else resp
         return resp if resp is not None else httpx.Response(404, text="not found")
 
-    return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    handle(web, handler)
+    return httpx.AsyncClient()
 
 
 def xml(text):
@@ -228,7 +229,7 @@ def no_ld():
     return page("<html><body>gone</body></html>")
 
 
-async def test_fetch_search_pages_then_details():
+async def test_fetch_search_pages_then_details(web):
     seen = []
     routes = {
         f"{HOST}/jobs/search?ss=1&in_iframe=1&pr=0": page(SEARCH_P0),
@@ -237,7 +238,7 @@ async def test_fetch_search_pages_then_details():
         f"{HOST}/jobs/4077/senior-geotechnical-engineer/job?in_iframe=1": no_ld,
         # 4080's detail page 404s: the posting keeps its card title and location
     }
-    async with portal(routes, seen) as c:
+    async with portal(web, routes, seen) as c:
         listed = await fetch_icims(c, SLUG, "SCS", list_only=True)
         assert [j.title for j in listed] == ["Administrative Assistant", "Field Technician I"]  # first page only
         jobs = await fetch_icims(c, SLUG, "SCS")
@@ -249,7 +250,7 @@ async def test_fetch_search_pages_then_details():
     assert not any("sitemap" in s for s in seen) and all(s.startswith(HOST) for s in seen)
 
 
-async def test_fetch_falls_back_to_sitemap():
+async def test_fetch_falls_back_to_sitemap(web):
     seen = []
     routes = {
         f"{HOST}/jobs/search?ss=1&in_iframe=1&pr=0": httpx.Response(403, text="Your IP address is not trusted"),
@@ -259,7 +260,7 @@ async def test_fetch_falls_back_to_sitemap():
         f"{HOST}/jobs/4077/senior-geotechnical-engineer/job?in_iframe=1": no_ld,
         f"{HOST}/jobs/4010/landfill-gas-field-technician/job?in_iframe=1": no_ld,
     }
-    async with portal(routes, seen) as c:
+    async with portal(web, routes, seen) as c:
         jobs = await fetch_icims(c, SLUG, "SCS Engineers")
     by_id = {j.external_id.split(":")[1]: j for j in jobs}
     assert list(by_id) == ["4080", "4078", "4077", "4010", "3825"]
@@ -267,47 +268,47 @@ async def test_fetch_falls_back_to_sitemap():
     assert by_id["4080"].title == "Administrative Assistant" and by_id["4080"].description_text == ""
 
 
-async def test_list_only_uses_sitemap_without_details():
+async def test_list_only_uses_sitemap_without_details(web):
     seen = []
-    async with portal({f"{HOST}/sitemap.xml": xml(SITEMAP)}, seen) as c:
+    async with portal(web, {f"{HOST}/sitemap.xml": xml(SITEMAP)}, seen) as c:
         jobs = await PROBE_FETCHERS["icims"](c, SLUG, "SCS")
     assert len(jobs) == 5 and jobs[1].title == "Field Technician I"
     assert not any("/job?" in s for s in seen)
 
 
-async def test_discovery_probe_goes_through_safe_fetch():
+async def test_discovery_probe_goes_through_safe_fetch(web):
     # discovery hands fetchers a robots-checking get/post wrapper; the adapter unwraps it and still uses
     # safe_fetch (SSRF checks, byte caps) with that wrapper's robots cache
     from jobfinder.ingest.discovery import _PoliteClient
     from jobfinder.ingest.discovery.robots import PoliteFetcher
 
     seen = []
-    async with portal({f"{HOST}/jobs/search?ss=1&in_iframe=1&pr=0": page(SEARCH_P0)}, seen) as c:
+    async with portal(web, {f"{HOST}/jobs/search?ss=1&in_iframe=1&pr=0": page(SEARCH_P0)}, seen) as c:
         result = await validate_board("icims", SLUG, _PoliteClient(PoliteFetcher(c)), list_only=True)
     assert result.ok and result.job_count == 2
     assert seen == [f"{HOST}/robots.txt", f"{HOST}/jobs/search?ss=1&in_iframe=1&pr=0"]
 
 
-async def test_all_details_failing_raises():
-    async with portal({f"{HOST}/sitemap.xml": xml(SITEMAP)}) as c:
+async def test_all_details_failing_raises(web):
+    async with portal(web, {f"{HOST}/sitemap.xml": xml(SITEMAP)}) as c:
         with pytest.raises(RuntimeError, match="all 5"):
             await fetch_icims(c, SLUG, "SCS")
 
 
-async def test_missing_board_is_http_status_error():
-    async with portal({}) as c:
+async def test_missing_board_is_http_status_error(web):
+    async with portal(web, {}) as c:
         with pytest.raises(httpx.HTTPStatusError) as e:
             await fetch_icims(c, "careers-nope", "Nope")
     assert e.value.response.status_code == 404
 
 
-async def test_redirect_off_icims_is_refused():
+async def test_redirect_off_icims_is_refused(web):
     seen = []
     off = httpx.Response(301, headers={"location": "https://www.gdit.com/careers"})
     routes = {"careers-gdit.icims.com/sitemap.xml": off,
               "careers-gdit.icims.com/jobs/search?ss=1&in_iframe=1&pr=0": off,
               "www.gdit.com/careers": page("<html>our own careers site</html>")}
-    async with portal(routes, seen) as c:
+    async with portal(web, routes, seen) as c:
         with pytest.raises(NotIcimsBoard, match="www.gdit.com"):
             await fetch_icims(c, "careers-gdit", "GDIT")
         result = await validate_board("icims", "careers-gdit", c, list_only=True)
@@ -315,26 +316,26 @@ async def test_redirect_off_icims_is_refused():
     assert not any(s.startswith("www.gdit.com") for s in seen)  # refused before following the redirect
 
 
-async def test_robots_disallow_all_is_respected():
+async def test_robots_disallow_all_is_respected(web):
     seen = []
     routes = {f"{HOST}/sitemap.xml": xml(SITEMAP), f"{HOST}/jobs/search?ss=1&in_iframe=1&pr=0": page(SEARCH_P0)}
-    async with portal(routes, seen, robots="User-agent: *\nDisallow: /\n") as c:
+    async with portal(web, routes, seen, robots="User-agent: *\nDisallow: /\n") as c:
         with pytest.raises(FetchError, match="robots"):
             await fetch_icims(c, SLUG, "SCS")
     assert all(s.endswith("/robots.txt") for s in seen)
 
 
 @pytest.mark.parametrize("bad", [*SQLI, *SCRIPT_URLS, "careers-x.evil.com", "127.0.0.1"])
-async def test_malformed_slug_never_fetches(bad):
+async def test_malformed_slug_never_fetches(web, bad):
     seen = []
-    async with portal({}, seen) as c:
+    async with portal(web, {}, seen) as c:
         with pytest.raises(ValueError):
             await fetch_icims(c, bad, "X")
         result = await validate_board("icims", bad, c)
     assert not result.ok and seen == []
 
 
-async def test_validate_board_counts_postings():
-    async with portal({f"{HOST}/sitemap.xml": xml(SITEMAP)}) as c:
+async def test_validate_board_counts_postings(web):
+    async with portal(web, {f"{HOST}/sitemap.xml": xml(SITEMAP)}) as c:
         result = await validate_board("icims", SLUG, c, list_only=True)
     assert result.ok and result.job_count == 5

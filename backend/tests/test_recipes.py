@@ -12,7 +12,7 @@ from jobfinder.ingest.recipes import (
     validate_recipe,
 )
 from jobfinder.ingest.recipes.json_api import compile_path, get_all, parse_date
-from tests.fakes import fake_resolve_public
+from tests.fakes import fake_resolve_public, handle, serve
 
 PAGES = {
     "0": {"data": {"total": 3, "jobs": [
@@ -43,12 +43,13 @@ def public_dns(monkeypatch):
     monkeypatch.setattr(http_safety, "resolve_public", fake_resolve_public())
 
 
-def api_client(calls):
+def api_client(web, calls):
     def handler(request):
         calls.append(str(request.url.params.get("from")))
         return httpx.Response(200, json=PAGES.get(request.url.params.get("from"), {"data": {"jobs": []}}))
 
-    return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    handle(web, handler)
+    return httpx.AsyncClient()
 
 
 def test_path_subset():
@@ -70,9 +71,9 @@ def test_parse_date():
     assert parse_date("not a date") is None and parse_date(None) is None
 
 
-async def test_json_api_runner_pages_and_maps(public_dns):
+async def test_json_api_runner_pages_and_maps(public_dns, web):
     calls = []
-    async with api_client(calls) as c:
+    async with api_client(web, calls) as c:
         jobs = await run_recipe(c, "acme.com", "Acme", recipe())
     assert calls == ["0", "2", "4"]  # stops at the empty page
     assert [j.title for j in jobs] == ["Robotics Engineer", "Controls Engineer", "Test Engineer"]
@@ -83,7 +84,7 @@ async def test_json_api_runner_pages_and_maps(public_dns):
     assert jobs[1].posted_at.year == 2026 and jobs[2].location == ""
 
 
-async def test_post_pagination_in_body(public_dns):
+async def test_post_pagination_in_body(public_dns, web):
     bodies = []
 
     def handler(request):
@@ -95,7 +96,8 @@ async def test_post_pagination_in_body(public_dns):
     r = recipe(list={"method": "POST", "url": "https://acme.com/widgets", "json_body": {"from": 0, "size": 1}},
                pagination={"kind": "offset", "param": "from", "step": 1, "max_pages": 5},
                fields={"external_id": "$.id", "title": "$.title", "url": "/jobs/{external_id}"})
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as c:
+    handle(web, handler)
+    async with httpx.AsyncClient() as c:
         jobs = await run_recipe(c, "acme.com", "Acme", r)
     assert bodies == [0, 1, 2] and [j.url for j in jobs] == ["https://acme.com/jobs/0", "https://acme.com/jobs/1"]
 
@@ -115,9 +117,10 @@ def test_recipe_schema_refuses_unsafe(bad):
         parse_recipe(recipe(**bad))
 
 
-async def test_recipe_requests_are_ssrf_checked():
+async def test_recipe_requests_are_ssrf_checked(web):
     r = recipe(list={"url": "http://169.254.169.254/latest/meta-data/"})
-    async with httpx.AsyncClient(transport=httpx.MockTransport(lambda req: httpx.Response(200, json={}))) as c:
+    serve(web, json={})
+    async with httpx.AsyncClient() as c:
         with pytest.raises(http_safety.FetchError):
             await run_recipe(c, "acme.com", "Acme", r)
 

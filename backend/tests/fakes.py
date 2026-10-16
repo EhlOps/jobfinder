@@ -7,12 +7,18 @@
   has the methods a test expects fails loudly when code under test calls something else.
 - `FakeClock`, `fake_resolve_public` and `FakeRenderer` replace the clock, DNS and the renderer
   container.
+- `MockWeb` and its helpers (`serve`, `redirects`, `refuse`, `handle`) replace the
+  network, through respx. The `web` fixture in conftest.py hands a test one that is already active.
 """
 import asyncio
 from contextlib import suppress
 from datetime import datetime
+from itertools import pairwise
 
 import httpx
+import respx
+from respx.models import AllMockedAssertionError
+from respx.patterns import M
 
 from jobfinder.ai.schemas import (
     AuditQuestion,
@@ -250,3 +256,76 @@ class FakeRenderer:
         self.task.cancel()
         with suppress(asyncio.CancelledError):
             await self.task
+
+
+class MockWeb(respx.MockRouter):
+    """A respx router standing in for the network while it is active (`with MockWeb() as web:`).
+
+    It patches httpx below the client, so plain `httpx.AsyncClient()`s, and those the code under
+    test builds itself, all go through it. A route that is never hit is fine. A request no route
+    matches raises respx's AllMockedAssertionError and lands in `stray`: code under test may catch
+    that error as a failed fetch, so the `web` fixture fails the test on any stray request after
+    it. Leaving the block forgets the routes and the calls.
+    """
+
+    def __init__(self):
+        super().__init__(assert_all_called=False)
+        self.stray: list[httpx.Request] = []
+
+    def resolve(self, request):
+        try:
+            return super().resolve(request)
+        except AllMockedAssertionError:
+            self.stray.append(request)
+            raise
+
+    async def aresolve(self, request):
+        try:
+            return await super().aresolve(request)
+        except AllMockedAssertionError:
+            self.stray.append(request)
+            raise
+
+
+def _named(url: str):
+    """A respx pattern for `url`, matched on the Host header and the path (and the exact query, if
+    `url` has one).
+
+    Matching on the Host header rather than the URL's host is what lets one route serve both a plain
+    fetch and an IP-pinned one: safe_fetch and the renderer connect to the validated IP and send the
+    name in the Host header (and SNI). The scheme is not checked.
+    """
+    u = httpx.URL(url)
+    pattern = M(headers={"host": u.netloc.decode("ascii")}, path=u.path)
+    return pattern & M(params__eq=u.query.decode()) if u.query else pattern
+
+
+def handle(web: respx.MockRouter, handler) -> respx.Route:
+    """Send every request to `handler`, a function of the request returning a Response (or
+    raising), as with `httpx.MockTransport`.
+
+    Routes for a specific URL added before this one still win. respx replaces a route with an
+    identical pattern, so a later catch-all (this, or serve/refuse with no url) replaces this one.
+    """
+    return web.route().mock(side_effect=handler)
+
+
+def serve(web: respx.MockRouter, url: str | None = None, status: int = 200, **response) -> respx.Route:
+    """Answer requests for `url` (every request, when None) with a fresh Response each time.
+
+    `response` takes httpx.Response's keywords: json=, html=, text=, content=, headers=.
+    """
+    route = web.route(_named(url)) if url else web.route()
+    return route.respond(status, **response)
+
+
+def redirects(web: respx.MockRouter, *urls: str, status: int = 302) -> list[respx.Route]:
+    """Chain redirects: each of `urls` redirects to the next. Serve the last one separately."""
+    return [serve(web, a, status, headers={"location": b}) for a, b in pairwise(urls)]
+
+
+def refuse(web: respx.MockRouter, url: str | None = None) -> respx.Route:
+    """Refuse connections to `url` (every request, when None) with httpx.ConnectError."""
+    route = web.route(_named(url)) if url else web.route()
+    return route.mock(side_effect=httpx.ConnectError)  # a fresh error, tied to its request
+
