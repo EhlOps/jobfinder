@@ -20,14 +20,14 @@ from pydantic import ValidationError
 from jobfinder.core.config import settings
 from jobfinder.core.urls import registrable_domain
 from jobfinder.ingest.http_safety import JSON_TYPES, FetchError, safe_fetch
-from jobfinder.ingest.resolve.ladder import RecipeHit, ResolveContext
-from jobfinder.ingest.resolve.names import name_from_domain
-from jobfinder.ingest.resolve.rungs.listing import MAX_SAMPLE_CHARS, job_pattern
 from jobfinder.integrations.recipes import Recipe, RecipeError, run_recipe, validate_recipe
 from jobfinder.integrations.recipes.rendered import count_rendered_boards, run_rendered
 from jobfinder.integrations.recipes.sniff import explain_json_sample
 from jobfinder.renderer import CAPTURE, RenderError, RenderUnavailable, request_render
 from jobfinder.renderer.guard import check_selector
+from jobfinder.services.resolver.ladder import RecipeHit, ResolveContext
+from jobfinder.services.resolver.names import name_from_domain
+from jobfinder.services.resolver.rungs.listing import MAX_SAMPLE_CHARS, job_pattern
 
 log = logging.getLogger("jobfinder.resolve")
 

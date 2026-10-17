@@ -163,6 +163,7 @@ async def test_resolver_adds_the_embedded_board(authed, maker, web):
     async with maker() as db:
         [task] = (await db.scalars(sa.select(Task).where(Task.kind == "resolve_job_link"))).all()
         out = await resolve_link(db, task.payload["link_id"], client=site(web, pages))
+        await db.commit()  # what the resolve_job_link task commits
         link = await db.get(JobLink, task.payload["link_id"])
         company = await db.get(Company, link.company_id)
         jobs = (await db.scalars(sa.select(Job).where(Job.company_id == company.id))).all()

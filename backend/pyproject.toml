@@ -162,3 +162,4 @@ name = "Routers call services, not repositories (#44-#46)"
 type = "forbidden"
 source_modules = ["jobfinder.api"]
 forbidden_modules = ["jobfinder.repositories"]
+allow_indirect_imports = true  # api -> services -> repositories is the layering

@@ -25,6 +25,10 @@ OLD_PATHS = [
     "jobfinder.ingest.discovery.robots",
     "jobfinder.ingest.discovery.github_lists",
     "jobfinder.auth.ratelimit",
+    "jobfinder.ingest.service",
+    "jobfinder.ingest.coveted",
+    "jobfinder.ingest.resolve.ladder",
+    "jobfinder.ingest.resolve.rungs.llm",
 ]
 NAMES = MODULES + OLD_PATHS
 SHARDS = 4  # one interpreter per shard, so xdist can run them side by side
@@ -43,7 +47,8 @@ for name in sys.argv[1:]:
 
 def test_walk_finds_the_moved_packages():
     assert {"jobfinder.integrations.ats.registry", "jobfinder.integrations.recipes.validation",
-            "jobfinder.integrations.directories", "jobfinder.services.ratelimit"} <= set(MODULES)
+            "jobfinder.integrations.directories", "jobfinder.services.ratelimit", "jobfinder.services.ingestion",
+            "jobfinder.services.coverage", "jobfinder.services.resolver.rungs.llm"} <= set(MODULES)
 
 
 @pytest.mark.parametrize("shard", range(SHARDS))
@@ -71,3 +76,24 @@ def test_old_paths_are_the_moved_modules():
     assert (old_workday, old_html, old_robots, old_ratelimit) == (workday, html, robots, ratelimit)
     assert sys.modules["jobfinder.ingest.sources.workday"] is workday
     assert fetch_greenhouse is moved_fetch_greenhouse
+
+
+def test_ingestion_old_paths_are_the_moved_modules():
+    """#46 moved ingest.service, ingest.resolve and ingest.coveted into services/."""
+    from jobfinder.ingest import coveted as old_coveted
+    from jobfinder.ingest import resolve as old_resolve
+    from jobfinder.ingest import service as old_service
+    from jobfinder.ingest.coveted import (  # noqa: F401
+        apply_score,
+        board_status,
+        candidate_urls,
+        clean_domain,
+        is_gap,
+    )
+    from jobfinder.ingest.resolve import BadLink, clean_url, existing_board  # noqa: F401
+    from jobfinder.ingest.resolve.rungs import llm as old_llm
+    from jobfinder.services import coverage, ingestion, resolver
+    from jobfinder.services.resolver.rungs import llm
+
+    assert (old_service, old_resolve, old_coveted, old_llm) == (ingestion, resolver, coverage, llm)
+    assert sys.modules["jobfinder.ingest.resolve.ladder"] is sys.modules["jobfinder.services.resolver.ladder"]

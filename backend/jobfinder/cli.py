@@ -197,6 +197,7 @@ async def add_board_cmd(args: argparse.Namespace) -> int:
         return 2
     async with SessionLocal() as db:
         company, reason = await add_board(db, args.ats, args.slug, args.name, origin=args.origin or "seed")
+        await db.commit()  # the command is the boundary
     if company:
         print(f"Added {args.ats}/{args.slug}: {reason}")
         return 0

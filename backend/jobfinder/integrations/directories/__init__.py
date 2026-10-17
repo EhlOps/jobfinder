@@ -154,7 +154,7 @@ class Source:
     terms_ok: bool  # a source is only enabled when its terms allow automated, low-volume access
     fetch: Callable[[PoliteFetcher], Awaitable[list[tuple[str, str]]]] | None = None
     skip_reason: str = ""
-    curated: bool = False  # a hand-curated list: being on it counts towards the coveted score (ingest.coveted)
+    curated: bool = False  # a hand-curated list: being on it counts towards the coveted score (services.coverage)
 
 
 @dataclass
@@ -206,8 +206,10 @@ async def discover_boards(
     client: httpx.AsyncClient | None = None,
     max_candidates: int | None = None,
     sources: list[Source] | None = None,
+    checkpoint: Callable[[], Awaitable[None]] | None = None,
 ) -> DiscoveryResult:
-    """Run every enabled source, then validate and add at most max_candidates new boards."""
+    """Run every enabled source, then validate and add at most max_candidates new boards.
+    `checkpoint` (the task's commit) runs after each board is added, so one failure keeps the earlier ones."""
     cap = settings.discovery_max_candidates if max_candidates is None else max_candidates
     own = client is None
     client = client or make_client()
@@ -255,6 +257,8 @@ async def discover_boards(
             )
             if company:
                 result.added.append(f"{ats}/{slug}")
+                if checkpoint is not None:
+                    await checkpoint()
             else:
                 result.rejected[f"{ats}/{slug}"] = reason
     finally:

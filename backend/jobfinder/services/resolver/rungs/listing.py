@@ -21,7 +21,6 @@ from jobfinder.ingest.http_safety import (
     SafeResponse,
     safe_fetch,
 )
-from jobfinder.ingest.resolve.ladder import PAGE_MAX_BYTES, RecipeHit, ResolveContext
 from jobfinder.integrations.recipes import (
     Recipe,
     RecipeError,
@@ -31,6 +30,7 @@ from jobfinder.integrations.recipes import (
 )
 from jobfinder.integrations.recipes.html import compile_selector, page_text, parse_document, select
 from jobfinder.integrations.recipes.sniff import explain_json_sample
+from jobfinder.services.resolver.ladder import PAGE_MAX_BYTES, RecipeHit, ResolveContext
 
 MAX_FETCHES = 8  # per resolve: candidate fetches plus validation runs
 MAX_JSON_PER_PAGE = 3

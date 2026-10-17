@@ -37,6 +37,7 @@ async def test_board_disabled_after_n_failures(maker, monkeypatch):
         await service.ingest_company(db, client, c)
         assert c.enabled is False and c.consecutive_failures == 3
         assert "3 consecutive failures" in c.disabled_reason and "not found" in c.disabled_reason
+        await db.commit()  # the boundary (a task or ingest_boards) commits the run
     async with maker() as db:
         row = await db.get(Company, c.id)
         assert row.enabled is False and row.disabled_reason

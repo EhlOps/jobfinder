@@ -59,7 +59,8 @@ async def audit_profile(db: AsyncSession, ai: AITasks, task: Task) -> dict:
 
 
 async def ingest_jobs(db: AsyncSession, ai: AITasks, task: Task) -> dict:
-    """Poll all ATS boards (and jobspy/usajobs when enabled). Scheduling this is milestone 7."""
+    """Poll all ATS boards (and jobspy/usajobs when enabled). Each board commits in its own session
+    (services.ingestion.ingest_boards), so this task's session holds only the follow-up."""
     from jobfinder.core.config import settings
     from jobfinder.db import SessionLocal
     from jobfinder.ingest.runner import run_ingest
@@ -68,7 +69,7 @@ async def ingest_jobs(db: AsyncSession, ai: AITasks, task: Task) -> dict:
     # Matching is planned, not fanned out: the planner picks who needs it most and staggers the runs.
     # Adaptive ticks come every few minutes and often fetch nothing: plan only when jobs changed.
     if not settings.adaptive_schedule_enabled or summary.get("new") or summary.get("deactivated"):
-        await queue.enqueue(db, "plan_work", dedupe=True)
+        await queue.enqueue(db, "plan_work", dedupe=True)  # TODO(#48): ledger.add flushes
     return summary
 
 
@@ -150,40 +151,45 @@ async def ai_check(db: AsyncSession, ai: AITasks, task: Task) -> dict:
 async def discover_boards(db: AsyncSession, ai: AITasks, task: Task) -> dict:
     from jobfinder.ingest import discovery
 
-    return (await discovery.discover_boards(db)).as_dict()
+    out = (await discovery.discover_boards(db, checkpoint=db.commit)).as_dict()  # keep each board as it's added
+    return out
 
 
 async def resolve_job_link(db: AsyncSession, ai: AITasks, task: Task) -> dict:
     """A pasted job link whose board is new: add it, fetch it now, then let the planner match the new jobs."""
-    from jobfinder.ingest.resolve import resolve_link
+    from jobfinder.services.resolver import resolve_link
 
     out = await resolve_link(db, int(task.payload["link_id"]), allow_llm=await _llm_allowed(db), ai=ai)
+    await db.commit()  # the boundary: the link's outcome, and the board and jobs it found
     if out.get("new"):
-        await queue.enqueue(db, "plan_work", dedupe=True)
+        await queue.enqueue(db, "plan_work", dedupe=True)  # TODO(#48): ledger.add flushes
     return out
 
 
 async def score_coveted(db: AsyncSession, ai: AITasks, task: Task) -> dict:
     """Weekly: recompute how sought-after each employer is, then audit coverage of the top tiers."""
-    from jobfinder.ingest import coveted
+    from jobfinder.services import coverage
 
-    out = await coveted.score_all(db)
+    out = await coverage.score_all(db)
+    await db.commit()  # the boundary: every company's score
     if not task.payload.get("no_audit"):
-        await queue.enqueue(db, "audit_coverage", dedupe=True)
+        await queue.enqueue(db, "audit_coverage", dedupe=True)  # TODO(#48): ledger.add flushes
     return out
 
 
 async def audit_coverage(db: AsyncSession, ai: AITasks, task: Task) -> dict:
     """Send coveted employers with no working board through the resolver (payload may name just one)."""
-    from jobfinder.ingest import coveted
+    from jobfinder.services import coverage
 
     p = task.payload
-    out = await coveted.audit_coverage(
+    out = await coverage.audit_coverage(
         db, company_id=int(p["company_id"]) if p.get("company_id") is not None else None,
         target_id=int(p["target_id"]) if p.get("target_id") is not None else None,
+        checkpoint=db.commit,  # keep each target's outcome as the audit goes
     )
+    await db.commit()
     if out.get("resolved"):
-        await queue.enqueue(db, "plan_work", dedupe=True)
+        await queue.enqueue(db, "plan_work", dedupe=True)  # TODO(#48): ledger.add flushes
     return out
 
 
@@ -203,13 +209,14 @@ async def reinduce_recipe(db: AsyncSession, ai: AITasks, task: Task) -> dict:
     from datetime import UTC, datetime, timedelta
 
     from jobfinder.core.config import settings
-    from jobfinder.ingest.resolve.rungs.llm import reinduce_company
+    from jobfinder.services.resolver.rungs.llm import reinduce_company
 
     company_id, attempt = int(task.payload["company_id"]), int(task.payload.get("attempt", 0))
     if not settings.resolver_llm_enabled:
         return {"skipped": "llm disabled"}
     if await _llm_allowed(db):
         out = await reinduce_company(db, ai, company_id)
+        await db.commit()  # the boundary: the new recipe (or the disabled board) and its jobs
     else:
         out = {"skipped": "AI backing off", "retry": True}
     # Not now (rate limit, AI down, site unreachable): an auto-disabled board is never fetched again, so no
@@ -217,7 +224,7 @@ async def reinduce_recipe(db: AsyncSession, ai: AITasks, task: Task) -> dict:
     if out.pop("retry", False) and attempt < REINDUCE_RETRIES:
         later = datetime.now(UTC) + timedelta(minutes=settings.planner_backoff_minutes)
         await queue.enqueue(db, "reinduce_recipe", {"company_id": company_id, "attempt": attempt + 1},
-                            run_after=later, dedupe=True)
+                            run_after=later, dedupe=True)  # TODO(#48): ledger.add flushes
         out["requeued"] = later.isoformat()
     return out
 

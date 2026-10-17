@@ -65,6 +65,7 @@ async def test_unknown_link_goes_through_the_ladder(authed, maker, monkeypatch, 
     async with maker() as db:
         [task] = await tasks(db, "resolve_job_link")
         out = await resolve_link(db, task.payload["link_id"], client=board_json(web, {}))
+        await db.commit()  # what the resolve_job_link task commits
     assert out["status"] == "unresolved"
     body = (await authed.get(f"/api/job-links/{r.json()['id']}")).json()
     assert body["status"] == "unresolved" and "can't read" in body["error"]
@@ -104,6 +105,7 @@ async def test_new_board_is_queued_resolved_and_shared(authed, maker, web):
         assert task.payload == {"link_id": link_id}
         async with board_json(web, GOOD) as c:
             out = await resolve_link(db, link_id, client=c)
+            await db.commit()  # what the resolve_job_link task commits
     assert out["status"] == "resolved" and out["added"] and out["new"] == 2 and out["rung"] == "url_pattern"
 
     body = (await authed.get(f"/api/job-links/{link_id}")).json()
@@ -195,6 +197,7 @@ async def test_resolve_records_unreadable_board(maker, web):
         link = await _link(db)
         async with board_json(web, {"error": "nope"}, status=404) as c:
             out = await resolve_link(db, link.id, client=c)
+            await db.commit()  # what the resolve_job_link task commits
         await db.refresh(link)
     assert out["status"] == "unresolved" and link.status == "unresolved" and "404" in link.error
     assert link.resolved_at is not None and link.company_id is None
@@ -208,6 +211,7 @@ async def test_resolve_never_leaves_link_stuck(maker, monkeypatch, web):
     async with maker() as db:
         link = await _link(db)
         out = await resolve_link(db, link.id, client=board_json(web, GOOD))
+        await db.commit()  # what the resolve_job_link task commits
         await db.refresh(link)
     assert out == {"error": "RuntimeError"} and link.status == "unresolved" and "went wrong" in link.error
 

@@ -10,10 +10,10 @@ import re
 from collections import Counter
 
 from jobfinder.core.urls import registrable_domain
-from jobfinder.ingest.resolve.ladder import BoardHit, ResolveContext
 from jobfinder.ingest.validate import SLUG_RE
 from jobfinder.integrations.ats.detect import detect_board
 from jobfinder.integrations.directories import URL_RE, board_from_url
+from jobfinder.services.resolver.ladder import BoardHit, ResolveContext
 
 MAX_SCAN_CHARS = 3_000_000
 MAX_REFS = 5_000  # board references counted per page
