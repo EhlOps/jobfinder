@@ -57,6 +57,23 @@ If 8280 doesn't answer, check that the Traefik pod has `hostPort 8280` with `hos
 (`kubectl -n kube-system get pod -l app.kubernetes.io/name=traefik -o yaml | grep -A3 hostPort`) and that the
 HelmChartConfig was applied (`kubectl -n kube-system get helmchartconfig traefik -o yaml`).
 
+## Admin commands (#49)
+
+The api and worker images both ship the `jobfinder` CLI (`jobfinder --help`, and `--help` on every group and verb). Run it in a running pod:
+
+```sh
+kubectl -n jobfinder exec deploy/api -- jobfinder users add --email them@example.com
+kubectl -n jobfinder exec deploy/api -- jobfinder users admin grant --email you@example.com
+kubectl -n jobfinder exec deploy/api -- jobfinder boards list --ats greenhouse
+kubectl -n jobfinder exec deploy/api -- jobfinder tasks list --status failed
+kubectl -n jobfinder exec deploy/api -- jobfinder tasks retry 1234
+kubectl -n jobfinder exec deploy/worker -- jobfinder ai check     # the worker has the Claude CLI
+```
+
+Exit codes: 0 ok, 1 the command failed (the message is on stderr), 2 a usage error. The pre-#49 names (`python -m jobfinder.cli add-user ...`) still work for one release, with a deprecation note.
+
+A long verb such as `ingest run` (a full fetch of every board) can outlast an exec session; run it as a one-off Job instead. Copy `deploy/k8s/base/app/migrate-job.yaml`, rename the Job, set `command: ["jobfinder", "ingest", "run"]`, raise `activeDeadlineSeconds`, pin `image` to the tag the api runs (`kubectl -n jobfinder get deploy api -o jsonpath='{..image}'`), then `kubectl apply -f` it, follow `kubectl -n jobfinder logs -f job/<name>`, and delete the Job afterwards.
+
 ## Back up the sealed-secrets key
 
 Every SealedSecret in git is useless without the controller's private key. Back it up **off the box, never in git**:
