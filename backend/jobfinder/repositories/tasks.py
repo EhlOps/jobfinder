@@ -18,3 +18,9 @@ async def pending_for(db: AsyncSession, user_id: int, kind: str, match_id: int) 
             .limit(1)
         )
     ).scalar_one_or_none()
+
+
+async def owned(db: AsyncSession, user_id: int, task_id: int) -> Task | None:
+    """The task, if it is this user's."""
+    task = await db.get(Task, task_id)
+    return task if task and task.user_id == user_id else None
