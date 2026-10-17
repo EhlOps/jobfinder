@@ -1,6 +1,9 @@
-# Today's app on k8s (#43): the same five processes as docker-compose.yml.
+# The app on k8s (#43): the processes of docker-compose.yml.
 #   web (Caddy, SPA + /api proxy) -> api (2 replicas) ; worker (1, Recreate) ; renderer (0, opt-in) ; smtp
 # plus the alembic Job that migrates before every rollout (deploy/k8s/deploy.sh).
+# The task platform (#48) adds scheduler, worker-ai and worker-io, at 0 replicas here: TASKS_BACKEND
+# defaults to legacy (the single `worker`). An overlay that sets TASKS_BACKEND=ledger scales the legacy
+# worker to 0 and the three to 1 (overlays/staging; docs/k3s.md, "Task platform").
 #
 # Config: ConfigMap `jobfinder-config` = backend/.env.defaults (backend/kustomization.yaml) with the
 # k8s overrides below; overlays merge their own on top. Secrets: each overlay supplies Secret
@@ -17,7 +20,10 @@ kind: Kustomization
 resources:
   - ../../../../backend   # ConfigMap jobfinder-config from backend/.env.defaults
   - api.yaml
-  - worker.yaml
+  - worker.yaml          # legacy (TASKS_BACKEND=legacy)
+  - scheduler.yaml       # ledger: cron, relay, reaper
+  - worker-ai.yaml       # ledger: stream jobfinder:ai (Claude)
+  - worker-io.yaml       # ledger: stream jobfinder:io
   - renderer.yaml
   - web.yaml
   - smtp.yaml

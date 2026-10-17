@@ -110,7 +110,7 @@ The base (`deploy/k8s/base/`) carries the stateful services; they run in staging
 | Object | What | Storage |
 |---|---|---|
 | StatefulSet + Service `postgres` | `postgres:16.15`, same major as compose; user and database `jobfinder` | PVC `data-postgres-0`, 20Gi |
-| StatefulSet + Service `valkey` | `valkey/valkey:8.1.10`, `--appendonly yes`, `noeviction`, no password; unused until #48 | PVC `data-valkey-0`, 1Gi |
+| StatefulSet + Service `valkey` | `valkey/valkey:8.1.10`, `--appendonly yes`, `noeviction`, no password; delivers task ids under `TASKS_BACKEND=ledger` ("Task platform") | PVC `data-valkey-0`, 1Gi |
 | PVC `store`, `claude-auth` | successors of the compose volumes, mounted by the app in #43 | 5Gi, 100Mi |
 | SealedSecret `postgres-credentials` | key `POSTGRES_PASSWORD`, random, sealed per namespace (`overlays/staging/sealed-secret-postgres.yaml`) | |
 | NetworkPolicy `postgres`, `valkey` | ingress only from same-namespace pods with the client label | |
@@ -132,7 +132,7 @@ metadata:
 
 ```text
 DATABASE_URL=postgresql+asyncpg://jobfinder:$(POSTGRES_PASSWORD)@postgres:5432/jobfinder
-redis://valkey:6379/0          # valkey; the env var name is settled in #48
+VALKEY_URL=redis://valkey:6379/0   # .env.defaults already has it
 ```
 
 with `POSTGRES_PASSWORD` from `secretKeyRef: {name: postgres-credentials, key: POSTGRES_PASSWORD}` (Kubernetes expands `$(VAR)` in env values when `POSTGRES_PASSWORD` is defined earlier in the same `env:` list). Pods without the label, and pods in any other namespace (even labelled), are dropped by k3s's embedded network policy controller (kube-router; don't start k3s with `--disable-network-policy`).
@@ -167,20 +167,24 @@ Today's app runs in `jobfinder-staging` next to the data services, on a copy of 
 
 ```text
 browser → host Caddy (TLS, staging.ehlops.com) → Traefik 127.0.0.1:8280 → web (Caddy :8080) → api:8000 (2 pods)
-                                                                           worker (1, Recreate) · renderer (0) · smtp → mailpit
+                                                                           scheduler (1) · worker-ai (1) · worker-io (1) · renderer (0) · smtp → mailpit
+                                                                           (TASKS_BACKEND=ledger; the legacy worker is at 0)
 ```
 
 | Workload | Image | Notes |
 |---|---|---|
 | `web` | `jobfinder-web` | nobody (65534), `SITE_ADDRESS=:8080`, `TRUSTED_PROXIES=10.42.0.0/16` |
 | `api` ×2 | `jobfinder-api` | uid 10001, `/readyz` readiness, `/healthz` liveness, `MIGRATE_ON_START=false` |
-| `worker` ×1 | `jobfinder-worker` | uid 10001, `strategy: Recreate` (one loop until #48) |
-| `renderer` ×0 | `jobfinder-renderer` | opt-in; patch replicas to 1 and merge `RENDERER_ENABLED=true` |
+| `worker` ×0 | `jobfinder-worker` | the legacy worker (`TASKS_BACKEND=legacy`; ×1 in prod), uid 10001, `strategy: Recreate` |
+| `scheduler` ×1 | `jobfinder-api` | cron, relay, reaper ("Task platform"); `strategy: Recreate`, heartbeat-file liveness |
+| `worker-ai` ×1 | `jobfinder-worker` | stream `jobfinder:ai`, `AI_MAX_CONCURRENCY`; the only one with Claude (store and claude-auth volumes) |
+| `worker-io` ×1 | `jobfinder-worker` | stream `jobfinder:io`, `WORKER_IO_CONCURRENCY`; no volumes |
+| `renderer` ×0 | `jobfinder-renderer` | opt-in; patch replicas to 1 and merge `RENDERER_ENABLED=true`; under the ledger it consumes `jobfinder:render` |
 | `smtp` | `boky/postfix:5.1.0` | root (postfix needs it); staging relays to mailpit only, egress NetworkPolicy |
 | `mailpit` | `axllent/mailpit:v1.31.3` | staging only; the app's `SMTP_HOST` |
 | Job `migrate` | `jobfinder-api` | `alembic upgrade head`, once per deploy, before the rollout |
 
-**Config.** ConfigMap `jobfinder-config` = `backend/.env.defaults` + `base/app` overrides (`POSTGRES_HOST=postgres`, `STORE_DIR`/`CLAUDE_AUTH_DIR` on the PVCs, `FORWARDED_ALLOW_IPS=10.42.0.0/16`, `MIGRATE_ON_START=false`) + staging's (`PUBLIC_BASE_URL`, SMTP to mailpit, and background Claude work off: `PLANNER_MAX_PER_TICK=0`, `RESOLVER_LLM_ENABLED`, `COVERAGE_ENABLED`, `DISCOVERY_ENABLED` all false, so copied users don't spend the shared subscription; ingestion of known boards still runs). Secret `jobfinder-env` (SealedSecret: a staging-only `SECRET_KEY` and prod's Claude token); `POSTGRES_PASSWORD` from `postgres-credentials`.
+**Config.** ConfigMap `jobfinder-config` = `backend/.env.defaults` + `base/app` overrides (`POSTGRES_HOST=postgres`, `STORE_DIR`/`CLAUDE_AUTH_DIR` on the PVCs, `FORWARDED_ALLOW_IPS=10.42.0.0/16`, `MIGRATE_ON_START=false`) + staging's (`PUBLIC_BASE_URL`, SMTP to mailpit, and background Claude work off: `PLANNER_MAX_PER_TICK=0`, `RESOLVER_LLM_ENABLED`, `COVERAGE_ENABLED`, `DISCOVERY_ENABLED` all false, so copied users don't spend the shared subscription; ingestion of known boards still runs; and `TASKS_BACKEND=ledger`, "Task platform"). Secret `jobfinder-env` (SealedSecret: a staging-only `SECRET_KEY` and prod's Claude token); `POSTGRES_PASSWORD` from `postgres-credentials`.
 
 **Readiness.** `GET /readyz` on the api answers 200 when the database answers and `alembic_version` equals the image's alembic head, or is a revision the image doesn't know (a newer image migrated: the old pods keep serving through the rollout, so migrations must stay backward compatible for one release). It answers 503 with the reason when the database is unreachable (2s limit), unmigrated, or behind the image. Pods never serve against an unmigrated schema.
 
@@ -217,7 +221,7 @@ Roll back by deploying an earlier commit's tag (`deploy.sh staging sha-<older>`)
 deploy/k8s/staging-restore.sh            # asks first; --yes to skip the prompt
 ```
 
-It takes the deploy lock (refusing while a deploy runs), scales api/worker/renderer to 0, drops and recreates the staging database, streams `pg_dump -Fc` from the compose container `jobfinder-db-1` into `pg_restore` in `postgres-0` (no file on disk), and scales the app back. The schema is then at prod's revision: if staging's image is newer, the api stays unready until you redeploy (which migrates). Documents in compose's `store` volume are not copied. Staging's users are real people: all mail goes to mailpit, and nothing else may send.
+It takes the deploy lock (refusing while a deploy runs), scales the app (api, worker, renderer, scheduler, worker-ai, worker-io) to 0, drops and recreates the staging database, streams `pg_dump -Fc` from the compose container `jobfinder-db-1` into `pg_restore` in `postgres-0` (no file on disk), empties the task streams (their ids belong to the dropped database; the relay re-sends the copy's queued rows) and scales the app back. The schema is then at prod's revision: if staging's image is newer, the api stays unready until you redeploy (which migrates), and the scheduler and workers restart in a loop until that redeploy if prod's schema predates the ledger columns (migration 0022). Documents in compose's `store` volume are not copied. Staging's users are real people: all mail goes to mailpit, and nothing else may send.
 
 ### Read staging's mail
 
@@ -257,6 +261,207 @@ Never expose mailpit through an Ingress: it holds password-reset links for real 
    `restrict` turns off forwarding, PTYs and agent use; the forced command runs no matter what the client asks for. Test it: `ssh -i <key> opc@<host> 'rm -rf /'` must answer `refused`. Re-install both (`sudo install …` above) whenever `deploy-staging-ssh.sh` or `deploy.sh` changes on dev; the repo copies are never run by the key. Residual trust: kubectl there is cluster-admin, so a manifest on dev could still create objects outside the namespace; a namespace-scoped kubeconfig for the forced command would close that (follow-up). Until the three required secrets exist, `deploy-staging` skips with a warning.
 5. **Data and first deploy:** `deploy/k8s/staging-restore.sh`, then **Run workflow** on dev (or `deploy.sh staging sha-<head of dev>`).
 
+## Task platform (#48)
+
+Background work runs on a Postgres **ledger**, with **valkey** for delivery, a **scheduler** and one worker per queue. It replaces the legacy `worker`: one process with a 2-second poll loop, APScheduler and every task. Both systems are in the code for one release, behind `TASKS_BACKEND`. **Staging runs `ledger`; prod still runs `legacy`** until the owner flips it.
+
+```text
+api / workers ──(1) INSERT the tasks row, in the caller's transaction──▶ Postgres `tasks` (the ledger: the truth)
+      │ (2) after COMMIT: XADD the row's id to its queue's stream
+      ▼
+valkey  jobfinder:ai     ──▶ worker-ai  (AI_MAX_CONCURRENCY=2; the only one with the claude CLI)
+        jobfinder:io     ──▶ worker-io  (WORKER_IO_CONCURRENCY=10: ingest, planning, discovery, coverage scores)
+        jobfinder:render ──▶ renderer   (RENDERER_CONCURRENCY; opt-in, 0 replicas)
+        worker: (3) claim the row (one atomic UPDATE, queued → running) → run → finish → XACK
+
+scheduler (1 replica, Recreate)
+        cron:   writes the scheduled rows (ingest ticks, daily emails, ...), deduped like user work
+        relay:  every RELAY_SECONDS (15s), XADDs due rows that are still queued, so a lost publish is re-sent
+        reaper: a running row whose heartbeat is older than TASK_STUCK_AFTER_MINUTES (5) goes back to queued
+        prune:  old tasks, rate events and sessions
+```
+
+**How does the api hand work to the workers? Through valkey as well?** Yes, but valkey only delivers. The api writes the ledger row in the request's own transaction. After the commit, it publishes the row's id to the queue's valkey stream, so a worker never sees an uncommitted row. Suppose the publish is lost (valkey is down, or the pod is killed between the commit and the publish). The row is still queued in Postgres, and the scheduler's relay re-sends it on a later tick. A duplicate delivery does no harm: the worker's claim is a single `UPDATE … WHERE status = 'queued'`, so one delivery wins and the others are acked and dropped. Workers enqueue their follow-ups the same way (ingest → `plan_work`, matching → `collect_questions`).
+
+**Failure handling.**
+- **Acks.** A worker acks a message only after its task has finished (`--ack-type when_executed`). Every outcome (done, failed, retry scheduled) acks.
+- **A worker killed mid-task** leaves its row `running` and its message unacked. Once the heartbeat is stale, the reaper requeues the row and the relay re-sends it. The old message comes back after taskiq's idle timeout (10 minutes), fails the claim and is dropped.
+- **A retryable Claude error** (a rate limit) sets `run_after` with a 30s/2m/8m backoff, and the relay delivers the row when it is due.
+- **Rows that were never published** (queued under the legacy system, or inserted by hand) are picked up by the relay on its first ticks.
+
+| Deployment | Image | Command | Replicas (base / staging) | Volumes |
+|---|---|---|---|---|
+| `scheduler` | `jobfinder-api` | `python -m jobfinder.scheduler` | 0 / 1, Recreate, never more than 1 | `/tmp` (heartbeat) |
+| `worker-ai` | `jobfinder-worker` | `python -m jobfinder.tasks ai` | 0 / 1, Recreate (the Claude cap is per process) | store, claude-auth, `/tmp`, `$HOME` |
+| `worker-io` | `jobfinder-worker` | `python -m jobfinder.tasks io` | 0 / 1, Recreate | `/tmp` |
+| `renderer` | `jobfinder-renderer` | `python -m jobfinder.renderer` | 0 / 0 (opt-in) | `/tmp`, `/dev/shm` |
+| `worker` (legacy) | `jobfinder-worker` | `python -m jobfinder.worker` | 1 / 0 | store, claude-auth, `/tmp`, `$HOME` |
+
+- **Labels.** All of them carry `jobfinder.io/postgres-client` and `jobfinder.io/valkey-client`, so the NetworkPolicies let them in.
+- **Claude.** Only worker-ai runs Claude. worker-io uses the worker image only for ingestion's dependencies; none of its kinds reads the document store or the Claude token.
+- **Liveness.** The scheduler touches `/tmp/scheduler-alive` on every relay tick and is restarted when the file is more than 2 minutes old. The workers have no HTTP endpoint, so their probe checks that the `jobfinder.tasks` process is there (like the legacy worker's).
+- **Shutdown.** The workers get `terminationGracePeriodSeconds: 60`, so an in-flight task can finish and ack.
+- **Backend checks.** The scheduler refuses to start unless `TASKS_BACKEND=ledger`, and the legacy worker refuses to start under it.
+
+### Switch an environment
+
+`TASKS_BACKEND` is a `jobfinder-config` key; the base has `legacy` (from `.env.defaults`). An environment on the ledger does two things:
+- merges `TASKS_BACKEND=ledger`;
+- patches the replicas: the legacy `worker` to 0, and `scheduler`, `worker-ai` and `worker-io` to 1.
+
+`overlays/staging/kustomization.yaml` does both, and `overlays/prod/kustomization.yaml` carries the same lines commented out. **To flip prod:**
+1. Run the kill-tests on staging (below).
+2. Uncomment the `TASKS_BACKEND=ledger` literal and the two replicas patches.
+3. Merge, then deploy (`deploy.sh prod sha-<commit>`, "Deploying prod").
+
+**What a flip does, in one deploy:**
+- **Phase 1** applies the new ConfigMap and runs the migrate Job. Migration 0022 adds the ledger's `queue` and `sent_at` columns; it is additive, so the legacy worker runs fine on it.
+- **Phase 2** applies every Deployment at once and waits for each rollout. A Deployment at 0 replicas counts as rolled out at once, so deploy.sh needs no special case.
+- **The api pods roll too**, and the new ones publish: the ConfigMap's name carries a hash of its contents, so a new value changes the pod template.
+
+**The overlap is safe.** For up to a minute, the old worker (until SIGTERM stops it) runs next to the new workers, and old api pods (not publishing) run next to new ones (publishing).
+- The legacy worker doesn't drain: a task it is running when it stops stays `running` until the reaper requeues it (about 5 minutes), and then a new worker runs it again. Flip when nothing long is running (`select kind, locked_at from tasks where status = 'running'`).
+- Every claim is one atomic update of the ledger row, so no task runs twice.
+- The relay sends the rows that the old pods queued without publishing.
+- A cron job that both the old APScheduler and the new scheduler fire in that minute is deduped by the unique index on active rows.
+
+**Roll back to legacy.** Remove the `TASKS_BACKEND` literal (or comment it out) and the replicas patches, then deploy. That puts scheduler, worker-ai and worker-io back at 0 and the worker at 1.
+
+In a hurry, without a deploy:
+1. `kubectl -n <ns> scale deploy scheduler worker-ai worker-io --replicas=0`
+2. Find the ConfigMap the pods use: `kubectl -n <ns> get deploy api -o jsonpath='{.spec.template.spec.containers[0].envFrom[0].configMapRef.name}'`
+3. Set it back: `kubectl -n <ns> patch configmap <that name> -p '{"data":{"TASKS_BACKEND":"legacy"}}'`
+4. `kubectl -n <ns> scale deploy worker --replicas=1 && kubectl -n <ns> rollout restart deploy/api deploy/renderer` (the renderer only matters when it is enabled; under the old setting it would keep waiting on its stream)
+5. Change git to match before the next deploy.
+
+Nothing is lost either way:
+- The legacy worker polls the same `tasks` table and ignores the new columns.
+- Its own reaper requeues the rows the ledger workers left `running`.
+- Messages left in the streams do no harm later: their rows are done, so their claims fail.
+
+**Compose** has the same switch, with all four task-platform services (`valkey`, `scheduler`, `worker-ai`, `worker-io`) in profile `ledger`. A plain `docker compose up` stays legacy. To switch:
+1. In the root `.env`, set `COMPOSE_PROFILES=ledger`, `TASKS_BACKEND=ledger` and `LEGACY_WORKER_REPLICAS=0`.
+2. Run `docker compose up -d --build`.
+
+To go back, run `docker compose --profile ledger stop scheduler worker-ai worker-io`, remove the three lines, then run `docker compose up -d`.
+
+`TASKS_BACKEND` comes from the root `.env` on every compose service and overrides `backend/.env`.
+
+### Check the streams
+
+```sh
+NS=jobfinder-staging
+kubectl -n $NS exec sts/valkey -- valkey-cli xinfo groups jobfinder:ai    # also jobfinder:io, jobfinder:render
+kubectl -n $NS exec sts/valkey -- valkey-cli xinfo consumers jobfinder:ai jobfinder-ai
+kubectl -n $NS exec sts/valkey -- valkey-cli xpending jobfinder:ai jobfinder-ai
+kubectl -n $NS exec sts/valkey -- valkey-cli xlen jobfinder:ai
+kubectl -n $NS exec sts/valkey -- valkey-cli info memory | grep used_memory_human
+kubectl -n $NS logs deploy/scheduler --tail=50
+kubectl -n $NS exec deploy/scheduler -- ls -l --time-style=+%T /tmp/scheduler-alive   # touched within the last 15s
+```
+
+What healthy looks like:
+- **Groups:** one per stream (`jobfinder-ai`, `jobfinder-io`, `jobfinder-render`), with `lag` at 0 or falling.
+- **Pending:** no higher than the worker's concurrency (2 for ai, 10 for io), apart from messages of killed pods. Those come back within 10 minutes and are dropped.
+- **Length:** `xlen` stays under 10,000, the length the streams are trimmed to (each entry is only an id).
+- **Consumers:** a killed pod's consumer stays listed in `xinfo consumers`. Once its `pending` is 0, `valkey-cli xgroup delconsumer jobfinder:ai jobfinder-ai <name>` removes it.
+
+The ledger is the truth for what is outstanding:
+
+```sql
+select queue, status, count(*), min(run_after), max(now() - coalesce(locked_at, created_at)) as oldest
+from tasks where status in ('queued', 'running') group by 1, 2;
+```
+
+A queued row that has been due for more than a minute or two means the relay or that queue's worker isn't running.
+
+### Kill-tests
+
+Run them on staging (`NS=jobfinder-staging`), never on prod.
+
+**Before each test:**
+1. In a second terminal, watch the pods with `kubectl -n $NS get pods -w`.
+2. Open psql: `kubectl -n $NS exec -it postgres-0 -- psql -U jobfinder -d jobfinder`.
+3. Mark the start with `select now() \gset t0_`. `:'t0_now'` is then that time.
+
+After each test, every task created since then must have run exactly once: `done`, or `failed` for a reason it would fail anyway.
+
+```sql
+-- No lost tasks: nothing left queued or running; attempts 1, or 2 for a task that was cut off.
+select kind, status, attempts, count(*) from tasks where created_at > :'t0_now' group by 1, 2, 3 order by 1, 2, 3;
+-- No doubled scheduled work: one row per deduped kind and minute.
+select kind, date_trunc('minute', created_at) as minute, count(*) from tasks
+where created_at > :'t0_now' and dedupe_key is not null group by 1, 2 having count(*) > 1;
+-- No doubled Claude work: one call per task (plus one for a task that was cut off and re-run).
+select task, ok, count(*) from ai_calls where created_at > :'t0_now' group by 1, 2 order by 1, 2;
+```
+
+To queue cheap work by hand, insert rows straight into the ledger. Only the relay can deliver them. On staging, `plan_work` does nothing (`PLANNER_MAX_PER_TICK=0`), and `ai_check` makes one small Claude call:
+
+```sql
+insert into tasks (kind, queue, payload, status, attempts, run_after, created_at)
+select k, q, '{}', 'queued', 0, now(), now()
+from (values ('plan_work', 'io'), ('ai_check', 'ai')) v(k, q), generate_series(1, 10);
+```
+
+1. **valkey down for 5 minutes while work is queued.**
+
+   ```sh
+   kubectl -n $NS scale sts/valkey --replicas=0
+   # for 5 minutes: run the insert above twice, and start a cover letter and a match in the staging UI
+   kubectl -n $NS logs deploy/api --tail=20          # publish failures are logged; the requests still succeed
+   kubectl -n $NS scale sts/valkey --replicas=1 && kubectl -n $NS rollout status sts/valkey
+   ```
+
+   **Expect:**
+   - **While valkey is down,** the rows stay `queued` and the requests succeed, because the publish runs after the commit. The workers and the scheduler may restart while they can't reach valkey; `kubectl get pods` shows the restarts, perhaps with a back-off of a few minutes.
+   - **Within a few minutes of valkey coming back,** the relay sends everything. The first query shows every row `done` with attempts 1, and nothing queued.
+   - **In `xinfo groups`,** the groups survived (AOF) and `lag` is 0.
+
+2. **Kill worker-ai mid-task.** Start a cover letter in the UI. When its row is `running` (`select id, status, attempts, locked_at from tasks where kind = 'cover_letter' order by id desc limit 1;`):
+
+   ```sh
+   kubectl -n $NS delete pod -l app.kubernetes.io/name=worker-ai --grace-period=0 --force
+   ```
+
+   **Expect:**
+   - **The new pod** starts at once.
+   - **The row** stays `running` until its heartbeat is `TASK_STUCK_AFTER_MINUTES` (5) old. Then the reaper requeues it and the relay re-sends it, so it is `done` with attempts 2 after about 6 minutes. The scheduler log shows the requeue.
+   - **The letter** exists once, and `ai_calls` has one cover-letter call for each attempt.
+   - **Within 10 minutes,** `xpending jobfinder:ai jobfinder-ai` is back to 0: the dead consumer's message was redelivered, failed its claim and was acked.
+
+3. **Restart the scheduler while work is queued.** Run the insert first, then:
+
+   ```sh
+   kubectl -n $NS rollout restart deploy/scheduler && kubectl -n $NS rollout status deploy/scheduler
+   kubectl -n $NS get pods -l app.kubernetes.io/name=scheduler      # never two at once (Recreate)
+   ```
+
+   **Expect:**
+   - **Rows published before the restart** finish in the meantime.
+   - **The rows inserted by hand** wait for the new scheduler's first relay tick.
+   - **The first two queries** show everything `done` once, and no deduped kind twice in a minute.
+
+   Repeat the test across a cron boundary (an ingest tick, every 15 minutes) to check that a job the old pod fired isn't fired again.
+
+4. **A cover letter while ingest runs.** Queue an ingest, or wait for a tick:
+
+   ```sql
+   insert into tasks (kind, queue, payload, status, attempts, run_after, created_at)
+   values ('ingest_jobs', 'io', '{}', 'queued', 0, now(), now());
+   ```
+
+   While its row is `running`, start a cover letter in the UI. The letter must not wait for the ingest: they are on different streams, run by different workers.
+
+   ```sql
+   select id, kind, status, attempts, created_at, locked_at, finished_at, finished_at - created_at as took
+   from tasks where created_at > :'t0_now' order by id;
+   ```
+
+   **Expect:** `cover_letter` is claimed (`locked_at`) within seconds of `created_at`, while `ingest_jobs` is still `running`. Both end `done`, with attempts 1.
+
+Record the results (date, commit, timings) on #48.
+
 ## Backups (#47)
 
 CronJob `backup` (`deploy/k8s/base/data/`, in every namespace) runs at **03:15 UTC**. It waits for postgres, writes `pg_dump -Fc` to `db-<UTC timestamp>.dump` and a tar of the `store` and `claude-auth` PVCs to `files-<UTC timestamp>.tar.gz` (directories `store/` and `claude/`, the layout of `deploy/backup.sh`) on PVC **`backups`** (`local-path-retain`, 20Gi). Each file is written as `.part` and renamed when complete; the newest 14 of each are kept. It runs as uid 10001 (the app's, which owns the files) with a read-only root, carries `jobfinder.io/postgres-client` for the NetworkPolicy, and has `concurrencyPolicy: Forbid`; a run missed while the node was down starts within the hour.
@@ -278,7 +483,7 @@ deploy/k8s/backup-restore.sh jobfinder db-20261018-031500.dump        # or a giv
 
 It restores the dump into a scratch database (`restore_drill_<ts>`) in that namespace's postgres from a helper pod that mounts `backups` read-only, compares every table's row count with the live database, checks that the matching files tar reads back, and drops the scratch database. The live database and the app are never touched. The live database moves on after the dump, so drill right after `create job --from=cronjob/backup`; tables written in between show as MISMATCH (exit 1). Rehearsed on staging (2026-10-17, worker paused for an exact comparison): 86 MB dump, restored in 15 s, 16 tables, 0 mismatched, 19 s in all.
 
-**Restoring for real** (replaces the namespace's data): scale `api worker renderer` to 0; in `postgres-0`, `dropdb --force jobfinder && createdb -O jobfinder jobfinder`; run `pg_restore -h postgres -U jobfinder -d jobfinder --no-owner --no-privileges --exit-on-error --single-transaction /backups/db-<ts>.dump` from a pod like the drill's (don't stream a dump out through `kubectl exec` stdout: large outputs break off with a websocket EOF; stdin is fine); untar `files-<ts>.tar.gz` into the PVCs (`store/` into `store`, `claude/` into `claude-auth`) from a root helper pod with `--numeric-owner`; then `deploy.sh <overlay> <running tag>`.
+**Restoring for real** (replaces the namespace's data): scale `api worker renderer scheduler worker-ai worker-io` to 0; in `postgres-0`, `dropdb --force jobfinder && createdb -O jobfinder jobfinder`; run `pg_restore -h postgres -U jobfinder -d jobfinder --no-owner --no-privileges --exit-on-error --single-transaction /backups/db-<ts>.dump` from a pod like the drill's (don't stream a dump out through `kubectl exec` stdout: large outputs break off with a websocket EOF; stdin is fine); untar `files-<ts>.tar.gz` into the PVCs (`store/` into `store`, `claude/` into `claude-auth`) from a root helper pod with `--numeric-owner`; empty the task streams (`for q in ai io render; do kubectl -n <ns> exec valkey-0 -- valkey-cli XTRIM jobfinder:$q MAXLEN 0; done`); then `deploy.sh <overlay> <running tag>`.
 
 ## Production (#47)
 
@@ -362,7 +567,7 @@ On prod the data-tier step also creates the namespace and four PVCs and initiali
 
 **Rollback** (while compose's volumes exist; whatever was written on k3s after the switch is lost unless you dump it back first):
 
-1. `kubectl -n jobfinder scale deploy api worker renderer --replicas=0` (two workers would run every scheduled job and email twice).
+1. `kubectl -n jobfinder scale deploy api worker renderer scheduler worker-ai worker-io --replicas=0` (two workers would run every scheduled job and email twice).
 2. `sudo cp -a /etc/caddy/Caddyfile.pre-cutover /etc/caddy/Caddyfile` (upstream back to `127.0.0.1:8180`), validate, `sudo systemctl reload caddy`.
 3. `docker compose start api worker web smtp`; `curl -sI https://jobs.ehlops.com/ | head -1` → 200.
 

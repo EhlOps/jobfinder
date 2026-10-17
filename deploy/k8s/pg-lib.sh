@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# Shared by prod-cutover.sh and backup-restore.sh (#47); source it, don't run it.
+# Shared by prod-cutover.sh, backup-restore.sh and staging-restore.sh (#47); source it, don't run it.
 # Exact per-table row counts, as `table|count` lines sorted by table name.
 
 # One count(*) per base table of schema public, in a single query (query_to_xml runs each count).
@@ -53,4 +53,14 @@ compare_row_counts() {
       printf "%d tables, %d mismatched\n", n, bad
       exit bad > 0
     }' "$2" "$4" "$after"
+}
+
+# k8s_trim_task_streams <namespace>: empties the task streams (#48) in that namespace's valkey-0, keeping
+# the consumer groups. After a database restore their ledger ids name rows of the old database, which
+# a worker must not claim; the scheduler's relay re-sends the restored database's queued rows.
+k8s_trim_task_streams() {
+  local q
+  for q in ai io render; do
+    kubectl -n "$1" exec valkey-0 -- valkey-cli XTRIM "jobfinder:$q" MAXLEN 0 >/dev/null || return 1
+  done
 }

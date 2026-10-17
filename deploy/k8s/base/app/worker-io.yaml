@@ -1,0 +1,84 @@
+# worker-io (#48; compose: worker-io, profile "ledger"): the taskiq worker on stream `jobfinder:io`:
+# ingest_jobs, plan_work, discover_boards and score_coveted (tasks/kinds.py). None of them calls Claude
+# (anything that may, like the resolver, is on the ai queue), and none reads or writes the document
+# store, so no store or claude-auth volume. The worker image anyway: it has everything ingestion needs
+# (the jobspy extra when built with it), and one image for both task workers keeps deploy.sh's pinning
+# simple. Up to WORKER_IO_CONCURRENCY tasks at once in one process.
+# Recreate like the other workers: a rollout pauses io work for a few seconds, and messages wait in the
+# stream meanwhile. Claims are atomic, so overlapping consumers would be safe too.
+# Its stream only carries work under TASKS_BACKEND=ledger, so the base keeps it at 0 and an overlay
+# that flips to the ledger scales it to 1 (overlays/staging; docs/k3s.md, "Task platform").
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker-io
+  labels:
+    jobfinder.io/rollout: app
+spec:
+  replicas: 0
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: worker-io
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: worker-io
+        app.kubernetes.io/component: worker
+        jobfinder.io/postgres-client: "true"
+        jobfinder.io/valkey-client: "true"   # consumes jobfinder:io, publishes follow-ups (plan_work, ...)
+    spec:
+      automountServiceAccountToken: false
+      # Lets an in-flight task finish its current board and ack; the reaper requeues anything cut off.
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        # The image's `jobfinder` user (backend/Dockerfile.worker).
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: worker-io
+          image: ghcr.io/ehlops/jobfinder-worker
+          # tini (the image's entrypoint), then one taskiq worker process for the io queue.
+          args: ["python", "-m", "jobfinder.tasks", "io"]
+          envFrom:
+            - configMapRef:
+                name: jobfinder-config
+            - secretRef:
+                name: jobfinder-env
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: POSTGRES_PASSWORD
+          # No HTTP endpoint; see worker-ai.yaml.
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "grep -qs 'jobfinder[.]tasks' /proc/[0-9]*/cmdline"]
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              # Python with WORKER_IO_CONCURRENCY tasks, each fetching up to INGEST_CONCURRENCY boards.
+              memory: 1536Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            # Temp files of ingestion.
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 1Gi
