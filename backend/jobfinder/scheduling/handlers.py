@@ -53,7 +53,8 @@ async def followup_questions(db: AsyncSession, ai: AITasks, task: Task) -> dict:
 
 
 async def audit_profile(db: AsyncSession, ai: AITasks, task: Task) -> dict:
-    from jobfinder.profile import interview
+    """The worker's completion commit is the boundary; run_audit explains when its row lock ends."""
+    from jobfinder.services import interview
 
     return await interview.run_audit(db, ai, task.user_id)
 
@@ -91,30 +92,40 @@ async def match_user(db: AsyncSession, ai: AITasks, task: Task) -> dict:
 
 
 async def collect_questions(db: AsyncSession, ai: AITasks, task: Task) -> dict:
-    from jobfinder.questions import service
+    """The worker's completion commit is the boundary: the new questions and the reviewed flags go together."""
+    from jobfinder.services import questions as service
 
     return await service.collect_questions(db, ai, task.user_id)
 
 
 async def daily_emails(db: AsyncSession, ai: AITasks, task: Task) -> dict:
-    """Hourly tick: send the daily email to every user whose chosen hour has come."""
+    """Hourly tick: send the daily email to every user whose chosen hour has come. Each user is its own
+    boundary: their work is committed before the next user, so one user's crash rolls back only theirs."""
     from datetime import UTC, datetime
+
+    from sqlalchemy import inspect
 
     from jobfinder.integrations.smtp import EmailError
     from jobfinder.notify import daily
-    from jobfinder.questions import service as questions
+    from jobfinder.services import questions
 
     now = datetime.now(UTC)
     out = {"due": 0, "sent": 0, "nothing_to_send": 0, "errors": {}}
     for user in await daily.due_users(db, now):
         out["due"] += 1
         try:
+            if inspect(user).expired_attributes:  # an earlier user's rollback expired the loaded rows
+                await db.refresh(user)
             if user.question_emails_enabled:
                 try:
                     await questions.collect_questions(db, ai, user.id)
                 except AIError as e:  # still send the matches; questions go out tomorrow
                     log.warning("question collection for user %s failed: %s", user.id, e)
+                # Commit before sending: send_daily rolls back when another run already claimed the email,
+                # and the collected questions must survive that.
+                await db.commit()
             result = await daily.send_daily(db, user, now=now)
+            await db.commit()
             out["sent" if result else "nothing_to_send"] += 1
         except EmailError as e:
             log.warning("daily email for user %s failed: %s", user.id, e)

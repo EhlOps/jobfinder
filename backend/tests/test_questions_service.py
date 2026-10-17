@@ -6,7 +6,7 @@ from jobfinder.ai.claude_code import AIError
 from jobfinder.ai.schemas import Consolidated, ConsolidatedQuestion
 from jobfinder.config import get_settings
 from jobfinder.models import ClarifyingQuestion, JobMatch, Profile, ProfileFact, Task
-from jobfinder.questions import service
+from jobfinder.services import questions as service
 from tests.fakes import FakeQuestionsAI
 
 

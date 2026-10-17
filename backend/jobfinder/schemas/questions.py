@@ -1,7 +1,7 @@
 """Clarifying questions: the open ones with the jobs that raised them, and the answers to them."""
 from pydantic import BaseModel, Field
 
-from jobfinder.questions.service import MAX_ANSWER_CHARS
+from jobfinder.services.questions import MAX_ANSWER_CHARS
 
 
 class QuestionJob(BaseModel):

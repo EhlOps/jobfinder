@@ -12,7 +12,7 @@
 # from GitHub Actions, or deploy/k8s/deploy.sh staging sha-<commit> on the host.
 #
 # Only the database: documents in compose's `store` volume are not copied, so files uploaded on prod
-# are missing on staging. Staging email goes to mailpit only (overlays/staging), so the real
+# are missing on staging (prod-cutover.sh --rehearsal copies the database and the files). Staging email goes to mailpit only (overlays/staging), so the real
 # addresses in the copy never receive anything.
 set -euo pipefail
 
