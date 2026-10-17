@@ -13,10 +13,11 @@ deploy/k8s/
     kustomization.yaml  # common labels
     namespace.yaml      # Namespace `jobfinder`
     postgres/           # #40: Postgres 16 StatefulSet, Service, NetworkPolicy
-    valkey/             # #40: valkey StatefulSet (AOF), Service, NetworkPolicy
+    valkey/             # #40: valkey StatefulSet (AOF), Service, NetworkPolicy; the task streams (#48)
     storage/            # #40: PVCs store, claude-auth
     data/               # #47: backup CronJob and PVC backups
-    app/                # #43: web, api, worker, renderer, smtp, migrate Job, Ingress, config overrides
+    app/                # #43: web, api, worker, renderer, smtp, migrate Job, Ingress, config overrides;
+                        # #48: scheduler, worker-ai, worker-io (0 replicas until an overlay sets TASKS_BACKEND=ledger)
   overlays/
     staging/            # namespace `jobfinder-staging`; sealed secrets, mailpit, staging config
     prod/               # namespace `jobfinder` (the base default); sealed secrets, Gmail relay, prod config
@@ -161,4 +162,4 @@ kubectl create secret generic jobfinder-env --namespace jobfinder-staging \
 ```
 
 Pods read the Secret at start: after applying a new one, `kubectl -n
-jobfinder-staging rollout restart deploy/api deploy/worker`.
+jobfinder-staging rollout restart deploy/api deploy/worker deploy/scheduler deploy/worker-ai deploy/worker-io`.

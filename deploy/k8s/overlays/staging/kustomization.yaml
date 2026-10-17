@@ -58,6 +58,9 @@ configMapGenerator:
       - RESOLVER_LLM_ENABLED=false
       - COVERAGE_ENABLED=false
       - DISCOVERY_ENABLED=false
+      # The task platform (#48): the api publishes after commit, scheduler + worker-ai + worker-io run
+      # the work (the replicas below). Back to the legacy worker: docs/k3s.md, "Task platform".
+      - TASKS_BACKEND=ledger
 
 patches:
   # Postfix relays only to the sink (networkpolicy-smtp.yaml blocks everything else anyway).
@@ -80,3 +83,22 @@ patches:
       - op: replace
         path: /spec/rules/0/host
         value: staging.ehlops.com
+  # TASKS_BACKEND=ledger (above): the legacy worker refuses to start, so it goes to 0 and the task
+  # platform's three Deployments (0 in the base) to 1. The renderer stays at 0 (opt-in, as in the base).
+  # deploy.sh rolls them all after the migrate Job; for a moment the old worker and the new workers
+  # overlap, which is safe: every claim is one atomic UPDATE of the ledger row. A task the old worker is
+  # cut off from is requeued by the reaper (docs/k3s.md, "Task platform").
+  - target:
+      kind: Deployment
+      name: worker
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 0
+  - target:
+      kind: Deployment
+      name: "scheduler|worker-ai|worker-io"
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1

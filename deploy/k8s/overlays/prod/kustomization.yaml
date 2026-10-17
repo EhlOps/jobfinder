@@ -42,6 +42,10 @@ configMapGenerator:
       - INGEST_MAX_DISCOVERED_BOARDS_PER_RUN=100
       - DISCOVERY_ENABLED=false
       - DISCOVERY_MAX_CANDIDATES=50
+      # Still TASKS_BACKEND=legacy (the base): the single `worker`. To flip prod to the task platform
+      # (#48), uncomment this and the replicas patches at the end, then deploy (docs/k3s.md, "Task
+      # platform"). Roll back by commenting them out again and deploying.
+      # - TASKS_BACKEND=ledger
 
 patches:
   # Postfix relays through Gmail (compose's root .env: RELAYHOST, ALLOWED_SENDER_DOMAINS), with the
@@ -75,3 +79,18 @@ patches:
       - op: replace
         path: /spec/rules/0/host
         value: jobs.ehlops.com
+  # The task platform (#48), with TASKS_BACKEND=ledger above; as in overlays/staging.
+  # - target:
+  #     kind: Deployment
+  #     name: worker
+  #   patch: |-
+  #     - op: replace
+  #       path: /spec/replicas
+  #       value: 0
+  # - target:
+  #     kind: Deployment
+  #     name: "scheduler|worker-ai|worker-io"
+  #   patch: |-
+  #     - op: replace
+  #       path: /spec/replicas
+  #       value: 1

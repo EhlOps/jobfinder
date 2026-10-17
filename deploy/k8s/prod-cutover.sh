@@ -67,12 +67,16 @@ fi
 
 SRC=${SRC_CONTAINER:-jobfinder-db-1}
 PROJECT=${COMPOSE_PROJECT:-jobfinder}
-WRITERS=("${PROJECT}-api-1" "${PROJECT}-worker-1" "${PROJECT}-renderer-1")
+# Every compose service that writes to the database, the task platform's (profile "ledger", #48) too.
+WRITERS=("${PROJECT}-api-1" "${PROJECT}-worker-1" "${PROJECT}-renderer-1"
+         "${PROJECT}-scheduler-1" "${PROJECT}-worker-ai-1" "${PROJECT}-worker-io-1")
 # The compose db image: already on the host, and it has tar, find and md5sum.
 TOOL_IMAGE=${TOOL_IMAGE:-postgres:16}
 DUMP_DIR=${CUTOVER_DUMP_DIR:-}   # default: a fresh mktemp -d (step 4)
 TRAEFIK=${TRAEFIK_URL:-http://127.0.0.1:8280}
-APP_DEPLOYMENTS=(api worker renderer)
+# Every app Deployment that touches the database; the task platform's three (#48) are at 0 where
+# TASKS_BACKEND=legacy, and scaled to 0 and back like the rest.
+APP_DEPLOYMENTS=(api worker renderer scheduler worker-ai worker-io)
 HELPER=cutover-files
 
 log() { printf '[cutover %s %s] %s\n' "$NS" "$(date -u +%H:%M:%S)" "$*" >&2; }
@@ -206,7 +210,7 @@ restore_replicas() {
 if [ ${#replicas[@]} -gt 0 ]; then
   restore_on_exit=1
   kubectl -n "$NS" scale deployment "${!replicas[@]}" --replicas=0 >/dev/null
-  kubectl -n "$NS" wait --for=delete pod -l 'app.kubernetes.io/name in (api,worker,renderer)' --timeout=180s \
+  kubectl -n "$NS" wait --for=delete pod -l "app.kubernetes.io/name in ($(IFS=,; echo "${APP_DEPLOYMENTS[*]}"))" --timeout=180s \
     >/dev/null 2>&1 || true
   log "scaled ${!replicas[*]} to 0"
 else
@@ -250,6 +254,8 @@ dst_rev=$(kubectl -n "$NS" exec postgres-0 -- sh -c \
   'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -XAtc "select version_num from alembic_version"')
 [ "$dst_rev" = "$src_rev" ] || die "restored revision $dst_rev differs from compose's $src_rev"
 log "restored at alembic revision $dst_rev"
+# The task streams hold ids of the dropped database (#48).
+k8s_trim_task_streams "$NS" || log "WARNING: could not empty the task streams; check valkey-0"
 
 # --- 6. row counts ----------------------------------------------------------------------------------
 step row-counts
