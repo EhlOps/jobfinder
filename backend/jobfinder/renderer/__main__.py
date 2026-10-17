@@ -1,8 +1,12 @@
 """The renderer container's entrypoint.
 
-  python -m jobfinder.renderer                    consume render_* tasks from the queue (the service)
+  python -m jobfinder.renderer                    the service: run render_* tasks
   python -m jobfinder.renderer capture <url>      one capture without the database; prints a summary
   python -m jobfinder.renderer capture <url> --json   ...or the whole result as JSON
+
+With TASKS_BACKEND=ledger the service is the render queue's taskiq worker (`python -m jobfinder.tasks
+render`; handlers in jobfinder.tasks.render), fed ledger ids from the valkey stream. With
+TASKS_BACKEND=legacy it is the claim loop below, polling the tasks table for render_* rows.
 """
 import asyncio
 import logging
@@ -91,10 +95,15 @@ def main(argv: list[str]) -> int:
     from jobfinder.core import logging as core_logging
     from jobfinder.core.config import settings
 
-    core_logging.configure(settings.log_level)
     if not argv:
-        asyncio.run(serve())
-        return 0
+        if settings.tasks_backend == "legacy":
+            core_logging.configure(settings.log_level)
+            asyncio.run(serve())
+            return 0
+        from jobfinder.tasks import __main__ as tasks_main
+
+        return tasks_main.main(["render"])  # configures logging itself
+    core_logging.configure(settings.log_level)
     if argv[0] == "capture" and len(argv) >= 2:
         return asyncio.run(capture_cli(argv[1], "--json" in argv[2:]))
     print(__doc__)
