@@ -14,9 +14,9 @@ from jobfinder.integrations.directories import board_from_url
 from jobfinder.models import JobLink, User
 from jobfinder.repositories import job_links as repo
 from jobfinder.repositories.job_links import LinkFacts
-from jobfinder.scheduling import queue
 from jobfinder.schemas.job_links import JobLinkOut, LinkDetail, LinkJob
 from jobfinder.services import ratelimit
+from jobfinder.tasks import ledger
 
 RATE_KIND = "job_link"
 MAX_JOBS = 200
@@ -96,8 +96,7 @@ async def add(db: AsyncSession, user: User, raw_url: str) -> tuple[JobLinkOut, i
     link = await repo.add(db, link)  # flushed: the task payload needs its id
     if link.status != "resolving":
         return await _one(db, link), 201
-    # TODO(#48): ledger.add flushes; until then enqueue commits the request's writes so far
-    await queue.enqueue(db, "resolve_job_link", {"link_id": link.id}, user_id=user.id)
+    await ledger.add(db, "resolve_job_link", {"link_id": link.id}, user_id=user.id)
     return await _one(db, link), 202
 
 

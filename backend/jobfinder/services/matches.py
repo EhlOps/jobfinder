@@ -10,10 +10,10 @@ from jobfinder.matching import prefilter
 from jobfinder.models import Company, Job, JobMatch, Profile
 from jobfinder.repositories import letters as letters_repo
 from jobfinder.repositories import matches as repo
-from jobfinder.scheduling import queue
 from jobfinder.schemas.common import TaskRef
 from jobfinder.schemas.matches import JobOut, MatchDetail, MatchList, MatchOut
 from jobfinder.services import profile as profile_service
+from jobfinder.tasks import ledger
 
 FeedQuery = repo.FeedQuery  # the router builds one from the query string
 
@@ -113,8 +113,7 @@ async def answer(db: AsyncSession, user_id: int, match_id: int, answers: list[tu
     profile = await db.get(Profile, user_id)
     if profile:
         profile_service.bump_version(profile)
-    # TODO(#48): ledger.add flushes. enqueue commits everything pending, so it goes last.
-    await queue.enqueue(db, "match_user", user_id=user_id, dedupe=True)
+    await ledger.add(db, "match_user", user_id=user_id, dedupe=True)
     return {"saved": len(answers)}
 
 
@@ -123,6 +122,5 @@ async def refresh(db: AsyncSession, user_id: int) -> TaskRef:
     profile = await db.get(Profile, user_id)
     if not profile or not profile.status:
         raise SearchNotSetUp()
-    # TODO(#48): ledger.add flushes
-    task = await queue.enqueue(db, "match_user", user_id=user_id, dedupe=True)
+    task = await ledger.add(db, "match_user", user_id=user_id, dedupe=True)
     return TaskRef(task_id=task.id)

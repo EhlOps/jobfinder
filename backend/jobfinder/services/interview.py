@@ -10,8 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from jobfinder.integrations.claude.tasks import AITasks
 from jobfinder.models import Profile, ProfileFact, Task
 from jobfinder.repositories import profiles
-from jobfinder.scheduling import queue
 from jobfinder.services import profile as profile_service
+from jobfinder.tasks import ledger
 
 MAX_ANSWER_CHARS = 3000
 DEMAND_LIMIT = 15
@@ -46,13 +46,12 @@ async def request_audit(db: AsyncSession, user_id: int) -> Task:
     """The 'refresh' button: queue an audit (one at a time per user)."""
     if not _set_up(await profiles.get(db, user_id)):
         raise profile_service.ProfileIncomplete("Set up your profile first")
-    return await queue.enqueue(db, "audit_profile", user_id=user_id, dedupe=True)  # TODO(#48): ledger.add flushes
+    return await ledger.add(db, "audit_profile", user_id=user_id, dedupe=True)
 
 
 async def run_audit(db: AsyncSession, ai: AITasks, user_id: int) -> dict:
-    """The audit_profile task. Nothing here commits: the handler's boundary does. The FOR UPDATE lock
-    taken after the AI call is released by the enqueue's commit right after it, as it always was; once
-    #48 makes enqueue flush instead, it lasts until the task's completion commit, which follows at once."""
+    """The audit_profile task. Nothing here commits: the handler's boundary does, and with it releases the
+    FOR UPDATE lock taken after the AI call (the completion commit follows at once)."""
     profile = await profiles.get(db, user_id)
     if not _set_up(profile):
         return {"skipped": "profile not set up"}
@@ -91,7 +90,7 @@ async def run_audit(db: AsyncSession, ai: AITasks, user_id: int) -> dict:
         "audited_at": datetime.now(UTC).isoformat(),
     }
     # The dossier feeds scoring, so score again with it.
-    await queue.enqueue(db, "match_user", user_id=user_id, dedupe=True)  # TODO(#48): ledger.add flushes
+    await ledger.add(db, "match_user", user_id=user_id, dedupe=True)
     return {"readiness": result.readiness, "questions": len(added)}
 
 
@@ -114,8 +113,7 @@ async def current(db: AsyncSession, user_id: int) -> dict:
 async def answer(db: AsyncSession, user_id: int, answers: list[dict]) -> dict:
     """answers: [{question, answer?, skip?}] (the question text identifies it). Answers become facts
     (source 'interview'); either way the question leaves the list. A new audit is queued.
-    The row lock keeps a concurrent audit from merging over these answers; the boundary's commit (or the
-    enqueue's, until #48) releases it."""
+    The row lock keeps a concurrent audit from merging over these answers; the boundary's commit releases it."""
     profile = await profiles.get(db, user_id, for_update=True)
     if not profile:
         return {"answered": 0, "skipped": 0}
@@ -151,5 +149,5 @@ async def answer(db: AsyncSession, user_id: int, answers: list[dict]) -> dict:
     profiles.add_facts(db, facts)
     if answered:
         profile_service.bump_version(profile)
-        await queue.enqueue(db, "audit_profile", user_id=user_id, dedupe=True)  # TODO(#48): ledger.add flushes
+        await ledger.add(db, "audit_profile", user_id=user_id, dedupe=True)
     return {"answered": answered, "skipped": skipped}
