@@ -27,7 +27,7 @@ Two ways to run the same compose stack: this one on your own machine (plain HTTP
 | TLS | none | Caddy gets and renews a Let's Encrypt certificate |
 | Mail | `smtp` postfix service relaying through Gmail/Outlook (real emails) | the same |
 | Config | root `.env` + `backend/.env`, `COMPOSE_FILE=docker-compose.yml:docker-compose.dev.yml` | the same, plus `SITE_ADDRESS` and the prod `COMPOSE_FILE` |
-| Restarts, backups | no | `restart: unless-stopped`, `deploy/backup.sh` |
+| Restarts, backups | no | `restart: unless-stopped`; production now runs on k3s with a backup CronJob ([docs/k3s.md](docs/k3s.md)) |
 
 ```sh
 cp .env.example .env              # set POSTGRES_PASSWORD
@@ -182,50 +182,23 @@ by everyone using your instance.
 
 ## Deploy (production)
 
-The intended setup is this same compose stack on one VPS (Docker with the compose plugin, git). The `web`
-container runs Caddy, which serves the app, proxies `/api`, sets the security headers (including HSTS) and
-gets its own Let's Encrypt certificate. `docker-compose.prod.yml` adds the public ports 80, 443 and UDP 443.
+Production runs on a single-node **k3s** cluster on the host, not on compose: namespace `jobfinder` at
+https://jobs.ehlops.com, staging in `jobfinder-staging`, with host Caddy as the TLS edge in front of Traefik.
+Everything about it lives in **[docs/k3s.md](docs/k3s.md)**: the cluster install, the manifests
+(`deploy/k8s/`), deploying (staging deploys itself from every dev push; prod is
+`deploy/k8s/deploy.sh prod sha-<commit>` by hand), nightly backups and the restore drill, and the runbook of
+the move from compose (`deploy/k8s/prod-cutover.sh`, #47).
 
-1. Point a DNS A record for your domain at the server and open ports 80 and 443.
-2. Clone the repo on the server, then `cp .env.example .env` and `cp backend/.env.example backend/.env`.
-3. Root `.env`: a strong `POSTGRES_PASSWORD`, `SITE_ADDRESS=jobs.example.com`,
-   `COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml` (so every `docker compose` command uses the
-   production override), and the mail relay settings (`ALLOWED_SENDER_DOMAINS`, `RELAYHOST*`).
-4. `backend/.env`: `SECRET_KEY`, `PUBLIC_BASE_URL=https://jobs.example.com`,
-   `SMTP_HOST=smtp`, `SMTP_PORT=587`, a real `EMAIL_FROM`.
-5. `docker compose up -d --build`. Every service restarts after a reboot.
-6. Make yourself an admin (`add-user`, `grant-admin`, `reset-link`; see Admins), sign in, connect the AI on **AI setup**, then add users with `cli add-user` (see Access).
-7. Set up the nightly backup below.
-
-### Updating
-
-```sh
-git pull && docker compose up -d --build
-```
-
-The api applies database migrations on start. Take a backup first (`deploy/backup.sh`) when a release adds one.
+The compose files remain for local development (above) and as the rollback copy for two weeks after the
+cutover (#53 removes the production parts). `docker-compose.prod.yml` (compose's own Caddy on 80/443) is no
+longer how production runs.
 
 ### Backups
 
-`deploy/backup.sh` writes a Postgres dump and an archive of the `store` and `claude` data (documents and the
-saved Claude token) to `./backups`, keeping the newest 14 of each. Run it nightly and copy the files off the server:
-
-```sh
-15 3 * * *  cd /path/to/jobfinder && mkdir -p backups && deploy/backup.sh >> backups/backup.log 2>&1
-```
-
-Restore (replaces the current data, so the app is stopped first):
-
-```sh
-docker compose stop api worker
-docker compose exec -T db pg_restore --clean --if-exists -U jobfinder -d jobfinder < backups/db-<timestamp>.dump
-docker compose run --rm --no-deps -T --entrypoint sh api \
-  -c 'find /data/store /data/claude -mindepth 1 -delete && tar -C /data -xzf -' < backups/files-<timestamp>.tar.gz
-docker compose start api worker
-```
-
-(Use your `POSTGRES_USER` / `POSTGRES_DB` values.) Certificates live in the `caddy-data` volume and are re-issued if lost.
-If you use postfix direct mode, also back up the `dkim` volume.
+A CronJob in each namespace backs up nightly at 03:15 UTC (Postgres dump plus the `store` and `claude-auth`
+files, newest 14 kept); `deploy/k8s/backup-restore.sh <namespace>` proves a dump restores. See
+[docs/k3s.md, "Backups"](docs/k3s.md#backups-47). **`deploy/backup.sh` is retired**: it only backs up the compose
+stack, and production's data no longer lives there.
 
 ## Develop
 

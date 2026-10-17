@@ -1,0 +1,123 @@
+# Nightly backup at 03:15 UTC (#47; compose ran deploy/backup.sh from host cron at the same time).
+#   db-<UTC timestamp>.dump        pg_dump -Fc of the jobfinder database
+#   files-<UTC timestamp>.tar.gz   store/ and claude/ (uploaded documents, link text, the Claude token)
+# on PVC `backups`, the same names and layout as deploy/backup.sh, so its README restore steps still
+# apply. Each file is written as .part and renamed when complete; the newest BACKUP_KEEP of each kind
+# are kept. Run one now: kubectl -n <ns> create job --from=cronjob/backup backup-manual.
+# local-path volumes are RWO but node-local on this single node, so mounting `store` and
+# `claude-auth` next to the running app is fine.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: backup
+spec:
+  schedule: "15 3 * * *"
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  # A node that was down at 03:15 still backs up when it comes back within the hour.
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 1800
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: backup
+            app.kubernetes.io/component: backup
+            # NetworkPolicy `postgres` admits only labelled pods.
+            jobfinder.io/postgres-client: "true"
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            # The app's uid (10001): it owns the files in store/ and claude/, and the token is 0600.
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: backup
+              # Same version as the server (base/postgres), so pg_dump matches it.
+              image: postgres:16.15
+              command: ["sh", "-c"]
+              args:
+                - |
+                  set -eu
+                  umask 077
+                  ts=$(date -u +%Y%m%d-%H%M%S)
+                  db="/backups/db-$ts.dump"
+                  files="/backups/files-$ts.tar.gz"
+                  # A failed run leaves no partial files.
+                  trap 'rm -f "$db.part" "$files.part"' EXIT
+                  # kube-router admits a new pod's IP a few seconds after it starts (until then:
+                  # "connection refused"), so wait for postgres first, up to two minutes.
+                  i=0
+                  until pg_isready -q -h postgres -U jobfinder -t 2; do
+                    i=$((i + 1)); [ "$i" -lt 60 ] || { echo "postgres unreachable" >&2; exit 1; }
+                    sleep 2
+                  done
+                  pg_dump -h postgres -U jobfinder -d jobfinder -Fc -f "$db.part"
+                  # The archive's table of contents must read back.
+                  pg_restore --list "$db.part" >/dev/null
+                  mv "$db.part" "$db"
+                  # Exit 1 is GNU tar's "file changed as we read it" (the app keeps running): the
+                  # archive is complete apart from that file's newest bytes. 2 and up are failures.
+                  rc=0; tar -C /data -czf "$files.part" store claude || rc=$?
+                  [ "$rc" -le 1 ] || exit "$rc"
+                  mv "$files.part" "$files"
+                  # Newest BACKUP_KEEP of each kind (timestamped names sort oldest first).
+                  for pat in 'db-*.dump' 'files-*.tar.gz'; do
+                    find /backups -maxdepth 1 -name "$pat" | sort -r | tail -n +"$((BACKUP_KEEP + 1))" \
+                      | while read -r old; do rm -f -- "$old"; done
+                  done
+                  echo "backup ok: $db ($(du -h "$db" | cut -f1)) $files ($(du -h "$files" | cut -f1))"
+                  ls -l /backups
+              env:
+                - name: BACKUP_KEEP
+                  value: "14"
+                - name: HOME
+                  value: /tmp
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-credentials
+                      key: POSTGRES_PASSWORD
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  memory: 1Gi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              volumeMounts:
+                - name: backups
+                  mountPath: /backups
+                - name: store
+                  mountPath: /data/store
+                  readOnly: true
+                - name: claude-auth
+                  mountPath: /data/claude
+                  readOnly: true
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: backups
+              persistentVolumeClaim:
+                claimName: backups
+            - name: store
+              persistentVolumeClaim:
+                claimName: store
+            - name: claude-auth
+              persistentVolumeClaim:
+                claimName: claude-auth
+            - name: tmp
+              emptyDir:
+                sizeLimit: 64Mi
