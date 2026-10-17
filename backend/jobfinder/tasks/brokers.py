@@ -16,8 +16,12 @@ STREAM_MAXLEN = 10_000  # ids only; trimmed approximately, so valkey memory stay
 
 
 def _broker(queue: str) -> RedisStreamBroker:
+    # No socket timeout: redis-py's default (5s) fires when a task's synchronous work (ingest parsing)
+    # stalls the event loop past it, and taskiq then restarts the worker process, killing the tasks in
+    # flight. TCP keepalive still notices a dead valkey.
     return RedisStreamBroker(url=settings.valkey_url, queue_name=f"jobfinder:{queue}",
-                             consumer_group_name=f"jobfinder-{queue}", maxlen=STREAM_MAXLEN)
+                             consumer_group_name=f"jobfinder-{queue}", maxlen=STREAM_MAXLEN,
+                             socket_timeout=None, socket_keepalive=True)
 
 
 ai_broker = _broker("ai")
