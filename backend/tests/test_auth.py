@@ -30,7 +30,8 @@ async def test_failed_logins_are_indistinguishable(client, make_account, monkeyp
     for email, pw in (("known@x.com", "wrong-password-1"), ("nobody@x.com", "whatever-pass-1"), ("pending@x.com", "whatever-pass-1")):
         r = await client.post("/api/auth/login", json={"email": email, "password": pw})
         out.append((r.status_code, r.json()))
-    assert out[0] == out[1] == out[2] == (401, {"detail": "Invalid email or password"})
+    assert out[0] == out[1] == out[2]
+    assert (out[0][0], out[0][1]["detail"]) == (401, "Invalid email or password")
     assert len(calls) == 3  # one argon2 verification each, even with no password hash to check
 
 
@@ -86,6 +87,7 @@ async def test_logout_removes_the_session_row_and_expired_ones_are_pruned(client
         db.add(Session(token="old" * 20, user_id=uid, expires_at=datetime.now(UTC) - timedelta(days=1)))
         await db.commit()
         await security.prune_sessions(db)
+        await db.commit()  # the worker's maintenance tick commits
         assert (await db.scalar(sa.select(sa.func.count()).select_from(Session))) == 1  # only the live one is left
     await client.post("/api/auth/logout")
     async with maker() as db:
