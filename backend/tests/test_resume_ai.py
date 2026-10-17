@@ -5,8 +5,10 @@ from pydantic import ValidationError
 
 from jobfinder.ai.schemas import ResumeContact, TailoredResume
 from jobfinder.ai.tasks import AITasks
-from jobfinder.models import ProfileFact
+from jobfinder.core.errors import NotFound
+from jobfinder.models import Profile, ProfileFact
 from jobfinder.resumes import service
+from jobfinder.services.matches import ProfileIncomplete
 from jobfinder.storage.documents import DocumentStore
 from tests.factories import make_match, make_user
 from tests.fakes import FakeClaude
@@ -63,8 +65,11 @@ async def test_tailored_output_is_not_fed_back_as_a_source(maker, tmp_path):
 async def test_unknown_match_and_missing_profile(maker, tmp_path):
     maker, store, uid, mid = await seed(maker, tmp_path)
     async with maker() as db:
-        with pytest.raises(ValueError, match="Match not found"):
+        with pytest.raises(NotFound, match="Match not found"):
             await service.tailor(db, AITasks(FakeClaude(default=RESUME)), store, uid, mid + 999)
+        (await db.get(Profile, uid)).background = {}
+        with pytest.raises(ProfileIncomplete, match="Finish your profile first"):
+            await service.tailor(db, AITasks(FakeClaude(default=RESUME)), store, uid, mid)
 
 
 def test_schema_rejects_missing_sections():
