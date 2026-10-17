@@ -179,6 +179,7 @@ async def test_json_ld_only_page_keeps_the_single_job(authed, maker, web):
     async with maker() as db:
         [task] = (await db.scalars(sa.select(Task).where(Task.kind == "resolve_job_link"))).all()
         out = await resolve_link(db, task.payload["link_id"], client=page_client(web, LD_JOB))
+        await db.commit()  # what the resolve_job_link task commits
         link = await db.get(JobLink, task.payload["link_id"])
         job = await db.get(Job, link.job_id)
     assert out["status"] == "unresolved" and out["job_id"] == job.id

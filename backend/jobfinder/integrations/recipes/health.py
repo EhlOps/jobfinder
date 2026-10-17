@@ -18,7 +18,7 @@ Rules:
     record_reinduce(ok=True) stores the new recipe as validated; ok=False disables the board for an admin.
 
 These are pure functions on the ORM object; the caller commits. Note the error/backoff rules in
-ingest.service (consecutive_failures -> auto-disable) still apply to recipe boards as well.
+services.ingestion (consecutive_failures -> auto-disable) still apply to recipe boards as well.
 """
 from datetime import UTC, datetime, timedelta
 
@@ -105,7 +105,7 @@ def record_reinduce(company: Company, ok: bool, new_recipe: dict | None, *,
                     now: datetime | None = None) -> str:
     """Record a re-induction attempt. Success (ok and a new recipe) stores the recipe as validated with a
     fresh baseline; the next healthy run makes it active. Failure disables the board with a reason (the
-    caller should also deactivate its jobs, as ingest.service._fail_board does on auto-disable)."""
+    caller should also deactivate its jobs, as services.ingestion._fail_board does on auto-disable)."""
     now = _now(now)
     h = dict(company.recipe_health or {})
     h["reinduce_count_7d"] = _window(h, now) + 1

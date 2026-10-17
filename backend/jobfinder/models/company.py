@@ -42,7 +42,7 @@ class Company(Base):
     recipe: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
     recipe_state: Mapped[str | None] = mapped_column(String(16), nullable=True)  # induced|validated|active|degraded|disabled
     recipe_health: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
-    # how sought-after the employer is (ingest.coveted); tier 1 is the most
+    # how sought-after the employer is (services.coverage); tier 1 is the most
     coveted_score: Mapped[float] = mapped_column(Float, default=0, server_default="0")
     coveted_tier: Mapped[int | None] = mapped_column(Integer, nullable=True)
     coveted_pinned: Mapped[bool | None] = mapped_column(nullable=True)  # admin override: True pin, False unpin

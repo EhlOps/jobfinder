@@ -1,15 +1,19 @@
-"""Board validation: a live fetch must succeed and return at least one posting before a board is added."""
+"""Board validation: a live fetch must succeed and return at least one posting before a board is added.
+
+Stays in ingest/ (not services/) because board discovery, an integration, adds boards through it; it never
+commits: the caller (discover_boards task, `cli add-board`, the resolver) does.
+"""
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import httpx
-import sqlalchemy as sa
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jobfinder.integrations.ats import SLUG_RE
 from jobfinder.integrations.ats.registry import ATS_FETCHERS, PROBE_FETCHERS
 from jobfinder.models import Company
+from jobfinder.repositories import boards as boards_repo
 
 ORIGINS = ("seed", "discovered", "user")
 
@@ -65,17 +69,16 @@ async def add_board(
         return None, "invalid name (must be 1-200 characters)"
     if origin not in ORIGINS:
         return None, f"invalid origin '{origin}'"
-    existing = await session.scalar(sa.select(Company).where(Company.ats == ats, Company.slug == slug))
+    existing = await boards_repo.existing(session, ats, slug)
     if existing:
         return None, "duplicate: board already exists"
     result = validation or await validate_board(ats, slug, client)
     if not result.ok:
         return None, result.reason
     company = Company(name=name, ats=ats, slug=slug, origin=origin, validated_at=datetime.now(UTC))
-    session.add(company)
     try:
-        await session.commit()
+        async with session.begin_nested():  # a lost race rolls back only this insert, not the caller's work
+            session.add(company)
     except IntegrityError:  # lost a race with another insert of the same board
-        await session.rollback()
         return None, "duplicate: board already exists"
     return company, f"added ({result.job_count} postings)"

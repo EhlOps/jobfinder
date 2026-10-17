@@ -24,14 +24,14 @@ from jobfinder.core.config import settings
 from jobfinder.core.urls import registrable_domain
 from jobfinder.ingest.base import JobPosting, safe_http_url
 from jobfinder.ingest.http_safety import JSON_TYPES, FetchError, safe_fetch
-from jobfinder.ingest.resolve.ladder import RecipeHit, ResolveContext
-from jobfinder.ingest.resolve.names import name_from_domain
-from jobfinder.ingest.resolve.rungs.listing import _APIISH, _QUOTED_URL, _STATIC
-from jobfinder.ingest.service import deactivate_missing, upsert_postings
 from jobfinder.integrations.claude.claude_code import AIError
 from jobfinder.integrations.claude.tasks import AITasks
 from jobfinder.integrations.recipes import Recipe, RecipeError, health, run_recipe, validate_recipe
 from jobfinder.models import Company
+from jobfinder.services.ingestion import deactivate_missing, upsert_postings
+from jobfinder.services.resolver.ladder import RecipeHit, ResolveContext
+from jobfinder.services.resolver.names import name_from_domain
+from jobfinder.services.resolver.rungs.listing import _APIISH, _QUOTED_URL, _STATIC
 
 log = logging.getLogger("jobfinder.resolve.llm")
 
@@ -167,7 +167,8 @@ async def reinduce_company(db: AsyncSession, ai: AITasks, company_id: int,
     recipe must return _reinduce_need() jobs (the job it was validated with may be long gone).
 
     Only a verdict on the site is recorded with record_reinduce (a failure disables the board). When the AI
-    fails or no page can be fetched, nothing is recorded and "retry": True asks the caller to try later."""
+    fails or no page can be fetched, nothing is recorded and "retry": True asks the caller to try later.
+    Does not commit: the reinduce_recipe task does."""
     company = await db.get(Company, company_id)
     if company is None or company.ats != "recipe":
         return {"skipped": "not a recipe board"}
@@ -221,14 +222,13 @@ async def reinduce_company(db: AsyncSession, ai: AITasks, company_id: int,
         state = health.record_reinduce(company, recipe is not None,
                                        recipe.model_dump(mode="json") if recipe else None)
         if recipe is None:  # disabled now, so never polled again: don't leave its jobs up with dead links
-            await deactivate_missing(db, "recipe", company.id, [])  # commits the health change too
+            await deactivate_missing(db, "recipe", company.id, [])
             return {"ok": False, "state": state, "reason": why[:300]}
         # the check already fetched the whole board: store that instead of fetching it all again
         await upsert_postings(db, postings, company.id)
         await deactivate_missing(db, "recipe", company.id, [p.external_id for p in postings])
         state = health.record_run(company, len(postings))
         company.last_fetched_at = company.last_success_at = datetime.now(UTC)
-        await db.commit()
         return {"ok": True, "state": state, "fetched": len(postings)}
     finally:
         if own:

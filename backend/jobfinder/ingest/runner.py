@@ -1,15 +1,18 @@
-"""Top-level ingest run shared by the CLI and the worker handler."""
+"""Top-level ingest run shared by the CLI and the worker handler.
+
+A boundary: every session opened here commits its own work (each board in ingest_boards, the jobspy and
+usajobs runs here, the extra-source cadence in _extra_due)."""
 import logging
 from datetime import UTC, datetime, timedelta
 
 import httpx
 
 from jobfinder.core.config import settings
-from jobfinder.ingest import service
-from jobfinder.ingest.service import IngestStats, SessionFactory
 from jobfinder.integrations import jobspy as jobspy_source
 from jobfinder.integrations import usajobs
+from jobfinder.services import ingestion as service
 from jobfinder.services import ratelimit
+from jobfinder.services.ingestion import IngestStats, SessionFactory
 
 log = logging.getLogger("jobfinder.ingest")
 
@@ -26,7 +29,9 @@ async def ingest_jobspy(session_factory: SessionFactory) -> IngestStats:
             stats.fetched = len(postings)
             if postings:
                 stats.new, stats.updated = await service.upsert_postings(db, postings, None)
+                await db.commit()  # kept even if the expiry below fails
             stats.deactivated = await service.expire_stale(db, jobspy_source.SOURCE, service.JOBSPY_EXPIRE_AFTER)
+            await db.commit()
     except Exception as e:
         log.exception("jobspy ingest failed")
         stats.error = f"{type(e).__name__}: {e}"[:300]
@@ -44,8 +49,10 @@ async def ingest_usajobs(session_factory: SessionFactory, transport=None) -> Ing
         async with session_factory() as db:
             if postings:
                 stats.new, stats.updated = await service.upsert_postings(db, postings, None)
+                await db.commit()  # kept even if the expiry below fails
                 # only a successful non-empty fetch may expire jobs, so an API outage never wipes them
                 stats.deactivated = await service.expire_stale(db, usajobs.SOURCE, service.USAJOBS_EXPIRE_AFTER)
+                await db.commit()
     except Exception as e:
         log.exception("usajobs ingest failed")
         stats.error = f"{type(e).__name__}: {e}"[:300]

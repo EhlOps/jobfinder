@@ -20,8 +20,8 @@ from jobfinder.ingest.base import (
     parse_salary_range,
     safe_http_url,
 )
-from jobfinder.ingest.resolve.ladder import ResolveContext, SingleJob
-from jobfinder.ingest.resolve.names import name_from_domain
+from jobfinder.services.resolver.ladder import ResolveContext, SingleJob
+from jobfinder.services.resolver.names import name_from_domain
 
 MAX_BLOCKS = 20
 MAX_BLOCK_CHARS = 1_000_000
