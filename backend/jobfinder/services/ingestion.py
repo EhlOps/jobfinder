@@ -178,7 +178,7 @@ async def _queue_reinduce(db: AsyncSession, company_id: int) -> None:
     if not settings.resolver_llm_enabled:
         return
     try:
-        # a savepoint, so a failed add rolls back only itself; the task commits with the run's boundary
+        # a savepoint, so a failed add never loses the run's changes; the task commits with the run's boundary
         async with db.begin_nested():
             await ledger.add(db, "reinduce_recipe", {"company_id": company_id}, dedupe=True)
     except Exception:  # the run itself is recorded; the next degraded run queues it again

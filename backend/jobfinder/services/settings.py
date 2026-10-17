@@ -1,6 +1,6 @@
 """The user's email and match-budget settings, and the preview of the daily email.
 
-Nothing here commits; the request commits once.
+Nothing here commits except the preview's rate-limit event (a side session); the request commits once.
 """
 from sqlalchemy.ext.asyncio import AsyncSession
 
