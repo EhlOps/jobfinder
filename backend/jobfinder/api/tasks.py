@@ -1,8 +1,8 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 
 from jobfinder.api.deps import CurrentUser, DbSession
-from jobfinder.models import Task
 from jobfinder.schemas.tasks import TaskOut
+from jobfinder.services import tasks
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
@@ -13,7 +13,4 @@ async def get_task(
     user: CurrentUser,
     db: DbSession,
 ):
-    task = await db.get(Task, task_id)
-    if not task or task.user_id != user.id:
-        raise HTTPException(404, "Not found")
-    return task
+    return await tasks.get(db, user.id, task_id)

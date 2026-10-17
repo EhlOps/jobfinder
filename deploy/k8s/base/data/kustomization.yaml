@@ -1,0 +1,13 @@
+# Nightly backups (#47, replacing deploy/backup.sh): CronJob `backup` writes a Postgres dump and a tar
+# of the `store` and `claude-auth` volumes onto PVC `backups`, keeping the newest 14 of each. The
+# restore drill is deploy/k8s/backup-restore.sh; docs/k3s.md, "Backups".
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+labels:
+  - pairs:
+      jobfinder.io/tier: data
+
+resources:
+  - backups-pvc.yaml
+  - backup-cronjob.yaml

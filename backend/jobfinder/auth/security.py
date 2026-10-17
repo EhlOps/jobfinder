@@ -1,16 +1,17 @@
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
-from fastapi import Cookie, Depends, HTTPException
-from sqlalchemy import delete, select
+from fastapi import Cookie, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
 from jobfinder.core.config import settings
 from jobfinder.core.db import DbSession
+from jobfinder.core.errors import Forbidden, Unauthorized
 from jobfinder.core.security import hash_password, new_token, verify_password
 from jobfinder.core.security import hash_token as hash_session_token
-from jobfinder.models import Session, User
+from jobfinder.models import User
+from jobfinder.repositories import users
 
 COOKIE_NAME = "session"
 SEEN_EVERY = timedelta(minutes=10)
@@ -36,19 +37,18 @@ async def verify_or_dummy(password_hash: str | None, password: str) -> bool:
 
 
 async def create_session(db: AsyncSession, user_id: int) -> str:
-    """Creates the session and returns the raw token for the cookie (the database keeps only its hash)."""
+    """Creates the session and returns the raw token for the cookie (the database keeps only its hash).
+    Flushes; the caller's boundary commits."""
     token = new_token()
-    db.add(Session(
-        token=hash_session_token(token), user_id=user_id,
-        expires_at=datetime.now(UTC) + timedelta(days=settings.session_ttl_days),
-    ))
-    await db.commit()
+    expires = datetime.now(UTC) + timedelta(days=settings.session_ttl_days)
+    users.add_session(db, hash_session_token(token), user_id, expires)
+    await db.flush()
     return token
 
 
 async def prune_sessions(db: AsyncSession) -> None:
-    await db.execute(delete(Session).where(Session.expires_at < datetime.now(UTC)))
-    await db.commit()
+    """Deletes expired sessions; the caller commits (the worker's maintenance tick)."""
+    await users.delete_expired_sessions(db, datetime.now(UTC))
 
 
 async def current_user(
@@ -56,25 +56,16 @@ async def current_user(
     session: Annotated[str | None, Cookie(alias=COOKIE_NAME)] = None,
 ) -> User:
     if session:
-        row = (
-            await db.execute(
-                select(User)
-                .join(Session, Session.user_id == User.id)
-                .where(
-                    Session.token == hash_session_token(session), Session.expires_at > datetime.now(UTC), User.password_hash.is_not(None)
-                )
-            )
-        ).scalar_one_or_none()
-        if row:
-            now = datetime.now(UTC)
-            if row.last_seen_at is None or now - row.last_seen_at > SEEN_EVERY:
-                row.last_seen_at = now  # the planner throttles idle users by this
-                await db.commit()
-            return row
-    raise HTTPException(401, "Not authenticated")
+        now = datetime.now(UTC)
+        user = await users.by_session(db, hash_session_token(session), now)
+        if user:
+            if user.last_seen_at is None or now - user.last_seen_at > SEEN_EVERY:
+                user.last_seen_at = now  # the planner throttles idle users by this; the request commits it
+            return user
+    raise Unauthorized("Not authenticated")
 
 
 async def require_admin(user: Annotated[User, Depends(current_user)]) -> User:
     if not user.is_admin:
-        raise HTTPException(403, "Admin only")
+        raise Forbidden("Admin only")
     return user

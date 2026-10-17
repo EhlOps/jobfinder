@@ -1,32 +1,77 @@
-# Production: keeps the base namespace `jobfinder`.
-# Not applied before the cutover (#47); production keeps running on compose until then.
+# Production: keeps the base namespace `jobfinder`, at https://jobs.ehlops.com (#47).
+# Deploy with deploy/k8s/deploy.sh prod sha-<commit>, by hand on the host (docs/k3s.md, "Production");
+# the first deploy is deploy/k8s/prod-cutover.sh, which restores compose's data first.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
   - ../../base
+  # postgres-credentials (POSTGRES_PASSWORD, random, prod only).
+  - sealed-secret-postgres.yaml
+  # jobfinder-env (compose's SECRET_KEY and CLAUDE_CODE_OAUTH_TOKEN, ADMIN_EMAILS).
+  - sealed-secret-env.yaml
+  # smtp-relay (RELAYHOST_USERNAME, RELAYHOST_PASSWORD) for postfix's Gmail relay.
+  - sealed-secret-smtp-relay.yaml
 
 labels:
   - pairs:
       app.kubernetes.io/instance: prod
 
-# The default tag for a bare `kubectl apply -k`; deploy.sh pins each image to sha-<commit> (#43).
+# The default tag for a bare `kubectl apply -k`: the build compose ran at the cutover (dev at 0f1283d,
+# which staging ran). deploy.sh replaces each with sha-<commit> or the newest ancestor that built it
+# (web was last built at b1eb96e).
 images:
   - name: ghcr.io/ehlops/jobfinder-api
-    newTag: main
+    newTag: sha-0f1283d
   - name: ghcr.io/ehlops/jobfinder-worker
-    newTag: main
+    newTag: sha-0f1283d
   - name: ghcr.io/ehlops/jobfinder-renderer
-    newTag: main
+    newTag: sha-0f1283d
   - name: ghcr.io/ehlops/jobfinder-web
-    newTag: main
+    newTag: sha-b1eb96e
 
-# Placeholders for the cutover (#47). Until they exist the prod overlay renders but postgres and the
-# app can't start:
-# - sealed-secret-postgres.yaml: postgres-credentials, sealed for the jobfinder namespace.
-# - sealed-secret-env.yaml: jobfinder-env (SECRET_KEY = compose's, CLAUDE_CODE_OAUTH_TOKEN), sealed
-#   for the jobfinder namespace.
-# - configMapGenerator (behavior: merge): PUBLIC_BASE_URL and the SMTP settings of backend/.env.
-# - a patch for smtp's RELAYHOST (+ credentials from a SealedSecret), and a host rule on Ingress web
-#   (only one namespace may keep the hostless rule; see base/app/ingress.yaml).
-# - host Caddy then proxies the prod hostname to Traefik on :8280.
+# Compose's backend/.env, where it differs from backend/.env.defaults and from base/app (SMTP_HOST=smtp,
+# SMTP_PORT=587 and the rest match already). Secrets and ADMIN_EMAILS are in sealed-secret-env.yaml.
+configMapGenerator:
+  - name: jobfinder-config
+    behavior: merge
+    literals:
+      - PUBLIC_BASE_URL=https://jobs.ehlops.com
+      # Unquoted: kustomize would keep the quotes. Gmail rewrites any other From to the relay account.
+      - EMAIL_FROM=JobFinder <samtehlers@gmail.com>
+      - INGEST_MAX_DISCOVERED_BOARDS_PER_RUN=100
+      - DISCOVERY_ENABLED=false
+      - DISCOVERY_MAX_CANDIDATES=50
+
+patches:
+  # Postfix relays through Gmail (compose's root .env: RELAYHOST, ALLOWED_SENDER_DOMAINS), with the
+  # account's app password from Secret smtp-relay. Egress is unrestricted (no smtp NetworkPolicy here).
+  - target:
+      kind: Deployment
+      name: smtp
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/env
+        value:
+          - name: ALLOWED_SENDER_DOMAINS
+            value: gmail.com
+          - name: RELAYHOST
+            value: "[smtp.gmail.com]:587"
+          - name: RELAYHOST_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: smtp-relay
+                key: RELAYHOST_USERNAME
+          - name: RELAYHOST_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: smtp-relay
+                key: RELAYHOST_PASSWORD
+  # The public hostname; host Caddy proxies it to Traefik on 127.0.0.1:8280.
+  - target:
+      kind: Ingress
+      name: web
+    patch: |-
+      - op: replace
+        path: /spec/rules/0/host
+        value: jobs.ehlops.com

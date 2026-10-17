@@ -106,49 +106,43 @@ async def test_email(args: argparse.Namespace) -> int:
 
 
 async def add_user(args: argparse.Namespace) -> int:
-    import sqlalchemy as sa
-
     from jobfinder.db import SessionLocal
-    from jobfinder.models import User
+    from jobfinder.services import accounts
 
     if not args.email:
         print("Usage: add-user --email x@y.com")
         return 2
     email = args.email.strip().lower()
     async with SessionLocal() as db:
-        if (await db.scalars(sa.select(User).where(User.email == email))).first():
+        if not await accounts.add_user(db, email):
             print(f"{email} already exists")
             return 1
-        db.add(User(email=email))
         await db.commit()
     print(f"Added {email} (pending). They can request a link on the sign-in page, or run: reset-link --email {email}")
     return 0
 
 
 async def reset_link_cmd(args: argparse.Namespace) -> int:
-    import sqlalchemy as sa
-
-    from jobfinder.auth.routes import reset_link
+    from jobfinder.core.errors import NotFound
     from jobfinder.db import SessionLocal
-    from jobfinder.models import User
+    from jobfinder.services import accounts
 
     if not args.email:
         print("Usage: reset-link --email x@y.com")
         return 2
     async with SessionLocal() as db:
-        user = (await db.scalars(sa.select(User).where(User.email == args.email.strip().lower()))).first()
-        if not user:
+        try:
+            print(await accounts.link_for(db, args.email))
+        except NotFound:
             print(f"No user {args.email}")
             return 1
-        print(reset_link(user))
     return 0
 
 
 async def set_admin(args: argparse.Namespace, value: bool) -> int:
-    import sqlalchemy as sa
-
+    from jobfinder.core.errors import NotFound
     from jobfinder.db import SessionLocal
-    from jobfinder.models import User
+    from jobfinder.services import accounts
 
     verb = "grant-admin" if value else "revoke-admin"
     if not args.email:
@@ -156,16 +150,15 @@ async def set_admin(args: argparse.Namespace, value: bool) -> int:
         return 2
     email = args.email.strip().lower()
     async with SessionLocal() as db:
-        user = (await db.scalars(sa.select(User).where(User.email == email))).first()
-        if not user:
-            print(f"No user {email}")
+        try:
+            remaining = await accounts.set_admin(db, email, value)
+        except NotFound as e:
+            print(e.detail)
             return 1
-        if user.is_admin == value:
+        if remaining is None:
             print(f"{email} is already {'' if value else 'not '}an admin")
             return 0
-        user.is_admin = value
         await db.commit()
-        remaining = await db.scalar(sa.select(sa.func.count()).select_from(User).where(User.is_admin.is_(True)))
     print(f"{'Granted' if value else 'Revoked'} admin for {email} (takes effect on their next page load)")
     if not remaining:
         print("Warning: there are no admins left. Re-grant with: grant-admin --email ...")

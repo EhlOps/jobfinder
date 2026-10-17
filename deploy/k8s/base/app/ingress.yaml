@@ -1,8 +1,10 @@
-# Traefik (127.0.0.1:8280, deploy/k3s/) routes everything to web; host Caddy is the TLS edge and
-# proxies the environment's hostname here with the Host header intact. The base rule has no host, so
-# `curl http://127.0.0.1:8280/` on the node reaches the app too; overlays add their public hostname.
-# Only one namespace may own the hostless rule: when prod moves here (#47), drop it from one of them.
-# The jobfinder-hello smoke test's Exact /healthz rule outranks this one for hostless requests only.
+# Traefik (127.0.0.1:8280, deploy/k3s/) routes the environment's hostname to web; host Caddy is the
+# TLS edge and proxies that hostname here with the Host header intact.
+# Host rules only (#47): staging and prod share Traefik, so neither may claim hostless requests. The
+# host below is a placeholder that matches nothing; every overlay replaces it with its public hostname
+# (`op: replace, path: /spec/rules/0/host`), so an overlay that forgets serves nothing rather than
+# everything. From the node: curl -H 'Host: <hostname>' http://127.0.0.1:8280/.
+# The jobfinder-hello smoke test keeps its hostless Exact /healthz rule.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -10,7 +12,8 @@ metadata:
 spec:
   ingressClassName: traefik
   rules:
-    - http:
+    - host: overlay-sets-this.invalid
+      http:
         paths:
           - path: /
             pathType: Prefix

@@ -1,0 +1,14 @@
+# Where CronJob `backup` keeps its files: /var/lib/rancher/k3s/storage/<pv>_<namespace>_backups on the
+# node. Retain, like the data it backs up: deleting the namespace leaves the backups behind.
+# Node-local (local-path): it does not survive losing the node's disk, so copy the files off the box
+# (docs/k3s.md, "Backups"). local-path does not enforce the size.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: backups
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-path-retain
+  resources:
+    requests:
+      storage: 20Gi
