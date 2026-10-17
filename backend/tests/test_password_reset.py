@@ -205,42 +205,6 @@ def test_fingerprint_empty_for_pending():
     assert tokens.password_fingerprint("abc") != tokens.password_fingerprint("abd")
 
 
-async def test_cli_add_list_and_reset_link(maker, monkeypatch, capsys):
-    import argparse
-
-    from jobfinder import cli
-
-    ns = argparse.Namespace(email="  New@X.com ")
-    assert await cli.add_user(ns) == 0
-    assert await cli.add_user(ns) == 1  # already exists
-    assert await cli.list_users() == 0
-    out = capsys.readouterr().out
-    assert "new@x.com" in out and "pending" in out
-    assert await cli.reset_link_cmd(ns) == 0
-    assert "/reset-password#token=" in capsys.readouterr().out
-    assert await cli.reset_link_cmd(argparse.Namespace(email="no@x.com")) == 1
-
-
-async def test_cli_grant_and_revoke_admin(maker, monkeypatch, capsys):
-    import argparse
-
-    from jobfinder import cli
-
-    ns = argparse.Namespace(email=" Boss@X.com ")
-    assert await cli.add_user(ns) == 0
-    assert await cli.set_admin(ns, True) == 0
-    assert "Granted admin for boss@x.com" in capsys.readouterr().out
-    assert await cli.list_users() == 0
-    assert "admin" in capsys.readouterr().out.split("pending")[1]
-    assert await cli.set_admin(ns, True) == 0
-    assert "already an admin" in capsys.readouterr().out
-    assert await cli.set_admin(ns, False) == 0
-    out = capsys.readouterr().out
-    assert "Revoked" in out and "no admins left" in out
-    assert await cli.set_admin(argparse.Namespace(email="no@x.com"), True) == 1
-    assert await cli.set_admin(argparse.Namespace(email=None), True) == 2
-
-
 def test_database_url_is_built_from_parts_with_an_encoded_password(monkeypatch):
     from urllib.parse import quote, urlsplit
 

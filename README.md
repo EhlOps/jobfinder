@@ -60,9 +60,9 @@ are read. To add a setting, declare it in `backend/jobfinder/core/config.py` and
 There is no sign-up. Add each person yourself, then they set their own password from an emailed link:
 
 ```sh
-docker compose exec api python -m jobfinder.cli add-user --email them@example.com
-docker compose exec api python -m jobfinder.cli list-users
-docker compose exec api python -m jobfinder.cli reset-link --email them@example.com   # prints a link instead of emailing (use if SMTP is down)
+docker compose exec api jobfinder users add --email them@example.com
+docker compose exec api jobfinder users list
+docker compose exec api jobfinder users reset-link --email them@example.com   # prints a link instead of emailing (use if SMTP is down)
 ```
 
 (Plain SQL works too: `INSERT INTO users (email) VALUES ('them@example.com')`, lowercase.) They open the sign-in page and choose "Email me a link". Links work once and expire after `PASSWORD_LINK_TTL_MINUTES` (60). Links go out through your real SMTP relay in every mode.
@@ -72,29 +72,34 @@ docker compose exec api python -m jobfinder.cli reset-link --email them@example.
 Admin is a flag on the user, managed from the CLI:
 
 ```sh
-docker compose exec api python -m jobfinder.cli grant-admin --email you@example.com
-docker compose exec api python -m jobfinder.cli revoke-admin --email you@example.com
+docker compose exec api jobfinder users admin grant --email you@example.com
+docker compose exec api jobfinder users admin revoke --email you@example.com
 ```
 
-1. Add the person as a normal user first (`add-user` above); the email must match. Granting a pending user works and applies once they activate.
+1. Add the person as a normal user first (`users add` above); the email must match. Granting a pending user works and applies once they activate.
 2. It takes effect on their next page load, with no re-login and no container restart.
-3. `list-users` shows an `admin` column to confirm. Admins get the **AI setup** page and the admin pages (for example, re-enabling company boards that were auto-disabled).
+3. `users list` shows an `admin` column to confirm. Admins get the **AI setup** page and the admin pages (for example, re-enabling company boards that were auto-disabled).
 
-First-time setup is `add-user`, then `grant-admin`, then `reset-link`. `ADMIN_EMAILS` is retired: on upgrade, the migration copies any emails still listed in it into the flag once, and the variable is ignored after that.
+First-time setup is `users add`, then `users admin grant`, then `users reset-link`. `ADMIN_EMAILS` is retired: on upgrade, the migration copies any emails still listed in it into the flag once, and the variable is ignored after that.
 
 ## Jobs
 
-`docker compose exec worker python -m jobfinder.cli ingest` pulls every enabled board in the `companies` table
+`docker compose exec worker jobfinder ingest run` pulls every enabled board in the `companies` table
 into the `jobs` table; use `--company discord` for one board. The table is the only list of boards: a new
 deployment gets the starting set from migration 0021, weekly discovery adds more, and pasting a job link adds
 its board. Admins manage boards with the CLI (validated against the live board before it is stored):
 
 ```bash
-docker compose exec worker python -m jobfinder.cli add-board --ats greenhouse --slug acme --name "Acme Inc"
-docker compose exec worker python -m jobfinder.cli list-boards [--ats lever] [--origin seed|discovered|user]
-docker compose exec worker python -m jobfinder.cli set-board --id 42 --prestige 4 --industry fintech \
+docker compose exec worker jobfinder boards add --ats greenhouse --slug acme --name "Acme Inc"
+docker compose exec worker jobfinder boards list [--ats lever] [--origin seed|discovered|user]
+docker compose exec worker jobfinder boards set --id 42 --prestige 4 --industry fintech \
   [--size startup|mid|large] [--sponsors-visas yes|no] [--enabled yes|no] [--name "Acme"]
 ```
+
+Every admin command is `jobfinder <group> <verb>` (`jobfinder --help` lists them; `tasks list` and `tasks
+retry ID` show and re-run background tasks). The old flat names (`python -m jobfinder.cli add-board ...`)
+still work for one release. On k3s, `kubectl exec deploy/api -- jobfinder ...`; run a long `ingest run` as a
+one-off Job (see `docs/k3s.md`, Admin commands).
 
 LinkedIn/Indeed scraping is
 opt-in and against those sites' terms: set `ENABLE_JOBSPY=true` in `backend/.env`, build the worker with
@@ -149,7 +154,7 @@ is sent when there's nothing to say. Try it without real email:
 
 ```sh
 docker compose up -d                              # mail goes through the smtp relay
-docker compose exec worker python -m jobfinder.cli daily --email you@example.com --preview
+docker compose exec worker jobfinder digest send --email you@example.com --preview
 ```
 
 Production mail goes through the `smtp` postfix service (see Email above). `SCHEDULER_ENABLED=false` in

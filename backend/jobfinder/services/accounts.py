@@ -147,11 +147,38 @@ async def logout(db: AsyncSession, raw_token: str | None) -> None:
         await users.delete_session(db, hash_session_token(raw_token))
 
 
-# The CLI's user commands (cli.py commits).
+# The CLI's user commands (the command commits).
+
+def normal_email(email: str) -> str:
+    return email.strip().lower()
+
+
+async def by_email(db: AsyncSession, email: str) -> User:
+    """The user with this address (any case, surrounding spaces ignored), or NotFound."""
+    user = await users.by_email(db, normal_email(email))
+    if not user:
+        raise NotFound(f"No user {email.strip()}")
+    return user
+
+
+async def list_users(db: AsyncSession) -> list[User]:
+    return await users.all_by_id(db)
+
+
+async def active_users(db: AsyncSession, email: str | None = None) -> list[User]:
+    """Users who have set a password; with `email`, only that one (NotFound when there is no such user,
+    Invalid when they haven't set one yet)."""
+    if email:
+        user = await by_email(db, email)
+        if not user.password_hash:
+            raise Invalid(f"{user.email} has not set a password yet")
+        return [user]
+    return await users.with_password(db)
+
 
 async def add_user(db: AsyncSession, email: str) -> User | None:
     """A pending user (no password yet), or None when the address already exists."""
-    email = email.strip().lower()
+    email = normal_email(email)
     if await users.by_email(db, email):
         return None
     user = users.add(db, email)
@@ -160,18 +187,12 @@ async def add_user(db: AsyncSession, email: str) -> User | None:
 
 
 async def link_for(db: AsyncSession, email: str) -> str:
-    user = await users.by_email(db, email.strip().lower())
-    if not user:
-        raise NotFound(f"No user {email}")
-    return reset_link(user)
+    return reset_link(await by_email(db, email))
 
 
 async def set_admin(db: AsyncSession, email: str, value: bool) -> int | None:
     """None when the user already had that value; otherwise how many admins there now are."""
-    email = email.strip().lower()
-    user = await users.by_email(db, email)
-    if not user:
-        raise NotFound(f"No user {email}")
+    user = await by_email(db, email)
     if user.is_admin == value:
         return None
     user.is_admin = value
