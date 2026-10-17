@@ -292,3 +292,30 @@ def sent_mail(monkeypatch):
 async def authed(client, creds, make_account):
     await make_account(creds["email"], creds["password"])
     return client
+
+
+class Published(list):
+    """What the ledger published after commit: [(queue, kind, task_id)]. Await `settle()` first: the
+    publish runs as a task scheduled by the commit."""
+
+    async def settle(self) -> "Published":
+        from jobfinder.tasks import ledger
+
+        while ledger._publishing:
+            await asyncio.gather(*list(ledger._publishing))
+        return self
+
+
+@pytest.fixture
+def published(monkeypatch):
+    """TASKS_BACKEND=ledger with valkey replaced by a recorder (tasks.brokers.publish)."""
+    from jobfinder.tasks import brokers
+
+    out = Published()
+    monkeypatch.setattr(get_settings(), "tasks_backend", "ledger")
+
+    async def record(queue, kind, task_id):
+        out.append((queue, kind, task_id))
+
+    monkeypatch.setattr(brokers, "publish", record)
+    return out

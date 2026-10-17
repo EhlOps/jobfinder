@@ -4,7 +4,7 @@ the process environment; later wins. Paths are relative to the working directory
 No default lives in Python: a missing key or bad value stops startup naming every such key. Env names
 are the field names in upper case. Read `settings.x` (loaded on first use) or `get_settings()`."""
 from functools import lru_cache
-from typing import Annotated, cast
+from typing import Annotated, Literal, cast
 
 from pydantic import AfterValidator, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -103,6 +103,10 @@ class Settings(BaseSettings):
     task_heartbeat_seconds: float
     worker_poll_seconds: float
     worker_reap_seconds: float
+    tasks_backend: Literal["legacy", "ledger"]
+    valkey_url: str
+    worker_io_concurrency: int
+    relay_seconds: float
     password_link_ttl_minutes: int
     link_requests_per_email_hour: int
     link_cooldown_seconds: int
