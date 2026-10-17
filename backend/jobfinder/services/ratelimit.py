@@ -1,4 +1,8 @@
-"""Tiny DB-backed rate limiter (rate_events table) so limits hold across api restarts and replicas."""
+"""Tiny DB-backed rate limiter (rate_events table) so limits hold across api restarts and replicas.
+
+Nothing here commits: the caller's boundary does (the request, a task, the worker loop). A hit that
+must count even when the request then fails (a wrong password) goes through `core.db.side_session`.
+"""
 from datetime import UTC, datetime, timedelta
 
 import sqlalchemy as sa
@@ -9,7 +13,7 @@ from jobfinder.models import RateEvent
 
 async def hit(db: AsyncSession, kind: str, key: str) -> None:
     db.add(RateEvent(kind=kind, key=key[:320]))
-    await db.commit()
+    await db.flush()
 
 
 async def count_since(db: AsyncSession, kind: str, key: str, seconds: int) -> int:
@@ -29,4 +33,3 @@ async def last_at(db: AsyncSession, kind: str, key: str) -> datetime | None:
 async def prune(db: AsyncSession, older_than_seconds: int = 86400) -> None:
     cutoff = datetime.now(UTC) - timedelta(seconds=older_than_seconds)
     await db.execute(sa.delete(RateEvent).where(RateEvent.created_at < cutoff))
-    await db.commit()

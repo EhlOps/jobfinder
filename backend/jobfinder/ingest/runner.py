@@ -64,6 +64,7 @@ async def _extra_due(session_factory: SessionFactory, source: str) -> bool:
         if last and last > datetime.now(UTC) - timedelta(hours=settings.ingest_interval_hours):
             return False
         await ratelimit.hit(db, EXTRA_KIND, source)
+        await db.commit()
     return True
 
 

@@ -1,7 +1,8 @@
 from fastapi import APIRouter, HTTPException
 
-from jobfinder.api.deps import CurrentUser, DbSession
+from jobfinder.api.deps import Ctx, CurrentUser, DbSession
 from jobfinder.core.config import settings
+from jobfinder.core.db import side_session
 from jobfinder.integrations.smtp import EmailError
 from jobfinder.models import Profile, User
 from jobfinder.notify import daily
@@ -47,12 +48,13 @@ async def write_settings(body: SettingsBody, user: CurrentUser, db: DbSession):
 
 
 @router.post("/digest/preview", response_model=PreviewResult)
-async def send_preview(user: CurrentUser, db: DbSession):
+async def send_preview(user: CurrentUser, db: DbSession, ctx: Ctx):
     """Email yourself what the daily email looks like right now (marks nothing as sent)."""
     s = settings
     if await ratelimit.count_since(db, "preview_email", str(user.id), 3600) >= s.preview_emails_per_hour:
         raise HTTPException(429, "Too many preview emails. Try again later.")
-    await ratelimit.hit(db, "preview_email", str(user.id))
+    async with side_session(ctx.sessions) as side:  # a failed send still counts against the limit
+        await ratelimit.hit(side, "preview_email", str(user.id))
     try:
         result = await daily.send_daily(db, user, preview=True)
     except EmailError as e:

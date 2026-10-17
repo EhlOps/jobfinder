@@ -1,4 +1,5 @@
-"""services: application logic that is not an HTTP route and not an outside system.
+"""services: the application's rules, one module per area, called by routers, task handlers and the CLI.
 
-    ratelimit   the DB-backed rate limiter (rate_events), shared by the API and the worker
+A service takes the caller's session, raises `core.errors.AppError` subclasses, and never commits;
+the boundary does. SQL lives in `jobfinder.repositories`. `ratelimit` is the DB-backed rate limiter.
 """

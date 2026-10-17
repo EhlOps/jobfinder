@@ -140,6 +140,7 @@ async def main() -> None:
                 async with dbmod.SessionLocal() as db:
                     await queue.reap_stuck(db)
                     await ratelimit.prune(db)
+                    await db.commit()
                 await prune_sessions(db)
             except Exception:
                 log.exception("maintenance tick failed")
