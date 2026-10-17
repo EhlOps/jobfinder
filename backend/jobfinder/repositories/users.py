@@ -26,6 +26,15 @@ async def by_session(db: AsyncSession, token_hash: str, now: datetime) -> User |
     ).scalar_one_or_none()
 
 
+async def all_by_id(db: AsyncSession) -> list[User]:
+    return list((await db.scalars(sa.select(User).order_by(User.id))).all())
+
+
+async def with_password(db: AsyncSession) -> list[User]:
+    """Users who have set a password (activated accounts), by id."""
+    return list((await db.scalars(sa.select(User).where(User.password_hash.is_not(None)).order_by(User.id))).all())
+
+
 def add(db: AsyncSession, email: str) -> User:
     user = User(email=email)
     db.add(user)

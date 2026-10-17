@@ -1,4 +1,4 @@
-"""Task-ledger reads the API needs: the newest unfinished task of a kind for a match."""
+"""Task-ledger reads: the newest unfinished task of a kind for a match (API), recent tasks (CLI)."""
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,3 +24,13 @@ async def owned(db: AsyncSession, user_id: int, task_id: int) -> Task | None:
     """The task, if it is this user's."""
     task = await db.get(Task, task_id)
     return task if task and task.user_id == user_id else None
+
+
+async def recent(db: AsyncSession, *, status: str | None = None, kind: str | None = None, limit: int = 50) -> list[Task]:
+    """The newest tasks first, optionally of one status or kind."""
+    q = sa.select(Task).order_by(Task.id.desc()).limit(limit)
+    if status:
+        q = q.where(Task.status == status)
+    if kind:
+        q = q.where(Task.kind == kind)
+    return list((await db.scalars(q)).all())

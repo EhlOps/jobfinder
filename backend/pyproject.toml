@@ -27,6 +27,10 @@ dependencies = [
   "typer>=0.27",
 ]
 
+[project.scripts]
+# The Typer app; `python -m jobfinder.cli` also maps the pre-#49 command names (jobfinder.cli._legacy).
+jobfinder = "jobfinder.cli:app"
+
 [project.optional-dependencies]
 # LinkedIn/Indeed scraping (opt-in, heavy: pulls in pandas/numpy)
 jobspy = ["python-jobspy>=1.1.80"]

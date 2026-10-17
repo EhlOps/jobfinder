@@ -3,14 +3,12 @@
 Each test fails a run part-way and shows that nothing past the last boundary (board, checkpoint, task)
 was kept, while what came before it was.
 """
-import argparse
 import asyncio
 
 import httpx
 import pytest
 import sqlalchemy as sa
 
-from jobfinder import cli
 from jobfinder.ingest import validate
 from jobfinder.ingest.validate import ValidationResult, add_board
 from jobfinder.models import Company, CovetedTarget, Job, JobLink, Task
@@ -161,16 +159,6 @@ async def test_discovery_keeps_boards_added_before_a_failure(maker, monkeypatch)
         await db.rollback()  # what the worker does with a task that blew up
     assert await count(maker, Company, slug=calls[0]) == 1
     assert await count(maker, Company, slug=calls[1]) == 0
-
-
-async def test_cli_add_board_commits(maker, monkeypatch):
-    async def ok(ats, slug, client=None, list_only=False):
-        return ValidationResult(True, "", 3)
-
-    monkeypatch.setattr(validate, "validate_board", ok)
-    args = argparse.Namespace(ats="greenhouse", slug="acme", name="Acme", origin=None)
-    assert await cli.add_board_cmd(args) == 0
-    assert await count(maker, Company, slug="acme", origin="seed") == 1
 
 
 async def test_score_coveted_commits_at_the_task(maker, monkeypatch):

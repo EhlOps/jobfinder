@@ -27,6 +27,16 @@ async def active_job_counts(db: AsyncSession, ids: set[int] | None = None) -> di
     return dict((await db.execute(q)).all())
 
 
+async def listing(db: AsyncSession, *, ats: str | None = None, origin: str | None = None) -> list[Company]:
+    """Every board by ATS and slug, optionally of one ATS or origin (`jobfinder boards list`)."""
+    q = sa.select(Company).order_by(Company.ats, Company.slug)
+    if ats:
+        q = q.where(Company.ats == ats)
+    if origin:
+        q = q.where(Company.origin == origin)
+    return list((await db.scalars(q)).all())
+
+
 async def for_sources(db: AsyncSession) -> list[Company]:
     """Every board, disabled first, then the most failures."""
     return list((await db.scalars(
