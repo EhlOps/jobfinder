@@ -16,9 +16,15 @@
 # addresses in the copy never receive anything.
 set -euo pipefail
 
+here=$(cd "$(dirname "$0")" && pwd)
+# shellcheck source=deploy/k8s/pg-lib.sh
+. "$here/pg-lib.sh"
+
 NS=${NS:-jobfinder-staging}
 SRC=${SRC_CONTAINER:-jobfinder-db-1}
-APP_DEPLOYMENTS=(api worker renderer)
+# Every app Deployment that touches the database; the task platform's three (#48) are at 0 where
+# TASKS_BACKEND=legacy, and scaled to 0 and back like the rest.
+APP_DEPLOYMENTS=(api worker renderer scheduler worker-ai worker-io)
 
 log() { printf '[staging-restore] %s\n' "$*" >&2; }
 die() { log "ERROR: $*"; exit 1; }
@@ -61,7 +67,7 @@ if [ ${#replicas[@]} -gt 0 ]; then
   trap restore_replicas EXIT
   log "scaling ${!replicas[*]} to 0"
   kubectl -n "$NS" scale deployment "${!replicas[@]}" --replicas=0 >/dev/null
-  kubectl -n "$NS" wait --for=delete pod -l 'app.kubernetes.io/name in (api,worker,renderer)' --timeout=180s \
+  kubectl -n "$NS" wait --for=delete pod -l "app.kubernetes.io/name in ($(IFS=,; echo "${APP_DEPLOYMENTS[*]}"))" --timeout=180s \
     >/dev/null 2>&1 || true
 fi
 
@@ -83,5 +89,7 @@ docker exec "$SRC" sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" --format
 # shellcheck disable=SC2016  # expanded inside the pod
 rev=$(kubectl -n "$NS" exec postgres-0 -- sh -c \
   'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "select version_num from alembic_version"' || true)
+# The task streams hold ids of the dropped database (#48).
+k8s_trim_task_streams "$NS" || log "WARNING: could not empty the task streams; check valkey-0"
 log "restored; schema at alembic revision ${rev:-unknown}"
 log "if staging's image is newer, redeploy to migrate (see the header of this script)"

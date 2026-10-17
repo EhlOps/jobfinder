@@ -1,0 +1,88 @@
+# The scheduler (#48; compose: scheduler, profile "ledger"): cron, the relay and maintenance.
+#   cron:        writes the scheduled ledger rows (ingest, daily emails, ...), deduped like user work;
+#   relay:       every RELAY_SECONDS, publishes due rows that are still queued and were never sent (or
+#                not for a while) to their valkey stream, so a publish lost after the api's commit is
+#                re-sent;
+#   reaper:      a running row whose heartbeat went stale goes back to queued;
+#   maintenance: prunes old tasks, rate events and sessions.
+# Exactly one: two would run cron twice, so the strategy is Recreate (the old pod stops before the new
+# one starts). Nothing is lost while it is down: rows stay queued in Postgres until the next relay tick.
+# It refuses to start unless TASKS_BACKEND=ledger, so the base keeps it at 0 replicas and an overlay
+# that flips to the ledger scales it to 1 (overlays/staging; docs/k3s.md, "Task platform").
+# The api image: it needs no claude CLI and no volumes, only Postgres and valkey.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scheduler
+  labels:
+    jobfinder.io/rollout: app
+spec:
+  replicas: 0
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: scheduler
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: scheduler
+        app.kubernetes.io/component: scheduler
+        jobfinder.io/postgres-client: "true"
+        jobfinder.io/valkey-client: "true"   # the relay publishes to the task streams
+    spec:
+      automountServiceAccountToken: false
+      # On SIGTERM the scheduler finishes its current tick for up to 10s, then exits.
+      terminationGracePeriodSeconds: 20
+      securityContext:
+        # The image's `jobfinder` user (backend/Dockerfile).
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: scheduler
+          image: ghcr.io/ehlops/jobfinder-api
+          # The image's entrypoint (it skips alembic: MIGRATE_ON_START=false, the migrate Job migrates),
+          # then the scheduler instead of uvicorn.
+          args: ["python", "-m", "jobfinder.scheduler"]
+          envFrom:
+            - configMapRef:
+                name: jobfinder-config
+            - secretRef:
+                name: jobfinder-env
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: POSTGRES_PASSWORD
+          # The relay touches /tmp/scheduler-alive on every tick (RELAY_SECONDS, 15s). A file older than
+          # two minutes means the loop is stuck (a hung database call, a dead event loop), not merely
+          # slow: restart it. Before the first tick the file doesn't exist, hence the initial delay.
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "find /tmp/scheduler-alive -mmin -2 | grep -q ."]
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            # The heartbeat file.
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi

@@ -1,6 +1,9 @@
-# The worker (compose: worker): the Postgres task queue, the APScheduler jobs and every Claude call.
-# Exactly one: the loop and APScheduler assume a single instance until #48 replaces them, so the
-# strategy is Recreate (the old pod stops before the new one starts; a RollingUpdate would overlap them).
+# The legacy worker (compose: worker): the Postgres task queue, the APScheduler jobs and every Claude
+# call, in one process. Runs under TASKS_BACKEND=legacy (the default) and refuses to start under ledger,
+# where scheduler, worker-ai and worker-io replace it (#48): an overlay that flips to the ledger scales
+# this one to 0 (overlays/staging). Exactly one: the loop and APScheduler assume a single instance, so
+# the strategy is Recreate (the old pod stops before the new one starts; a RollingUpdate would overlap
+# them). It goes away after the one release in which both systems exist.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -20,7 +23,7 @@ spec:
         app.kubernetes.io/name: worker
         app.kubernetes.io/component: worker
         jobfinder.io/postgres-client: "true"
-        jobfinder.io/valkey-client: "true"   # the task streams (#48)
+        jobfinder.io/valkey-client: "true"   # the task streams (#48); the legacy loop itself polls Postgres
     spec:
       automountServiceAccountToken: false
       # Lets a running task finish its current step; the reaper requeues anything cut off.
@@ -47,7 +50,7 @@ spec:
                 secretKeyRef:
                   name: postgres-credentials
                   key: POSTGRES_PASSWORD
-          # No HTTP endpoint until #48. tini (PID 1) exits when the worker dies, which restarts the
+          # No HTTP endpoint. tini (PID 1) exits when the worker dies, which restarts the
           # container anyway; this checks the worker process is still there. [.] keeps the probe's own
           # command line from matching.
           livenessProbe:
