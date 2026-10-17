@@ -7,8 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from jobfinder.core.errors import Invalid, NotFound
 from jobfinder.models import Profile, ProfileFact, Task
 from jobfinder.repositories import profiles
-from jobfinder.scheduling import queue
 from jobfinder.storage.documents import DocumentStore, is_tailored
+from jobfinder.tasks import ledger
 
 
 class ProfileIncomplete(Invalid):
@@ -63,11 +63,11 @@ async def start_extract(db: AsyncSession, store: DocumentStore, user_id: int) ->
     """Queue reading the profile out of the user's own uploads and links (never AI-tailored output)."""
     if not any(d.chars > 0 and not is_tailored(d) for d in store.list(user_id)):
         raise ProfileIncomplete("Upload a resume or add a link we can read first")
-    return await queue.enqueue(db, "extract_profile", user_id=user_id, dedupe=True)  # TODO(#48): ledger.add flushes
+    return await ledger.add(db, "extract_profile", user_id=user_id, dedupe=True)
 
 
 async def start_followups(db: AsyncSession, user_id: int) -> Task:
     profile = await profiles.get(db, user_id)
     if not profile or not profile.background:
         raise ProfileIncomplete("Save your background first")
-    return await queue.enqueue(db, "followup_questions", user_id=user_id, dedupe=True)  # TODO(#48): ledger.add flushes
+    return await ledger.add(db, "followup_questions", user_id=user_id, dedupe=True)

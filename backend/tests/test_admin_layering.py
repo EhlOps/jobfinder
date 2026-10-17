@@ -1,7 +1,7 @@
 """Job links, coverage and admin after the service port (#46): one commit per request, so a failure after
 the first write keeps nothing, and the list endpoints cost the same number of queries for 1 row or many.
 
-Paths that queue a task are tested failing before the enqueue: queue.enqueue still commits until #48."""
+Paths that queue a task failing after the add are tested in test_enqueue_rollback."""
 from contextlib import contextmanager
 
 import pytest
@@ -49,7 +49,7 @@ async def _company(maker, slug="acme", **kw) -> int:
 # --- rollback: nothing a failed request wrote is kept --------------------------------------------
 
 async def test_add_link_failing_after_the_insert_keeps_nothing(authed, maker, monkeypatch, links_on):
-    await _company(maker)  # a known board: resolved at once, no task (and so no early commit)
+    await _company(maker)  # a known board: resolved at once, no task
     raise_after(monkeypatch, links_repo, "add")
     with pytest.raises(Boom):
         await authed.post("/api/job-links", json={"url": GH})
@@ -103,13 +103,13 @@ async def test_unpin_target_failing_keeps_the_target(client, maker, make_account
     assert await count(maker, CovetedTarget, id=t.id) == 1
 
 
-async def test_unpin_company_failing_before_the_task_keeps_the_pin(client, maker, make_account, monkeypatch):
+async def test_unpin_company_failing_to_queue_the_rescore_keeps_the_pin(client, maker, make_account, monkeypatch):
     cid = await _company(maker, coveted_tier=1, coveted_score=50, coveted_pinned=True)
     await make_account("owner@x.com", admin=True)
 
     async def boom(*a, **kw):
-        raise Boom("enqueue")
-    monkeypatch.setattr(admin_service.queue, "enqueue", boom)
+        raise Boom("ledger.add")
+    monkeypatch.setattr(admin_service.ledger, "add", boom)
     with pytest.raises(Boom):
         await client.post("/api/admin/coverage/unpin", json={"company_id": cid, "exclude": True})
     assert await count(maker, Company, id=cid, coveted_pinned=True) == 1

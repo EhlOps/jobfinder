@@ -17,7 +17,7 @@ from datetime import UTC, datetime
 from sqlalchemy import update
 
 from jobfinder.models import Task
-from jobfinder.scheduling import queue
+from jobfinder.tasks import ledger
 
 CAPTURE = "render_capture"
 LIST = "render_list"
@@ -44,8 +44,9 @@ async def request_render(kind: str, payload: dict, *, timeout_s: float, session_
     if kind not in KINDS:
         raise ValueError(f"unknown render task {kind!r}")
     factory = session_factory or _sessions()
-    async with factory() as db:
-        task_id = (await queue.enqueue(db, kind, payload, dedupe=True)).id
+    async with factory() as db:  # committed here: the polls below read it from other sessions
+        task_id = (await ledger.add(db, kind, payload, dedupe=True)).id
+        await db.commit()
     deadline = time.monotonic() + timeout_s
     while True:
         async with factory() as db:
