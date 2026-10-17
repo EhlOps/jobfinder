@@ -263,7 +263,7 @@ Never expose mailpit through an Ingress: it holds password-reset links for real 
 
 ## Task platform (#48)
 
-Background work runs on a Postgres **ledger**, with **valkey** for delivery, a **scheduler** and one worker per queue. It replaces the legacy `worker`: one process with a 2-second poll loop, APScheduler and every task. Both systems are in the code for one release, behind `TASKS_BACKEND`. **Staging runs `ledger`; prod still runs `legacy`** until the owner flips it.
+Background work runs on a Postgres **ledger**, with **valkey** for delivery, a **scheduler** and one worker per queue. It replaces the legacy `worker`: one process with a 2-second poll loop, APScheduler and every task. Both systems are in the code for one release, behind `TASKS_BACKEND`. **Staging and prod run `ledger`** (prod since 2026-10-17); the base default is still `legacy`.
 
 ```text
 api / workers ──(1) INSERT the tasks row, in the caller's transaction──▶ Postgres `tasks` (the ledger: the truth)
@@ -309,7 +309,7 @@ scheduler (1 replica, Recreate)
 - merges `TASKS_BACKEND=ledger`;
 - patches the replicas: the legacy `worker` to 0, and `scheduler`, `worker-ai` and `worker-io` to 1.
 
-`overlays/staging/kustomization.yaml` does both, and `overlays/prod/kustomization.yaml` carries the same lines commented out. **To flip prod:**
+`overlays/staging/kustomization.yaml` and `overlays/prod/kustomization.yaml` both do. **How prod was flipped (and how to flip another environment):**
 1. Run the kill-tests on staging (below).
 2. Uncomment the `TASKS_BACKEND=ledger` literal and the two replicas patches.
 3. Merge, then deploy (`deploy.sh prod sha-<commit>`, "Deploying prod").
