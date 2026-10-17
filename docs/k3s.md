@@ -1,7 +1,7 @@
 # k3s runbook
 
 JobFinder is moving from docker compose to a single-node k3s cluster on the same host (#36, #38).
-Until the cutover (#47) production keeps running on compose; k3s runs alongside it.
+Production moves from compose to the `jobfinder` namespace with the cutover (#47; runbook: "Production cutover" below). Until it has run, production keeps running on compose next to k3s.
 
 ## Shape
 
@@ -72,7 +72,7 @@ The controller renews its key every 30 days, so repeat the backup after renewals
 
 ## Uninstall / roll back
 
-Compose is never touched, so removing k3s returns the host to its previous state:
+Compose is never touched, so removing k3s returns the host to its previous state. **After the production cutover this no longer holds:** prod's data lives in k3s, so take a backup ("Backups") and restore it to compose first.
 
 ```sh
 sudo /usr/local/bin/k3s-uninstall.sh
@@ -88,7 +88,7 @@ Then check `curl -sI http://127.0.0.1:8180/` and `https://draw.ehlops.com/`.
 
 ## Data services (#40)
 
-The base (`deploy/k8s/base/`) carries the stateful services; they run in staging (`jobfinder-staging`) today, and prod (`jobfinder`) gets them at the cutover (#47).
+The base (`deploy/k8s/base/`) carries the stateful services; they run in staging (`jobfinder-staging`) and in prod (`jobfinder`, from the cutover, #47). Everything in the data tier carries the label `jobfinder.io/tier: data` (the namespace, postgres, valkey, the PVCs, the backup CronJob and the SealedSecrets), which `prod-cutover.sh` applies before it restores.
 
 | Object | What | Storage |
 |---|---|---|
@@ -100,7 +100,7 @@ The base (`deploy/k8s/base/`) carries the stateful services; they run in staging
 
 All volumes use the `local-path-retain` StorageClass (`deploy/k3s/manifests/local-path-retain.yaml`): local-path with `reclaimPolicy: Retain`, so deleting a PVC or the namespace leaves the data under `/var/lib/rancher/k3s/storage/` and a `Released` PV. Delete the PV (and that directory) by hand once you're sure. The pods run as non-root (uid 999) with all capabilities dropped.
 
-**Backups and restore are deferred** per the owner's comment on #40 (2026-10-15). Nothing backs up the k3s data yet; `deploy/backup.sh` still covers the compose production stack.
+**Backups:** the nightly CronJob `backup` and the restore drill, below ("Backups").
 
 ### Connect
 
@@ -146,7 +146,7 @@ To check the policy, run a throwaway `postgres:16.15` pod with and without `jobf
 
 ## Staging (#43)
 
-Today's app runs in `jobfinder-staging` next to the data services, on a copy of prod's data, at **https://staging.ehlops.com**. Production stays on compose until #47.
+Today's app runs in `jobfinder-staging` next to the data services, on a copy of prod's data, at **https://staging.ehlops.com**. Production runs next to it in `jobfinder` ("Production" below).
 
 ```text
 browser → host Caddy (TLS, staging.ehlops.com) → Traefik 127.0.0.1:8280 → web (Caddy :8080) → api:8000 (2 pods)
@@ -239,6 +239,115 @@ Never expose mailpit through an Ingress: it holds password-reset links for real 
 
    `restrict` turns off forwarding, PTYs and agent use; the forced command runs no matter what the client asks for. Test it: `ssh -i <key> opc@<host> 'rm -rf /'` must answer `refused`. Re-install both (`sudo install …` above) whenever `deploy-staging-ssh.sh` or `deploy.sh` changes on dev; the repo copies are never run by the key. Residual trust: kubectl there is cluster-admin, so a manifest on dev could still create objects outside the namespace; a namespace-scoped kubeconfig for the forced command would close that (follow-up). Until the three required secrets exist, `deploy-staging` skips with a warning.
 5. **Data and first deploy:** `deploy/k8s/staging-restore.sh`, then **Run workflow** on dev (or `deploy.sh staging sha-<head of dev>`).
+
+## Backups (#47)
+
+CronJob `backup` (`deploy/k8s/base/data/`, in every namespace) runs at **03:15 UTC**. It waits for postgres, writes `pg_dump -Fc` to `db-<UTC timestamp>.dump` and a tar of the `store` and `claude-auth` PVCs to `files-<UTC timestamp>.tar.gz` (directories `store/` and `claude/`, the layout of `deploy/backup.sh`) on PVC **`backups`** (`local-path-retain`, 20Gi). Each file is written as `.part` and renamed when complete; the newest 14 of each are kept. It runs as uid 10001 (the app's, which owns the files) with a read-only root, carries `jobfinder.io/postgres-client` for the NetworkPolicy, and has `concurrencyPolicy: Forbid`; a run missed while the node was down starts within the hour.
+
+**The backups are node-local** (`/var/lib/rancher/k3s/storage/<pv>_<namespace>_backups`): they survive pod, PVC and namespace deletion (Retain), not the loss of the disk. Copy them off the box until the bucket from #36 Q3 exists. `deploy/backup.sh` is retired (it only knew the compose stack).
+
+```sh
+kubectl -n jobfinder get cronjob backup                               # LAST SCHEDULE
+kubectl -n jobfinder get jobs                                         # recent runs; kubectl logs job/<name>
+kubectl -n jobfinder create job --from=cronjob/backup backup-now      # one now; delete the Job afterwards
+```
+
+**Restore drill** (monthly, and once after the cutover):
+
+```sh
+deploy/k8s/backup-restore.sh jobfinder                                # newest dump
+deploy/k8s/backup-restore.sh jobfinder db-20261018-031500.dump        # or a given one
+```
+
+It restores the dump into a scratch database (`restore_drill_<ts>`) in that namespace's postgres from a helper pod that mounts `backups` read-only, compares every table's row count with the live database, checks that the matching files tar reads back, and drops the scratch database. The live database and the app are never touched. The live database moves on after the dump, so drill right after `create job --from=cronjob/backup`; tables written in between show as MISMATCH (exit 1). Rehearsed on staging (2026-10-17, worker paused for an exact comparison): 86 MB dump, restored in 15 s, 16 tables, 0 mismatched, 19 s in all.
+
+**Restoring for real** (replaces the namespace's data): scale `api worker renderer` to 0; in `postgres-0`, `dropdb --force jobfinder && createdb -O jobfinder jobfinder`; run `pg_restore -h postgres -U jobfinder -d jobfinder --no-owner --no-privileges --exit-on-error --single-transaction /backups/db-<ts>.dump` from a pod like the drill's (don't stream a dump out through `kubectl exec` stdout: large outputs break off with a websocket EOF; stdin is fine); untar `files-<ts>.tar.gz` into the PVCs (`store/` into `store`, `claude/` into `claude-auth`) from a root helper pod with `--numeric-owner`; then `deploy.sh <overlay> <running tag>`.
+
+## Production (#47)
+
+`jobfinder` runs the prod overlay (`deploy/k8s/overlays/prod`) at **https://jobs.ehlops.com**: the same workloads as staging, with
+
+- **Secrets** (SealedSecrets for `jobfinder`): `postgres-credentials` (random, prod only); `jobfinder-env` with compose's `SECRET_KEY` (sessions and emailed links stay valid), compose's `CLAUDE_CODE_OAUTH_TOKEN` (empty: the token saved on "AI setup" lives in the copied `claude-auth` volume and wins over the env) and `ADMIN_EMAILS` (kept out of the public repo); `smtp-relay` with `RELAYHOST_USERNAME`/`RELAYHOST_PASSWORD` from compose's root `.env`.
+- **Config:** compose's `backend/.env` where it differs from `.env.defaults`: `PUBLIC_BASE_URL=https://jobs.ehlops.com`, `EMAIL_FROM`, `INGEST_MAX_DISCOVERED_BOARDS_PER_RUN=100`, `DISCOVERY_ENABLED=false`, `DISCOVERY_MAX_CANDIDATES=50`. None of staging's "background Claude work off" switches.
+- **Mail:** postfix relays to `[smtp.gmail.com]:587` (`ALLOWED_SENDER_DOMAINS=gmail.com`), as compose did. No mailpit and no smtp egress policy.
+- **Ingress:** host `jobs.ehlops.com` only. No namespace keeps a hostless rule (`base/app/ingress.yaml` has a placeholder host that each overlay replaces), so from the node an environment is `curl -H 'Host: <host>' http://127.0.0.1:8280/`. Only `jobfinder-hello`'s Exact `/healthz` stays hostless, and it answers `/healthz` for **any** host that has no Ingress: smoke-test `/` and `/api/auth/me`, not only `/healthz`.
+
+### Deploying prod
+
+By hand on the host, from a checkout of the commit to deploy (prod isn't wired to GitHub Actions; staging keeps auto-deploying every dev push):
+
+```sh
+git fetch && git checkout <commit>     # deploy.sh applies this checkout's manifests
+DEPLOY_COMMIT=$(git rev-parse HEAD) \
+DEPLOY_CANDIDATE_TAGS="$(git rev-list --first-parent --max-count=50 --skip=1 HEAD | cut -c1-7 | sed 's/^/sha-/' | tr '\n' ' ')" \
+  deploy/k8s/deploy.sh prod sha-$(git rev-parse --short=7 HEAD)
+```
+
+`DEPLOY_CANDIDATE_TAGS` lets an image the commit didn't rebuild resolve to the newest older build; without it deploy.sh keeps what the Deployment runs. Migrations run first, so take a backup (`create job --from=cronjob/backup`) before a release that has one. Roll back by deploying an older tag (backward-compatible migrations only).
+
+### Production cutover
+
+Moves prod from compose (host Caddy → `127.0.0.1:8180`) to k3s (→ Traefik `127.0.0.1:8280`). `deploy/k8s/prod-cutover.sh` does the data and the deploy; Caddy and compose are changed **by hand**, below. Expect about **5 minutes** behind the maintenance page; nothing is lost, because the writers stop before the final dump.
+
+**Rehearsal** (`deploy/k8s/prod-cutover.sh --namespace jobfinder-staging --rehearsal --tag sha-b7e058c --yes`, 2026-10-17; compose kept running, 73 MB dump, 14 tables, 15 files):
+
+| Step | Time |
+|---|---|
+| preflight (compose checks, image lookups) | 1 s |
+| data tier (apply and wait; already up on staging) | 3 s |
+| scale down the app | 2 s |
+| dump (`pg_dump -Fc` from `jobfinder-db-1`, counted before and after) | 15 s |
+| restore (drop and create, `pg_restore`) | 18 s |
+| row counts (14 tables, 0 mismatched) | <1 s |
+| files (`store` 14 files, `claude-auth` 1, checksums match) | 6 s |
+| deploy (migrate 0018 → 0021, rollout) | 15 s |
+| smoke (`/healthz`, `/`, `/api/auth/me`, `/readyz`) | <1 s |
+| **total** | **60 s** |
+
+On prod the data-tier step also creates the namespace and four PVCs and initialises postgres on an empty volume (allow a minute), and the deploy pulls the images unless they are pre-pulled (go/no-go 4).
+
+**Go / no-go** (all yes, or don't start):
+
+1. Staging is stable on a recent prod copy; the last `deploy-staging` run is green.
+2. `kubectl -n kube-system get pods` all Running; `kubectl kustomize deploy/k8s/overlays/prod` renders.
+3. `df -h /` has room for another copy of the database and the dump (~1 GB).
+4. Images pre-pulled: `for i in api worker renderer; do sudo k3s crictl pull ghcr.io/ehlops/jobfinder-$i:sha-0f1283d; done; sudo k3s crictl pull ghcr.io/ehlops/jobfinder-web:sha-b1eb96e` (0f1283d built no web image; deploy.sh resolves web to b1eb96e).
+5. You're on the host as opc with `KUBECONFIG` set and a checkout of dev that has this runbook, and you've read the rollback.
+
+**Window** (in `/home/opc/jobfinder`, where compose's `.env` is):
+
+1. **Maintenance page.** `sudo cp -a /etc/caddy/Caddyfile /etc/caddy/Caddyfile.pre-cutover`, then give the `jobs.ehlops.com` site in `/etc/caddy/Caddyfile` this body:
+
+   ```caddy
+   jobs.ehlops.com {
+   	respond "JobFinder is moving servers, back in a few minutes" 503
+   }
+   ```
+
+   `sudo caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile && sudo systemctl reload caddy`; `curl -sI https://jobs.ehlops.com/ | head -1` → 503.
+2. **Stop the writers:** `docker compose stop worker api` (web, smtp and db keep running). The script refuses to start while either runs.
+3. **Run the script** from the dev checkout: `deploy/k8s/prod-cutover.sh --tag sha-0f1283d`. Type the namespace when asked. It applies the data tier, dumps (the file is kept; its path is printed), restores, compares row counts (they must match exactly), copies the files (checksums must match), runs `deploy.sh prod sha-0f1283d` (migrate 0018 → 0021, then the rollout) and the smoke checks, and prints the timings. A failure names the step; fix and re-run the same command (every step repeats safely). Once deploy.sh has finished, the script refuses to run again (namespace annotation `jobfinder.io/deployed-tag`), so a stray re-run can't overwrite live prod data with compose's. The manifests applied are the checkout's, not the tag's (0f1283d has no prod overlay); `git diff 0f1283d -- deploy/k8s backend/.env.defaults backend/kustomization.yaml` should show only #47's changes. If the run fails after the restore, the app stays scaled to 0 until a re-run or deploy.sh migrates.
+4. **Smoke tests through Traefik** (the public site still shows the maintenance page):
+
+   ```sh
+   H='Host: jobs.ehlops.com'
+   curl -s -o /dev/null -w '%{http_code}\n' -H "$H" http://127.0.0.1:8280/              # 200, the SPA
+   curl -s -o /dev/null -w '%{http_code}\n' -H "$H" http://127.0.0.1:8280/api/auth/me   # 401: the api answers
+   curl -s -H "$H" http://127.0.0.1:8280/api/auth/me                                     # the api's JSON, not whoami
+   kubectl -n jobfinder get pods                                  # all Running, migrate Completed
+   kubectl -n jobfinder logs deploy/worker --tail=50              # scheduler started, no tracebacks
+   kubectl -n jobfinder logs deploy/smtp --tail=20                # postfix up, relayhost [smtp.gmail.com]:587
+   ```
+
+5. **Switch the upstream:** in the `jobs.ehlops.com` site, replace `respond …` with `reverse_proxy 127.0.0.1:8280`; validate, `sudo systemctl reload caddy`. Check `https://jobs.ehlops.com/` → 200, then in a browser: sign in (sessions from before the move still work), the matches feed, an admin page (Admin › Coverage), AI setup shows the saved token, and a password-reset email to yourself arrives (proves the Gmail relay; `kubectl -n jobfinder logs deploy/smtp` shows `status=sent`). Anything wrong: rollback. Then watch `kubectl -n jobfinder get pods -w` and the worker log for an hour.
+6. **Stop the rest of compose:** `docker compose stop web smtp`. **Keep `db` running**: it is the local pytest Postgres (127.0.0.1:5433) and the rollback copy. Keep the compose volumes for two weeks (#53 removes them).
+7. **Afterwards:** after the first 03:15 backup, `deploy/k8s/backup-restore.sh jobfinder` once (an acceptance criterion of #47), and copy that backup off the box. Remove the dump the script kept once you're happy.
+
+**Rollback** (while compose's volumes exist; whatever was written on k3s after the switch is lost unless you dump it back first):
+
+1. `kubectl -n jobfinder scale deploy api worker renderer --replicas=0` (two workers would run every scheduled job and email twice).
+2. `sudo cp -a /etc/caddy/Caddyfile.pre-cutover /etc/caddy/Caddyfile` (upstream back to `127.0.0.1:8180`), validate, `sudo systemctl reload caddy`.
+3. `docker compose start api worker web smtp`; `curl -sI https://jobs.ehlops.com/ | head -1` → 200.
 
 ## Resources
 

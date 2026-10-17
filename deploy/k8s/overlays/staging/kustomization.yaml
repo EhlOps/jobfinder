@@ -72,21 +72,11 @@ patches:
             value: staging.ehlops.com localhost
           - name: RELAYHOST
             value: "[mailpit]:1025"
-  # The public hostname, in front of the base's hostless rule (host Caddy proxies it to :8280).
+  # The public hostname (host Caddy proxies it to :8280); base/app/ingress.yaml has a placeholder.
   - target:
       kind: Ingress
       name: web
     patch: |-
-      - op: add
-        path: /spec/rules/0
-        value:
-          host: staging.ehlops.com
-          http:
-            paths:
-              - path: /
-                pathType: Prefix
-                backend:
-                  service:
-                    name: web
-                    port:
-                      name: http
+      - op: replace
+        path: /spec/rules/0/host
+        value: staging.ehlops.com

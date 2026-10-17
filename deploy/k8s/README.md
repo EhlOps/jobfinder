@@ -15,14 +15,18 @@ deploy/k8s/
     postgres/           # #40: Postgres 16 StatefulSet, Service, NetworkPolicy
     valkey/             # #40: valkey StatefulSet (AOF), Service, NetworkPolicy
     storage/            # #40: PVCs store, claude-auth
+    data/               # #47: backup CronJob and PVC backups
     app/                # #43: web, api, worker, renderer, smtp, migrate Job, Ingress, config overrides
   overlays/
     staging/            # namespace `jobfinder-staging`; sealed secrets, mailpit, staging config
-    prod/               # namespace `jobfinder` (the base default); placeholders until #47
+    prod/               # namespace `jobfinder` (the base default); sealed secrets, Gmail relay, prod config
   hello/                # #38 smoke test: whoami behind Traefik at /healthz
   deploy.sh             # #43: pin images, migrate, roll out (deploy.sh <overlay> sha-<commit>)
   deploy-staging-ssh.sh # #43: SSH forced command GitHub Actions deploys staging through
   staging-restore.sh    # #43: copy prod's compose database into staging
+  prod-cutover.sh       # #47: compose -> k3s data move and first prod deploy (--rehearsal on staging)
+  backup-restore.sh     # #47: restore drill of the newest backup into a scratch database
+  pg-lib.sh             # #47: row-count helpers the two scripts above share
 ```
 
 The app's ConfigMap comes from `backend/kustomization.yaml`, which turns
