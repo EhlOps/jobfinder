@@ -185,6 +185,7 @@ async def test_pending_users_get_no_daily_email_or_matching(client, make_account
         assert daily.is_due(pend, datetime(2026, 1, 1, 8, 5, tzinfo=UTC)) is False
 
 
+@pytest.mark.real_commit  # the hits are side_session writes; savepoint mode drops them
 async def test_preview_email_is_rate_limited(authed, monkeypatch):
     monkeypatch.setattr(get_settings(), "preview_emails_per_hour", 2)
     codes = [(await authed.post("/api/settings/digest/preview")).status_code for _ in range(3)]

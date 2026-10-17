@@ -1,3 +1,5 @@
+import pytest
+
 from jobfinder.auth import security
 
 
@@ -37,6 +39,7 @@ async def test_requires_auth(client):
         assert (await client.get(path)).status_code == 401
 
 
+@pytest.mark.real_commit  # the failures are side_session writes; savepoint mode drops them
 async def test_login_is_rate_limited_per_email(client, make_account):
     await make_account("known@x.com", "right-password-1", login=False)
     for _ in range(10):
@@ -45,6 +48,7 @@ async def test_login_is_rate_limited_per_email(client, make_account):
     assert r.status_code == 429
 
 
+@pytest.mark.real_commit  # the failures are side_session writes; savepoint mode drops them
 async def test_login_is_rate_limited_per_ip(client, monkeypatch):
     from jobfinder.config import get_settings
 

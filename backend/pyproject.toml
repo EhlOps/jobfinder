@@ -90,6 +90,7 @@ source_modules = [
   "jobfinder.profile",
   "jobfinder.questions",
   "jobfinder.renderer",
+  "jobfinder.repositories",
   "jobfinder.resumes",
   "jobfinder.scheduling",
   "jobfinder.services",
@@ -135,6 +136,7 @@ forbidden_modules = [
   "jobfinder.profile",
   "jobfinder.questions",
   "jobfinder.renderer",
+  "jobfinder.repositories",
   "jobfinder.resumes",
   "jobfinder.scheduling",
   "jobfinder.services",
@@ -148,3 +150,15 @@ name = "integrations do not import services (#42)"
 type = "forbidden"
 source_modules = ["jobfinder.integrations"]
 forbidden_modules = ["jobfinder.services"]
+
+[[tool.importlinter.contracts]]
+name = "repositories hold SQL only: they import no services, integrations or HTTP code (#44-#46)"
+type = "forbidden"
+source_modules = ["jobfinder.repositories"]
+forbidden_modules = ["jobfinder.api", "jobfinder.integrations", "jobfinder.services"]
+
+[[tool.importlinter.contracts]]
+name = "Routers call services, not repositories (#44-#46)"
+type = "forbidden"
+source_modules = ["jobfinder.api"]
+forbidden_modules = ["jobfinder.repositories"]

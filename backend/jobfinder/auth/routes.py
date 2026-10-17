@@ -16,7 +16,7 @@ from jobfinder.auth.security import (
     verify_or_dummy,
 )
 from jobfinder.core.config import settings
-from jobfinder.core.db import DbSession
+from jobfinder.core.db import DbSession, side_session
 from jobfinder.core.urls import public_link
 from jobfinder.integrations import smtp as mail
 from jobfinder.models import Profile, Session, User
@@ -115,8 +115,9 @@ async def login(body: LoginBody, request: Request, resp: Response, db: DbSession
     user = (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
     ok = await verify_or_dummy(user.password_hash if user else None, body.password)
     if not user or not ok:
-        await ratelimit.hit(db, "login_fail_email", email)
-        await ratelimit.hit(db, "login_fail_ip", ip)
+        async with side_session(request.app.state.ctx.sessions) as side:  # counts despite the 401 rollback
+            await ratelimit.hit(side, "login_fail_email", email)
+            await ratelimit.hit(side, "login_fail_ip", ip)
         raise HTTPException(401, "Invalid email or password")
     await db.commit()
     _set_cookie(resp, await create_session(db, user.id))
