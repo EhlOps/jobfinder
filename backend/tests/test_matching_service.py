@@ -194,8 +194,9 @@ async def test_rate_limit_mid_run_keeps_progress_and_reraises(maker):
             await make_job(db, t)  # equal scores: the newest job (D) is scored first, so A and B are the second batch
         ai = FakeScoringAI(errors={"Backend Engineer A": AIError("rate_limited", "usage limit"), "Backend Engineer B": AIError("rate_limited", "usage limit")})
         with pytest.raises(AIError) as e:
-            await service.match_user(db, ai, u.id)
+            await service.match_user(db, ai, u.id, checkpoint=db.commit)  # the handler's checkpoint
         assert e.value.retryable
+        await db.rollback()                                          # what the worker does with the AIError
         assert len(await matches(db)) == 2                           # first batch survived
         assert (await db.get(Profile, u.id)).match_summary["scored"] == 2
         # the retry continues where it left off

@@ -17,7 +17,7 @@ from jobfinder.ingest.base import safe_http_url
 from jobfinder.integrations import smtp as mail
 from jobfinder.models import ClarifyingQuestion, Job, JobMatch, Profile, User
 from jobfinder.notify.tokens import make_token
-from jobfinder.questions.service import OPEN
+from jobfinder.repositories.questions import OPEN
 
 log = logging.getLogger("jobfinder.daily")
 VERDICT_LABEL = {"strong": "Strong fit", "good": "Good fit", "stretch": "Stretch", "no": "Poor fit"}
