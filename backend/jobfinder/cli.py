@@ -253,11 +253,10 @@ async def set_board(args: argparse.Namespace) -> int:
             setattr(company, k, v)
         if args.enabled is False:
             company.enabled = False
-        elif args.enabled and not company.enabled:
-            # same as the admin page's re-enable: counters reset; a merely failing board keeps them
-            company.enabled, company.consecutive_failures = True, 0
-            company.disabled_reason = company.last_error = None
-            company.next_fetch_at = None  # due on the next tick, not after the failure backoff
+        elif args.enabled:
+            from jobfinder.services.admin import enable_source
+
+            await enable_source(db, company.id)  # the admin page's re-enable rule
         if args.enabled is not None:
             changes["enabled"] = args.enabled
         await db.commit()
