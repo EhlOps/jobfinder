@@ -34,7 +34,7 @@ async def test_link_crud_and_fetch_error_recorded(authed, monkeypatch):
     async def boom(url):
         raise web_page.FetchError("HTTP 500")
 
-    from jobfinder.api import links
+    from jobfinder.services import links
 
     monkeypatch.setattr(links, "fetch_page_text", boom)
     r = await authed.post("/api/links", json={"kind": "portfolio", "url": "https://me.dev"})
@@ -50,7 +50,7 @@ async def test_link_crud_and_fetch_error_recorded(authed, monkeypatch):
 
 
 async def test_link_fetch_success_refresh_and_tags(authed, monkeypatch):
-    from jobfinder.api import links
+    from jobfinder.services import links
 
     texts = iter(["first summary", "second summary"])
 

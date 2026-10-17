@@ -1,4 +1,6 @@
 #!/bin/sh
+# RETIRED (#47): production runs on k3s, backed up by CronJob `backup` (deploy/k8s/base/data/,
+# docs/k3s.md "Backups"). This only backs up the compose stack; kept until compose goes (#53).
 # Back up everything that matters: the Postgres database and the `store` + `claude` data dirs
 # (uploaded documents, fetched link text, and the saved Claude token). Run from the repo root:
 #   deploy/backup.sh                 # writes to ./backups, keeps the newest 14 of each

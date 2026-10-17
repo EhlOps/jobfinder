@@ -23,5 +23,6 @@ resources:
   # #43: today's app (web, api, worker, renderer, smtp, the migrate Job, the Ingress). Each overlay
   # supplies the Secret `jobfinder-env` as a SealedSecret and pins the images; see deploy/k8s/README.md.
   - app/
-  # Backups and restore are deferred (owner, #40 comment of 2026-10-15); deploy/backup.sh
-  # still covers the compose production stack.
+  # #47: nightly backup CronJob onto the `backups` PVC (replaces deploy/backup.sh); restore drill:
+  # deploy/k8s/backup-restore.sh.
+  - data/

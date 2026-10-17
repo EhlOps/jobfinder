@@ -1,109 +1,36 @@
-import sqlalchemy as sa
-from fastapi import APIRouter, HTTPException
-from fastapi.responses import Response
-from sqlalchemy.ext.asyncio import AsyncSession
+"""A match's cover letter: read, queue a draft, save edits, delete, download as .docx."""
+from fastapi import APIRouter
 
 from jobfinder.api.deps import CurrentUser, DbSession
-from jobfinder.letters.docx_export import build_docx, filename
-from jobfinder.models import CoverLetter, Job, JobMatch, Profile, Task, User
-from jobfinder.scheduling import queue
-from jobfinder.schemas.common import TaskRef
+from jobfinder.schemas.common import TaskRef, file_download
 from jobfinder.schemas.cover_letters import ContentIn, LetterGenerateIn, LetterOut, LetterState
+from jobfinder.services import letters as service
 
 router = APIRouter(prefix="/api/matches/{match_id}/cover-letter", tags=["cover letters"])
-
-DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-
-
-async def _match_and_job(db: AsyncSession, user: User, match_id: int) -> tuple[JobMatch, Job]:
-    row = (
-        await db.execute(
-            sa.select(JobMatch, Job).join(Job, Job.id == JobMatch.job_id).where(JobMatch.id == match_id, JobMatch.user_id == user.id)
-        )
-    ).first()
-    if not row:
-        raise HTTPException(404, "Not found")
-    return row
-
-
-async def _letter(db: AsyncSession, user: User, job_id: int) -> CoverLetter | None:
-    return (
-        await db.execute(sa.select(CoverLetter).where(CoverLetter.user_id == user.id, CoverLetter.job_id == job_id))
-    ).scalar_one_or_none()
-
-
-def _out(letter: CoverLetter, profile_version: int) -> LetterOut:
-    return LetterOut(
-        content=letter.content, tone=letter.tone, edited=letter.edited, words=len(letter.content.split()),
-        stale=letter.profile_version < profile_version, generated_at=letter.generated_at, updated_at=letter.updated_at,
-    )
 
 
 @router.get("", response_model=LetterState)
 async def get_letter(match_id: int, user: CurrentUser, db: DbSession):
-    _, job = await _match_and_job(db, user, match_id)
-    letter = await _letter(db, user, job.id)
-    profile = await db.get(Profile, user.id)
-    pending = (
-        await db.execute(
-            sa.select(Task.id)
-            .where(
-                Task.kind == "cover_letter", Task.user_id == user.id, Task.status.in_(("queued", "running")),
-                Task.payload["match_id"].as_integer() == match_id,
-            )
-            .order_by(Task.id.desc())
-            .limit(1)
-        )
-    ).scalar_one_or_none()
-    return LetterState(letter=_out(letter, profile.version if profile else 1) if letter else None, pending_task_id=pending)
+    return await service.state(db, user.id, match_id)
 
 
 @router.post("", response_model=TaskRef, status_code=202)
 async def generate(match_id: int, body: LetterGenerateIn, user: CurrentUser, db: DbSession):
     """Draft (or redraft) the letter in the worker. Poll GET /api/tasks/{id}, then GET this resource."""
-    _, job = await _match_and_job(db, user, match_id)
-    profile = await db.get(Profile, user.id)
-    if not profile or not profile.background:
-        raise HTTPException(422, "Finish your profile first (onboarding)")
-    existing = await _letter(db, user, job.id)
-    if existing and existing.edited and not body.force:
-        raise HTTPException(409, "You've edited this letter; redrafting would replace your changes.")
-    task = await queue.enqueue(
-        db, "cover_letter", {"match_id": match_id, "tone": body.tone, "notes": body.notes.strip()}, user_id=user.id, dedupe=True
-    )
-    return TaskRef(task_id=task.id)
+    return await service.request_draft(db, user.id, match_id, body.tone, body.notes, body.force)
 
 
 @router.put("", response_model=LetterOut)
 async def save_edits(match_id: int, body: ContentIn, user: CurrentUser, db: DbSession):
-    _, job = await _match_and_job(db, user, match_id)
-    letter = await _letter(db, user, job.id)
-    if not letter:
-        raise HTTPException(404, "No letter yet")
-    new = body.content.replace("\r\n", "\n").strip()
-    if new != letter.content:
-        letter.content, letter.edited = new, True
-        await db.commit()
-        await db.refresh(letter)
-    profile = await db.get(Profile, user.id)
-    return _out(letter, profile.version if profile else 1)
+    return await service.save_edits(db, user.id, match_id, body.content)
 
 
 @router.delete("", status_code=204)
 async def delete_letter(match_id: int, user: CurrentUser, db: DbSession):
-    _, job = await _match_and_job(db, user, match_id)
-    await db.execute(sa.delete(CoverLetter).where(CoverLetter.user_id == user.id, CoverLetter.job_id == job.id))
-    await db.commit()
+    await service.delete(db, user.id, match_id)
 
 
 @router.get("/download")
 async def download(match_id: int, user: CurrentUser, db: DbSession):
-    _, job = await _match_and_job(db, user, match_id)
-    letter = await _letter(db, user, job.id)
-    if not letter:
-        raise HTTPException(404, "No letter yet")
-    name = filename(job.company_name, job.title)
-    return Response(
-        build_docx(letter.content), media_type=DOCX,
-        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{name.replace(' ', '%20')}"},
-    )
+    data, name = await service.docx(db, user.id, match_id)
+    return file_download(data, name)
