@@ -1,0 +1,221 @@
+"""tasks.runtime (#48): what a delivery does with every outcome, and that the ai and io queues are
+separate consumers (a long io task never holds up an ai one)."""
+import asyncio
+from datetime import timedelta
+
+import pytest
+import sqlalchemy as sa
+
+from jobfinder import worker
+from jobfinder.core.clock import utcnow
+from jobfinder.core.config import get_settings
+from jobfinder.integrations.claude.claude_code import AIError
+from jobfinder.models import Task
+from jobfinder.tasks import ai as ai_tasks
+from jobfinder.tasks import brokers, ledger, runtime
+from jobfinder.tasks import io as io_tasks
+from jobfinder.tasks.__main__ import worker_argv
+from jobfinder.tasks.kinds import QUEUES
+from tests.rollback import count
+
+
+async def _queued(maker, kind, payload=None) -> int:
+    async with maker() as db:
+        t = await ledger.add(db, kind, payload)
+        await db.commit()
+        return t.id
+
+
+async def _row(maker, task_id) -> Task:
+    async with maker() as db:
+        return await db.get(Task, task_id)
+
+
+def test_each_queue_broker_carries_exactly_its_kinds():
+    """worker-ai imports tasks.ai on ai_broker, worker-io tasks.io on io_broker: no kind is on two."""
+    assert ai_tasks and io_tasks  # imported: registered
+    for queue in ("ai", "io"):
+        registered = set(brokers.BROKERS[queue].local_task_registry)
+        assert registered == {k for k, q in QUEUES.items() if q == queue}
+        # and each queue's worker process consumes only its own stream, with its own concurrency
+        assert worker_argv(queue)[:2] == [f"jobfinder.tasks.brokers:{queue}_broker", f"jobfinder.tasks.{queue}"]
+    assert brokers.ai_broker.queue_name != brokers.io_broker.queue_name
+
+
+async def test_the_registered_taskiq_task_runs_the_handler(maker, monkeypatch):
+    seen = []
+
+    async def plan(db):
+        seen.append(1)
+        return {"planned": 0}
+
+    from jobfinder.scheduling import planner
+
+    monkeypatch.setattr(planner, "plan", plan)
+    tid = await _queued(maker, "plan_work")
+    await brokers.io_broker.find_task("plan_work").original_func(tid)  # what the taskiq receiver calls
+    row = await _row(maker, tid)
+    assert (row.status, row.result, row.attempts, seen) == ("done", {"planned": 0}, 1, [1])
+
+
+async def test_io_kinds_get_no_ai_client(maker):
+    got = []
+
+    async def handler(db, ai, task, payload):
+        got.append(ai)
+        return {}
+
+    tid = await _queued(maker, "plan_work")
+    await runtime.execute("plan_work", handler, tid, wants_ai=False, ai=object())
+    assert got == [None]
+
+
+async def test_a_retryable_ai_error_queues_it_again_with_backoff(maker):
+    async def handler(db, ai, task, payload):
+        db.add(Task(kind="x", queue="io", payload={}))  # undone with the failure
+        raise AIError("rate_limited", "slow down")
+
+    tid = await _queued(maker, "ai_check")
+    await runtime.execute("ai_check", handler, tid, ai=object())
+    row = await _row(maker, tid)
+    assert (row.status, row.sent_at, row.attempts) == ("queued", None, 1) and "slow down" in row.error
+    assert row.run_after > utcnow() + timedelta(seconds=10)
+    assert await count(maker, Task) == 1
+
+
+async def test_a_permanent_ai_error_fails_it(maker):
+    async def handler(db, ai, task, payload):
+        raise AIError("auth", "logged out")
+
+    tid = await _queued(maker, "ai_check")
+    await runtime.execute("ai_check", handler, tid, ai=object())
+    assert (await _row(maker, tid)).status == "failed"
+
+
+async def test_a_payload_that_does_not_validate_fails_without_running(maker):
+    ran = []
+
+    async def handler(db, ai, task, payload):
+        ran.append(payload)
+        return {}
+
+    tid = await _queued(maker, "cover_letter", {"tone": "warm"})  # no match_id
+    await runtime.execute("cover_letter", handler, tid, payload_model=ai_tasks.CoverLetterArgs, ai=object())
+    row = await _row(maker, tid)
+    assert row.status == "failed" and "match_id" in row.error and ran == []
+
+
+async def test_a_row_of_another_kind_is_not_run(maker):
+    async def handler(db, ai, task, payload):
+        raise AssertionError("must not run")
+
+    tid = await _queued(maker, "plan_work")
+    await runtime.execute("ingest_jobs", handler, tid, wants_ai=False)
+    row = await _row(maker, tid)
+    assert row.status == "failed" and "delivered as 'ingest_jobs'" in row.error
+
+
+async def test_a_delivery_for_a_running_row_is_dropped(maker):
+    """A redelivery of a slow task, or of a dead worker's before the reaper requeued it: the claim
+    fails and nothing runs. The reaper is what brings a dead worker's row back."""
+    ran = []
+
+    async def handler(db, ai, task, payload):
+        ran.append(1)
+        return {}
+
+    tid = await _queued(maker, "plan_work")
+    async with maker() as db:
+        t = await ledger.claim(db, tid)
+        t.locked_at = utcnow() - timedelta(hours=1)  # its worker died long ago
+        await db.commit()
+    await runtime.execute("plan_work", handler, tid, wants_ai=False)
+    row = await _row(maker, tid)
+    assert (row.status, row.attempts, ran) == ("running", 1, [])
+    async with maker() as db:
+        assert await ledger.reap(db) == 1
+        await db.commit()
+    await runtime.execute("plan_work", handler, tid, wants_ai=False)  # the relay's re-send
+    row = await _row(maker, tid)
+    assert (row.status, row.attempts, ran) == ("done", 2, [1])
+
+
+async def test_a_delivery_never_raises_into_taskiq(maker, caplog):
+    """Postgres unreachable at the claim: logged once, and the message is acked (the relay re-sends)."""
+
+    class Down:
+        def __call__(self):
+            return self
+
+        async def __aenter__(self):
+            raise OSError("connection refused")
+
+        async def __aexit__(self, *exc):
+            return False
+
+    async def handler(db, ai, task, payload):
+        raise AssertionError("must not run")
+
+    await runtime.execute("plan_work", handler, 1, wants_ai=False, session_factory=Down())
+    assert "relay or the reaper will recover it" in caplog.text
+
+
+async def test_follow_ups_are_published_with_the_result_not_before(maker, published, monkeypatch):
+    async def handler(db, ai, task, payload):
+        await ledger.add(db, "plan_work", dedupe=True)
+        assert await published.settle() == [("io", "ingest_jobs", tid)]  # only the delivered row so far
+        return {"new": 1}
+
+    tid = await _queued(maker, "ingest_jobs")
+    await runtime.execute("ingest_jobs", handler, tid, wants_ai=False)
+    follow = await _follow_up(maker, "plan_work")
+    assert await published.settle() == [("io", "ingest_jobs", tid), ("io", "plan_work", follow.id)]
+
+
+async def test_a_failed_handler_publishes_no_follow_up(maker, published):
+    async def handler(db, ai, task, payload):
+        await ledger.add(db, "plan_work")
+        raise RuntimeError("broken")
+
+    tid = await _queued(maker, "ingest_jobs")
+    await runtime.execute("ingest_jobs", handler, tid, wants_ai=False)
+    assert await published.settle() == [("io", "ingest_jobs", tid)]
+    assert await count(maker, Task, kind="plan_work") == 0
+
+
+async def _follow_up(maker, kind) -> Task:
+    async with maker() as db:
+        return await db.scalar(sa.select(Task).where(Task.kind == kind))
+
+
+@pytest.mark.real_commit
+async def test_an_ai_task_finishes_while_an_io_task_is_in_flight(maker, monkeypatch):
+    """#48's acceptance: a cover letter is still drafted while a full ingest run is in flight. The io
+    task here holds its delivery (and its heartbeat) open until the ai one is done."""
+    monkeypatch.setattr(get_settings(), "task_heartbeat_seconds", 0.05)
+    release = asyncio.Event()
+
+    async def long_ingest(db, ai, task, payload):
+        await asyncio.wait_for(release.wait(), 5)
+        return {"new": 0}
+
+    async def letter(db, ai, task, payload):
+        return {"match_id": payload.match_id}
+
+    ingest = await _queued(maker, "ingest_jobs")
+    draft = await _queued(maker, "cover_letter", {"match_id": 7})
+    io_run = asyncio.create_task(runtime.execute("ingest_jobs", long_ingest, ingest, wants_ai=False))
+    await asyncio.sleep(0.2)
+    assert (await _row(maker, ingest)).status == "running"
+    await runtime.execute("cover_letter", letter, draft, payload_model=ai_tasks.CoverLetterArgs, ai=object())
+    assert ((await _row(maker, draft)).status, (await _row(maker, ingest)).status) == ("done", "running")
+    release.set()
+    await io_run
+    assert (await _row(maker, ingest)).status == "done"
+
+
+async def test_the_legacy_worker_refuses_to_run_beside_the_ledger(monkeypatch, caplog):
+    monkeypatch.setattr(get_settings(), "tasks_backend", "ledger")
+    with pytest.raises(SystemExit) as stop:
+        await worker.main()
+    assert stop.value.code == 1 and "python -m jobfinder.tasks ai|io" in caplog.text
