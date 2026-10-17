@@ -18,6 +18,8 @@ def worker_argv(queue: str) -> list[str]:
         "--workers", "1",
         "--max-async-tasks", str(getattr(settings, CONCURRENCY[queue])),
         "--ack-type", "when_executed",
+        # On SIGTERM, wait this long for running tasks: under the pods' 60s grace, so they exit cleanly.
+        "--wait-tasks-timeout", "50",
         "--no-configure-logging",
     ]
 

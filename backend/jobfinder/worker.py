@@ -1,4 +1,7 @@
-"""Worker: consumes the Postgres task queue. Scheduled jobs (ingest, digest) are added later."""
+"""The poll-loop worker (TASKS_BACKEND=legacy): claims tasks straight from the Postgres table and runs
+its own APScheduler cron. With TASKS_BACKEND=ledger it refuses to start: the taskiq workers
+(`python -m jobfinder.tasks ai|io`) and the scheduler (`python -m jobfinder.scheduler`) replace it (#48).
+"""
 import asyncio
 import logging
 import time
@@ -17,6 +20,7 @@ from jobfinder.models import Task
 from jobfinder.scheduling import queue
 from jobfinder.scheduling.handlers import HANDLERS
 from jobfinder.services import ratelimit
+from jobfinder.tasks import ledger
 
 log = logging.getLogger("jobfinder.worker")
 # Loop timings come from settings: WORKER_POLL_SECONDS, TASK_HEARTBEAT_SECONDS (keeps locked_at fresh
@@ -79,7 +83,8 @@ def _log_task_exception(t: asyncio.Task) -> None:
 async def enqueue_scheduled(kind: str) -> None:
     """Scheduled work goes through the same queue as everything else (retries, one at a time via dedupe)."""
     async with dbmod.SessionLocal() as db:
-        await queue.enqueue(db, kind, dedupe=True)
+        await ledger.add(db, kind, dedupe=True)  # the ledger sets the row's queue, ready for the switch
+        await db.commit()
     log.info("scheduled %s", kind)
 
 
@@ -112,8 +117,15 @@ def make_scheduler() -> AsyncIOScheduler:
     return scheduler
 
 
+LEDGER_REFUSAL = ("TASKS_BACKEND=ledger: run python -m jobfinder.tasks ai|io and python -m jobfinder.scheduler "
+                  "instead")
+
+
 async def main() -> None:
     core_logging.configure(settings.log_level)
+    if settings.tasks_backend == "ledger":  # the taskiq workers own the queued rows now
+        log.error(LEDGER_REFUSAL)
+        raise SystemExit(1)
     ai = default_context().claude  # records every call in ai_calls
     limit = settings.ai_max_concurrency
     running: set[asyncio.Task] = set()

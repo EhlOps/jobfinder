@@ -2,9 +2,23 @@
 
 On delivery of a ledger id: claim the row (a duplicate delivery finds it already taken and is dropped)
 and commit, so the SPA sees "running" and the reaper has a heartbeat to watch; validate the payload; run
-the handler in the same session; then finish and commit. taskiq acks after this returns, whatever the
-outcome. A worker that dies mid-run never acks: its row stays `running` until `ledger.reap` queues it
-again, and the stream's redelivery then fails the claim and is dropped.
+the handler in the same session; then finish and commit. The handler's own `ledger.add` follow-ups are
+published once that commit lands.
+
+taskiq acks the message after `deliver` returns (--ack-type when_executed), and `deliver` always
+returns: every outcome, failures included, is recorded on the row, and an error the runtime can't even
+record (Postgres down) is logged once here instead of again by taskiq. The ledger, not the stream, is
+what gets the work done, so an ack never loses anything:
+
+  - A worker that dies mid-run never acks. Its row stays `running` until `ledger.reap` sees the stale
+    heartbeat and queues it again; the relay re-sends it, and the stream's own redelivery of the old
+    message (taskiq-redis XAUTOCLAIMs messages idle for 10 minutes) fails the claim and is dropped.
+  - A delivery for a row that is still `running` (a slow task redelivered, or a dead worker's row before
+    the reaper got to it) fails the claim and is dropped too. The reaper is the only way back.
+  - On SIGTERM taskiq stops reading new messages and waits for the running ones (with no
+    --wait-tasks-timeout it waits until Kubernetes' grace period ends in SIGKILL); a task cut off there
+    is a dead worker's task as above. Messages fetched but not started stay unacked in the stream and
+    their rows stay queued, so the relay re-sends them.
 """
 import asyncio
 import logging
@@ -23,10 +37,11 @@ from jobfinder.tasks import ledger
 from jobfinder.tasks.kinds import queue_for
 
 log = logging.getLogger("jobfinder.tasks")
-# handler(db, ai, task, payload): ai is None for kinds registered with ai=False (the renderer has no
-# Claude); payload is the validated model, or None for kinds without one.
+# handler(db, ai, task, payload): ai is None for kinds registered with ai=False (no Claude: the io queue
+# and the renderer); payload is the validated model, or None for kinds without one.
 LedgerHandler = Callable[[AsyncSession, Any, Task, Any], Awaitable[dict]]
 REGISTRY: dict[str, LedgerHandler] = {}
+PAYLOADS: dict[str, type[BaseModel] | None] = {}  # kind -> its payload model (scheduling.handlers reuses it)
 
 
 def ledger_task(broker: AsyncBroker, kind: str, *, payload: type[BaseModel] | None = None, ai: bool = True):
@@ -38,7 +53,7 @@ def ledger_task(broker: AsyncBroker, kind: str, *, payload: type[BaseModel] | No
             await execute(kind, handler, int(task_id), payload_model=payload, wants_ai=ai)
 
         broker.register_task(deliver, task_name=kind)
-        REGISTRY[kind] = handler
+        REGISTRY[kind], PAYLOADS[kind] = handler, payload
         return handler
 
     return register
@@ -46,7 +61,16 @@ def ledger_task(broker: AsyncBroker, kind: str, *, payload: type[BaseModel] | No
 
 async def execute(kind: str, handler: LedgerHandler, task_id: int, *, payload_model: type[BaseModel] | None = None,
                   wants_ai: bool = True, session_factory=None, ai=None) -> None:
+    """Run one delivery of `task_id` to its end. Never raises (but lets a cancellation through)."""
     sessions = session_factory or dbmod.SessionLocal
+    try:
+        await _execute(kind, handler, task_id, payload_model, wants_ai, sessions, ai)
+    except Exception:  # the claim or the failure record itself failed: the row is queued or running
+        log.exception("task %s (%s): delivery failed before its outcome was recorded; "
+                      "the relay or the reaper will recover it", task_id, kind)
+
+
+async def _execute(kind, handler, task_id, payload_model, wants_ai, sessions, ai) -> None:
     async with sessions() as db:
         task = await ledger.claim(db, task_id)
         if task is None:
@@ -57,24 +81,38 @@ async def execute(kind: str, handler: LedgerHandler, task_id: int, *, payload_mo
         try:
             if task.kind != kind:
                 raise ValueError(f"task {task_id} is a {task.kind!r}, delivered as {kind!r}")
-            args = payload_model.model_validate(task.payload or {}) if payload_model else None
+            args = parse_payload(payload_model, task.payload)
             if wants_ai and ai is None:
                 from jobfinder.context import default_context
 
-                ai = default_context().claude  # records every call in ai_calls
+                ai = default_context().claude  # built once per process (cached); records every call in ai_calls
             result = await handler(db, ai if wants_ai else None, task, args)
             await ledger.finish(db, task, result)
             await db.commit()
         except AIError as e:
             log.warning("task %s (%s) AI error: %s", task_id, kind, e)
-            await db.rollback()
+            await _rollback(db, task_id)
             await _fail(sessions, task_id, str(e), retry=e.retryable)
         except Exception as e:
             log.exception("task %s (%s) failed", task_id, kind)
-            await db.rollback()
+            await _rollback(db, task_id)
             await _fail(sessions, task_id, f"{type(e).__name__}: {e}", retry=False)
         finally:
             beat.cancel()
+
+
+def parse_payload(model: type[BaseModel] | None, raw: dict | None) -> BaseModel | None:
+    """A row's payload as its kind's model (None for kinds without one). Unknown keys are ignored."""
+    return model.model_validate(raw or {}) if model else None
+
+
+async def _rollback(db: AsyncSession, task_id: int) -> None:
+    """Undo the handler's work. A dead connection fails the rollback too; the failure is still recorded
+    on a fresh session (_fail), so the row doesn't sit `running` until the reaper."""
+    try:
+        await db.rollback()
+    except Exception:
+        log.warning("rollback after task %s failed (connection lost?)", task_id, exc_info=True)
 
 
 async def _heartbeat_loop(task_id: int, sessions) -> None:
