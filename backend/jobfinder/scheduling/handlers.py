@@ -82,9 +82,11 @@ async def plan_work(db: AsyncSession, ai: AITasks, task: Task) -> dict:
 async def match_user(db: AsyncSession, ai: AITasks, task: Task) -> dict:
     from jobfinder.matching import service
 
-    summary = await service.match_user(db, ai, task.user_id)
+    # Commit after each scored job: a rate limit mid-run keeps what was scored (the worker rolls back the rest).
+    summary = await service.match_user(db, ai, task.user_id, checkpoint=db.commit)
     if summary.get("scored"):
         # New assessments may have raised questions worth asking.
+        # TODO(#48): ledger.add flushes
         await queue.enqueue(db, "collect_questions", user_id=task.user_id, dedupe=True)
     return summary
 
@@ -136,14 +138,15 @@ async def daily_emails(db: AsyncSession, ai: AITasks, task: Task) -> dict:
 
 
 async def cover_letter(db: AsyncSession, ai: AITasks, task: Task) -> dict:
-    from jobfinder.letters import service
+    """The draft is written in the task's transaction; worker.run_task commits it with the task's result."""
+    from jobfinder.services import letters as service
 
     p = task.payload
     return await service.generate(db, ai, task.user_id, p["match_id"], p.get("tone", "professional"), p.get("notes", ""))
 
 
 async def resume_tailor(db: AsyncSession, ai: AITasks, task: Task) -> dict:
-    from jobfinder.resumes import service
+    from jobfinder.services import resumes as service
 
     return await service.tailor(db, ai, default_context().store, task.user_id, task.payload["match_id"], force=bool(task.payload.get("force")))
 

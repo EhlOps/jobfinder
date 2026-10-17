@@ -1,64 +1,21 @@
+"""The match feed and one match: list, read, set status, answer its questions, and re-score."""
 from typing import Annotated, Literal
 
-import sqlalchemy as sa
-from fastapi import APIRouter, HTTPException, Query
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, Query
 
 from jobfinder.api.deps import CurrentUser, DbSession
-from jobfinder.matching import prefilter
-from jobfinder.models import Company, CoverLetter, Job, JobMatch, Profile, ProfileFact, User
-from jobfinder.scheduling import queue
 from jobfinder.schemas.common import TaskRef
 from jobfinder.schemas.matches import (
     JobAnswersIn,
-    JobOut,
     MatchDetail,
     MatchList,
     MatchOut,
     Status,
     StatusIn,
 )
+from jobfinder.services import matches as service
 
 router = APIRouter(prefix="/api/matches", tags=["matches"])
-
-
-def sponsorship_value(j: Job, company_sponsors: bool | None) -> str | None:
-    """The posting's own words win; a silent posting falls back to what is known about the company."""
-    return prefilter.sponsorship_signal(j.description_text or "") or {True: "likely", False: "unlikely"}.get(company_sponsors)
-
-
-async def _sponsor_flags(db: AsyncSession, jobs: list[Job]) -> dict[int, bool | None]:
-    ids = {j.company_id for j in jobs if j.company_id}
-    if not ids:
-        return {}
-    return dict((await db.execute(sa.select(Company.id, Company.sponsors_visas).where(Company.id.in_(ids)))).all())
-
-
-def _job_out(j: Job, company_sponsors: bool | None = None) -> JobOut:
-    return JobOut(
-        id=j.id, title=j.title, company=j.company_name, location=j.location, workplace_type=j.workplace_type,
-        seniority=j.seniority, salary_min=j.salary_min, salary_max=j.salary_max,
-        salary_currency=j.salary_currency, url=j.url, posted_at=j.posted_at, is_active=j.is_active,
-        sponsorship=sponsorship_value(j, company_sponsors),
-    )
-
-
-def _out(m: JobMatch, j: Job, version: int, has_letter: bool = False, company_sponsors: bool | None = None) -> dict:
-    return {
-        "id": m.id, "status": m.status, "score": m.llm_score, "confidence": m.confidence,
-        "verdict": m.verdict, "reasons": m.reasons, "gaps": m.gaps,
-        "hire_verdict": m.hire_verdict, "recruiter_take": m.recruiter_take,
-        "stale": m.profile_version < version, "has_cover_letter": has_letter, "scored_at": m.scored_at,
-        "job": _job_out(j, company_sponsors),
-    }
-
-
-def _visible(user_id: int):
-    """Closed jobs disappear from the feed unless the user saved or applied to them."""
-    return sa.and_(
-        JobMatch.user_id == user_id,
-        sa.or_(Job.is_active.is_(True), JobMatch.status.in_(("saved", "applied"))),
-    )
 
 
 @router.get("", response_model=MatchList)
@@ -74,106 +31,30 @@ async def list_matches(
     limit: Annotated[int, Query(ge=1, le=100)] = 30,
     offset: Annotated[int, Query(ge=0)] = 0,
 ):
-    profile = await db.get(Profile, user.id)
-    version = profile.version if profile else 1
-    base = sa.select(JobMatch, Job).join(Job, Job.id == JobMatch.job_id).where(_visible(user.id))
-
-    filters = [JobMatch.llm_score >= min_score]
-    if workplace:
-        filters.append(Job.workplace_type == workplace)
-    if early_career:
-        filters.append(sa.or_(
-            Job.seniority.in_(("intern", "new_grad")), Job.title.op("~*")(prefilter.EARLY_CAREER_SQL),
-            Job.title.op("~*")(r"\y(intern|internship|co-?op)\y"),
-        ))
-    if q:
-        like = f"%{q.strip()}%"
-        filters.append(sa.or_(Job.title.ilike(like), Job.company_name.ilike(like)))
-
-    # Tab counts honour every filter except the status tab itself.
-    counts = {s: 0 for s in ("new", "saved", "applied", "dismissed")}
-    rows = await db.execute(
-        sa.select(JobMatch.status, sa.func.count()).join(Job, Job.id == JobMatch.job_id)
-        .where(_visible(user.id), *filters).group_by(JobMatch.status)
-    )
-    counts.update({s: n for s, n in rows.all()})
-
-    filters.append(JobMatch.status == status if status else JobMatch.status.in_(("new", "saved")))
-    total = await db.scalar(
-        sa.select(sa.func.count()).select_from(JobMatch).join(Job, Job.id == JobMatch.job_id).where(_visible(user.id), *filters)
-    )
-    order = (
-        [JobMatch.llm_score.desc(), JobMatch.id.desc()] if sort == "score"
-        else [sa.func.coalesce(Job.posted_at, JobMatch.scored_at).desc(), JobMatch.id.desc()]
-    )
-    page = (await db.execute(base.where(*filters).order_by(*order).limit(limit).offset(offset))).all()
-    with_letters = await _with_letters(db, user.id, [j.id for _, j in page])
-    flags = await _sponsor_flags(db, [j for _, j in page])
-    return MatchList(
-        items=[MatchOut(**_out(m, j, version, j.id in with_letters, flags.get(j.company_id))) for m, j in page],
-        total=total or 0, counts=counts,
-        summary={**((profile.match_summary if profile else {}) or {}), "career_stage": prefilter.career_stage((profile.status if profile else {}) or {})},
-    )
-
-
-async def _with_letters(db: AsyncSession, user_id: int, job_ids: list[int]) -> set[int]:
-    if not job_ids:
-        return set()
-    rows = await db.scalars(sa.select(CoverLetter.job_id).where(CoverLetter.user_id == user_id, CoverLetter.job_id.in_(job_ids)))
-    return set(rows)
-
-
-async def _get_owned(db: AsyncSession, user: User, match_id: int) -> tuple[JobMatch, Job]:
-    row = (
-        await db.execute(
-            sa.select(JobMatch, Job).join(Job, Job.id == JobMatch.job_id).where(JobMatch.id == match_id, JobMatch.user_id == user.id)
-        )
-    ).first()
-    if not row:
-        raise HTTPException(404, "Not found")
-    return row
+    return await service.feed(db, user.id, service.FeedQuery(
+        status=status, min_score=min_score, workplace=workplace, q=q, early_career=early_career,
+        sort=sort, limit=limit, offset=offset,
+    ))
 
 
 @router.get("/{match_id}", response_model=MatchDetail)
 async def get_match(match_id: int, user: CurrentUser, db: DbSession):
-    m, j = await _get_owned(db, user, match_id)
-    profile = await db.get(Profile, user.id)
-    has_letter = j.id in await _with_letters(db, user.id, [j.id])
-    flag = (await _sponsor_flags(db, [j])).get(j.company_id)
-    return MatchDetail(**_out(m, j, profile.version if profile else 1, has_letter, flag), unknowns=m.unknowns, requirements=m.requirements or [], description=j.description_text)
+    return await service.detail(db, user.id, match_id)
 
 
 @router.post("/{match_id}/answers", status_code=202)
 async def answer_for_match(match_id: int, body: JobAnswersIn, user: CurrentUser, db: DbSession):
     """Answer a requirement question right on the job: saved as profile facts, then this and the other
     matches are re-scored (this one first)."""
-    _, j = await _get_owned(db, user, match_id)
-    for a in body.answers:
-        db.add(ProfileFact(user_id=user.id, question=a.question, answer=a.answer, source="job_question", job_id=j.id))
-    profile = await db.get(Profile, user.id)
-    if profile:
-        profile.version += 1
-    await db.commit()
-    await queue.enqueue(db, "match_user", user_id=user.id, dedupe=True)
-    return {"saved": len(body.answers)}
+    return await service.answer(db, user.id, match_id, [(a.question, a.answer) for a in body.answers])
 
 
 @router.patch("/{match_id}", response_model=MatchOut)
 async def set_status(match_id: int, body: StatusIn, user: CurrentUser, db: DbSession):
-    m, j = await _get_owned(db, user, match_id)
-    m.status = body.status
-    await db.commit()
-    profile = await db.get(Profile, user.id)
-    has_letter = j.id in await _with_letters(db, user.id, [j.id])
-    flag = (await _sponsor_flags(db, [j])).get(j.company_id)
-    return MatchOut(**_out(m, j, profile.version if profile else 1, has_letter, flag))
+    return await service.set_status(db, user.id, match_id, body.status)
 
 
 @router.post("/refresh", response_model=TaskRef, status_code=202)
 async def refresh(user: CurrentUser, db: DbSession):
     """Find and score new matches now (runs in the worker)."""
-    profile = await db.get(Profile, user.id)
-    if not profile or not profile.status:
-        raise HTTPException(422, "Tell us about your search first (onboarding)")
-    task = await queue.enqueue(db, "match_user", user_id=user.id, dedupe=True)
-    return TaskRef(task_id=task.id)
+    return await service.refresh(db, user.id)

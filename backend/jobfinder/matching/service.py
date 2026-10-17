@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
@@ -17,6 +18,8 @@ from jobfinder.integrations.claude.tasks import AITasks
 from jobfinder.matching import prefilter as pf
 from jobfinder.matching.scoring import finalize
 from jobfinder.models import ClarifyingQuestion, Company, Job, JobMatch, Profile, ProfileFact, User
+from jobfinder.repositories import matches as matches_repo
+from jobfinder.services import profile as profile_service
 
 log = logging.getLogger("jobfinder.matching")
 BUDGET_WINDOW = timedelta(hours=24)
@@ -214,7 +217,7 @@ def sync_career_stage(profile: Profile, today=None) -> bool:
         return False
     profile.career_stage = stage
     if previous:
-        profile.version += 1
+        profile_service.bump_version(profile)
         return True
     return False
 
@@ -262,21 +265,28 @@ async def _save(db: AsyncSession, user_id: int, job_id: int, version: int, prefi
             constraint="uq_match_user_job", set_={k: stmt.excluded[k] for k in values if k not in ("user_id", "job_id")}
         )
     )
-    await db.commit()
 
 
-async def match_user(db: AsyncSession, ai: AITasks, user_id: int, *, budget: int | None = None) -> dict:
-    """Score as many promising jobs as the daily budget allows. Progress is committed per job, so
-    a rate limit or crash mid-run loses nothing; the AIError is re-raised so the task can retry."""
+Checkpoint = Callable[[], Awaitable[None]]
+
+
+async def _nothing() -> None:
+    pass
+
+
+async def match_user(
+    db: AsyncSession, ai: AITasks, user_id: int, *, budget: int | None = None, checkpoint: Checkpoint | None = None,
+) -> dict:
+    """Score as many promising jobs as the daily budget allows. Never commits itself: `checkpoint` (the task
+    handler passes the session's commit) runs after each scored job and before the summary is returned or the
+    AIError re-raised, so a rate limit or crash mid-run loses nothing and the task can retry where it stopped."""
+    checkpoint = checkpoint or _nothing
     profile = await db.get(Profile, user_id)
     if not profile or not profile.status:
         return {"scored": 0, "pending": 0, "skipped": "profile not set up"}
-    facts = [
-        (f.question, f.answer)
-        for f in (await db.scalars(sa.select(ProfileFact).where(ProfileFact.user_id == user_id).order_by(ProfileFact.id)))
-    ]
+    facts = await matches_repo.facts(db, user_id)
     if sync_career_stage(profile):
-        await db.commit()
+        await checkpoint()
     version = profile.version
     left = await remaining_budget(db, user_id) if budget is None else budget
 
@@ -304,6 +314,7 @@ async def match_user(db: AsyncSession, ai: AITasks, user_id: int, *, budget: int
                 log.exception("scoring job %s failed", job.id, exc_info=res)
             else:
                 await _save(db, user_id, job.id, version, pre, res)
+                await checkpoint()
                 scored += 1
         if fatal:
             break
@@ -313,7 +324,7 @@ async def match_user(db: AsyncSession, ai: AITasks, user_id: int, *, budget: int
         "pending": max(0, total_work - scored - failed), "failed": failed,
     }
     profile.match_summary = summary
-    await db.commit()
+    await checkpoint()
     if fatal:
         raise fatal
     return summary
