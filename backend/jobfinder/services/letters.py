@@ -12,10 +12,10 @@ from jobfinder.models import CoverLetter, Job, Profile
 from jobfinder.repositories import letters as repo
 from jobfinder.repositories import matches as matches_repo
 from jobfinder.repositories import tasks as tasks_repo
-from jobfinder.scheduling import queue
 from jobfinder.schemas.common import TaskRef
 from jobfinder.schemas.cover_letters import LetterOut, LetterState
 from jobfinder.services.matches import owned, require_background
+from jobfinder.tasks import ledger
 
 DEFAULT_TONE = "professional"
 VALID_TONES = tuple(TONES)
@@ -61,8 +61,7 @@ async def request_draft(db: AsyncSession, user_id: int, match_id: int, tone: str
     existing = await repo.get(db, user_id, job.id)
     if existing and existing.edited and not force:
         raise LetterEdited()
-    # TODO(#48): ledger.add flushes
-    task = await queue.enqueue(
+    task = await ledger.add(
         db, "cover_letter", {"match_id": match_id, "tone": tone, "notes": notes.strip()}, user_id=user_id, dedupe=True
     )
     return TaskRef(task_id=task.id)

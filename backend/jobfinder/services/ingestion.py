@@ -28,7 +28,7 @@ from jobfinder.integrations.recipes.health import needs_reinduce, record_run
 from jobfinder.models import Company
 from jobfinder.repositories import boards as boards_repo
 from jobfinder.repositories import postings as postings_repo
-from jobfinder.scheduling import queue
+from jobfinder.tasks import ledger
 
 log = logging.getLogger("jobfinder.ingest")
 
@@ -178,10 +178,9 @@ async def _queue_reinduce(db: AsyncSession, company_id: int) -> None:
     if not settings.resolver_llm_enabled:
         return
     try:
-        # a savepoint, so an enqueue that fails before it commits leaves the run's changes in place
+        # a savepoint, so a failed add rolls back only itself; the task commits with the run's boundary
         async with db.begin_nested():
-            # TODO(#48): ledger.add flushes; until then enqueue commits the run along with the task
-            await queue.enqueue(db, "reinduce_recipe", {"company_id": company_id}, dedupe=True)
+            await ledger.add(db, "reinduce_recipe", {"company_id": company_id}, dedupe=True)
     except Exception:  # the run itself is recorded; the next degraded run queues it again
         log.exception("could not queue re-induction for board %s", company_id)
 

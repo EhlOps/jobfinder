@@ -1,6 +1,6 @@
 """The user's email and match-budget settings, and the preview of the daily email.
 
-Nothing here commits except `queue.enqueue` (until #48); the request commits once.
+Nothing here commits; the request commits once.
 """
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,9 +11,9 @@ from jobfinder.integrations.smtp import EmailError
 from jobfinder.models import User
 from jobfinder.notify import daily
 from jobfinder.repositories import users
-from jobfinder.scheduling import queue
 from jobfinder.schemas.settings import PreviewResult, SettingsBody
 from jobfinder.services import ratelimit
+from jobfinder.tasks import ledger
 
 
 class NothingToPreview(Conflict):
@@ -43,8 +43,7 @@ async def write(db: AsyncSession, user: User, body: SettingsBody) -> SettingsBod
     )
     profile = await users.profile_of(db, user.id) if roomier else None
     if profile and profile.status:
-        # TODO(#48): ledger.add flushes; enqueue still commits (the settings above with it).
-        await queue.enqueue(db, "match_user", user_id=user.id, dedupe=True)
+        await ledger.add(db, "match_user", user_id=user.id, dedupe=True)
     return after
 
 

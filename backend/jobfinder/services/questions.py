@@ -16,8 +16,8 @@ from jobfinder.models import ClarifyingQuestion, ProfileFact
 from jobfinder.notify.tokens import InvalidToken, read_token
 from jobfinder.repositories import profiles
 from jobfinder.repositories import questions as repo
-from jobfinder.scheduling import queue
 from jobfinder.services import profile as profile_service
+from jobfinder.tasks import ledger
 
 log = logging.getLogger("jobfinder.questions")
 MAX_RAW = 60  # matches reviewed per run
@@ -139,5 +139,5 @@ async def answer_questions(db: AsyncSession, user_id: int, answers: list[dict]) 
         profile = await profiles.get(db, user_id)
         if profile:
             profile_service.bump_version(profile)
-        await queue.enqueue(db, "match_user", user_id=user_id, dedupe=True)  # TODO(#48): ledger.add flushes
+        await ledger.add(db, "match_user", user_id=user_id, dedupe=True)
     return {"answered": answered, "skipped": skipped, "remaining": await open_count(db, user_id)}

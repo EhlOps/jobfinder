@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from jobfinder.core.config import settings
 from jobfinder.matching.service import BUDGET_WINDOW, STALE_STATUSES, UNLIMITED, sync_career_stage
 from jobfinder.models import AICall, Job, JobMatch, PlannerState, Profile, Task, User
-from jobfinder.scheduling import queue
+from jobfinder.tasks import ledger
 
 log = logging.getLogger("jobfinder.planner")
 WORK_KINDS = ("match_user", "audit_profile")  # tasks that spend a user's AI budget
@@ -76,7 +76,7 @@ async def backoff_until(db: AsyncSession, now: datetime) -> datetime | None:
 
 async def in_flight_users(db: AsyncSession) -> set[int]:
     rows = await db.scalars(
-        sa.select(Task.user_id).where(Task.kind.in_(WORK_KINDS), Task.status.in_(queue.ACTIVE), Task.user_id.is_not(None))
+        sa.select(Task.user_id).where(Task.kind.in_(WORK_KINDS), Task.status.in_(ledger.ACTIVE), Task.user_id.is_not(None))
     )
     return set(rows)
 
@@ -248,10 +248,10 @@ async def plan(db: AsyncSession, now: datetime | None = None) -> dict:
         uid = v.user.id
         # An audit queues the match run itself, so it takes the user's slot instead of a separate match.
         kind = "audit_profile" if _needs_audit(v) else "match_user"
-        await queue.enqueue(db, kind, user_id=uid, run_after=run_after, dedupe=True)
+        await ledger.add(db, kind, user_id=uid, run_after=run_after, dedupe=True)
         queued[kind] += 1
         if v.questions_pending:
-            await queue.enqueue(db, "collect_questions", user_id=uid, run_after=run_after, dedupe=True)
+            await ledger.add(db, "collect_questions", user_id=uid, run_after=run_after, dedupe=True)
             queued["collect_questions"] += 1
         v.next_due_at = now + min_gap(v.seen_ago)
     await _save_state(db, views, now, {v.user.id for v in chosen})

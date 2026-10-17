@@ -1,9 +1,9 @@
 """One transaction per request and per task (#45): a write in the matches, cover letter and resume area
 that fails part-way leaves nothing behind, and a matching run keeps each job it scored.
 
-The other endpoints here only read, or only enqueue (enqueue still commits until #48), or only write
-to the file store (resumes); their status tests live in test_matches_api, test_cover_letters_api and
-test_resumes_api.
+The other endpoints here only read, or only queue a task (their rollback tests are in
+test_enqueue_rollback), or only write to the file store (resumes); their status tests live in
+test_matches_api, test_cover_letters_api and test_resumes_api.
 """
 import pytest
 

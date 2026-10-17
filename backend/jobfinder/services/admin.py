@@ -14,7 +14,7 @@ from jobfinder.matching.service import BUDGET_WINDOW, UNLIMITED
 from jobfinder.models import Company, CovetedTarget, User
 from jobfinder.repositories import admin as repo
 from jobfinder.repositories import companies, coverage
-from jobfinder.scheduling import planner, queue
+from jobfinder.scheduling import planner
 from jobfinder.schemas.ai_admin import (
     ActiveTask,
     AiStatus,
@@ -26,6 +26,7 @@ from jobfinder.schemas.ai_admin import (
     TierCount,
 )
 from jobfinder.schemas.coverage import Coverage, CoverageRow, PinIn, PinOut, TargetRow, UnpinIn
+from jobfinder.tasks import ledger
 
 BAD_DOMAIN = "Enter the employer's bare domain, like acme.com (no https://, path or port)."
 
@@ -163,8 +164,7 @@ async def pin(db: AsyncSession, body: PinIn) -> PinOut:
             _pin_company(c)
     task = None
     if t.company_id is None:
-        # TODO(#48): ledger.add flushes; until then enqueue commits the request's writes so far
-        task = await queue.enqueue(db, "audit_coverage", {"target_id": t.id}, dedupe=True)
+        task = await ledger.add(db, "audit_coverage", {"target_id": t.id}, dedupe=True)
     return PinOut(company_id=t.company_id, target_id=t.id, task_id=task.id if task else None)
 
 
@@ -185,28 +185,24 @@ async def unpin(db: AsyncSession, body: UnpinIn) -> PinOut:
     c.coveted_pinned = False if body.exclude else None
     coveted.apply_score(c, c.coveted_score)
     # an unpinned score is stale (an exclusion zeroes it): recompute without running a whole audit
-    # TODO(#48): ledger.add flushes; until then enqueue commits the request's writes so far
-    task = await queue.enqueue(db, "score_coveted", {"no_audit": True}, dedupe=True)
+    task = await ledger.add(db, "score_coveted", {"no_audit": True}, dedupe=True)
     return PinOut(company_id=c.id, task_id=task.id)
 
 
 async def rescore(db: AsyncSession) -> int:
-    # TODO(#48): ledger.add flushes
-    return (await queue.enqueue(db, "score_coveted", dedupe=True)).id
+    return (await ledger.add(db, "score_coveted", dedupe=True)).id
 
 
 async def resolve_target(db: AsyncSession, target_id: int) -> int:
     if await coverage.get(db, target_id) is None:
         raise NoSuchEmployer()
-    # TODO(#48): ledger.add flushes
-    return (await queue.enqueue(db, "audit_coverage", {"target_id": target_id}, dedupe=True)).id
+    return (await ledger.add(db, "audit_coverage", {"target_id": target_id}, dedupe=True)).id
 
 
 async def resolve_company(db: AsyncSession, company_id: int) -> int:
     if await companies.get(db, company_id) is None:
         raise NoSuchCompany()
-    # TODO(#48): ledger.add flushes
-    return (await queue.enqueue(db, "audit_coverage", {"company_id": company_id}, dedupe=True)).id
+    return (await ledger.add(db, "audit_coverage", {"company_id": company_id}, dedupe=True)).id
 
 
 # --- the AI token --------------------------------------------------------------------------------
@@ -229,8 +225,7 @@ async def set_token(db: AsyncSession, admin: User, token: str) -> int:
 
 
 async def check_ai(db: AsyncSession, admin: User, *, dedupe: bool = True) -> int:
-    # TODO(#48): ledger.add flushes
-    return (await queue.enqueue(db, "ai_check", user_id=admin.id, dedupe=dedupe)).id
+    return (await ledger.add(db, "ai_check", user_id=admin.id, dedupe=dedupe)).id
 
 
 def delete_token() -> None:
@@ -265,7 +260,7 @@ async def schedule(db: AsyncSession) -> Schedule:
     """What the background planner has done and will do for each user."""
     now = datetime.now(UTC)
     by_user: dict[int, list[ActiveTask]] = {}
-    for t in await repo.active_user_tasks(db, queue.ACTIVE):
+    for t in await repo.active_user_tasks(db, ledger.ACTIVE):
         by_user.setdefault(t.user_id, []).append(ActiveTask(kind=t.kind, status=t.status, run_after=t.run_after.isoformat()))
     rows = await repo.schedule_users(db)
     budgets = await remaining_budgets(db, [u for u, _, _ in rows])

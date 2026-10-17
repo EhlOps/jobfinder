@@ -20,12 +20,12 @@ from jobfinder.repositories import matches as matches_repo
 from jobfinder.repositories import tasks as tasks_repo
 from jobfinder.resumes import keywords
 from jobfinder.resumes.export import render_docx, render_pdf, resume_to_text
-from jobfinder.scheduling import queue
 from jobfinder.schemas.common import DOCX, PDF, TaskRef
 from jobfinder.schemas.resumes import CoverageOut, ResumeOut, ResumeState, TailoredResumeOut
 from jobfinder.services.matches import owned, require_background
 from jobfinder.storage.documents import MATCH_TAG, DocumentMeta, DocumentStore, is_tailored
 from jobfinder.storage.documents import NotFound as FileGone
+from jobfinder.tasks import ledger
 
 EDITED_TAG = "edited"
 EDITED_MSG = "You edited this resume, so it was not regenerated. Reload and choose overwrite to replace your edits."
@@ -101,8 +101,7 @@ async def request_tailor(db: AsyncSession, store: DocumentStore, user_id: int, m
     if not force and _edited(store, user_id, match_id):  # the worker's save() makes the same check
         raise ResumeEdited()
     payload = {"match_id": match_id, "force": True} if force else {"match_id": match_id}
-    # TODO(#48): ledger.add flushes
-    task = await queue.enqueue(db, "resume_tailor", payload, user_id=user_id, dedupe=True)
+    task = await ledger.add(db, "resume_tailor", payload, user_id=user_id, dedupe=True)
     return TaskRef(task_id=task.id)
 
 

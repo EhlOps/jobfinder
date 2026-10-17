@@ -69,3 +69,14 @@ async def test_request_render_times_out_and_withdraws_the_task(maker, monkeypatc
 async def test_request_render_rejects_unknown_kinds(maker):
     with pytest.raises(ValueError):
         await request_render("ingest_jobs", {}, timeout_s=1, session_factory=maker)
+
+
+@pytest.mark.real_commit
+async def test_request_render_commits_its_task_for_the_render_queue(maker, monkeypatch, published):
+    monkeypatch.setattr(renderer, "POLL_S", 0.01)
+    with pytest.raises(RenderError, match="did not answer"):
+        await request_render("render_list", {"recipe": {}}, timeout_s=0.05, session_factory=maker)
+    async with maker() as db:
+        t = (await db.execute(Task.__table__.select())).one()
+    assert t.queue == "render"
+    assert await published.settle() == [("render", "render_list", t.id)]
