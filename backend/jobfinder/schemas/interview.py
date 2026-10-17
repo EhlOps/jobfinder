@@ -3,7 +3,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from jobfinder.profile.interview import MAX_ANSWER_CHARS
+from jobfinder.services.interview import MAX_ANSWER_CHARS
 
 
 class InterviewOut(BaseModel):

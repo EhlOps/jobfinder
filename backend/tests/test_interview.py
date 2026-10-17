@@ -3,7 +3,7 @@ import sqlalchemy as sa
 from factories import make_match, make_user
 
 from jobfinder.models import JobMatch, Profile, ProfileFact, Task
-from jobfinder.profile import interview
+from jobfinder.services import interview
 from tests.fakes import FakeAuditAI
 
 
@@ -68,6 +68,7 @@ async def test_answer_during_audit_is_not_readded_and_skip_survives(maker):
     async with maker() as db:
         u = await make_user(db)
         await interview.run_audit(db, FakeAuditAI(), u.id)
+        await db.commit()  # each block is a boundary, as a task or a request would be
 
     async def act():
         async with maker() as other:
@@ -75,9 +76,12 @@ async def test_answer_during_audit_is_not_readded_and_skip_survives(maker):
                 {"question": "What did you own at Acme?", "answer": "Billing."},
                 {"question": "Notice period?", "skip": True},
             ])
+            await other.commit()
 
     async with maker() as db:
         await interview.run_audit(db, FakeAuditAI(during=act), u.id)
+        await db.commit()
+    async with maker() as db:
         p = await db.get(Profile, u.id)
         assert [q["question"] for q in p.audit["questions"]] == ["Notice period?"]
         assert p.audit["skipped"] == ["Notice period?"]

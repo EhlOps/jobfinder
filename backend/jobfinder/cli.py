@@ -73,7 +73,7 @@ async def collect(args: argparse.Namespace) -> int:
     from jobfinder.context import default_context
     from jobfinder.db import SessionLocal
     from jobfinder.models import User
-    from jobfinder.questions import service
+    from jobfinder.services import questions as service
 
     ai = default_context().claude
     async with SessionLocal() as db:
@@ -82,8 +82,10 @@ async def collect(args: argparse.Namespace) -> int:
             q = q.where(User.email == args.email.lower())
         for user in (await db.scalars(q)).all():
             try:
-                print(user.email, await service.collect_questions(db, ai, user.id))
-            except AIError as e:
+                out = await service.collect_questions(db, ai, user.id)
+                await db.commit()  # each user is the boundary: a later failure keeps this one's questions
+                print(user.email, out)
+            except AIError as e:  # raised before anything is staged: nothing to roll back
                 print(user.email, f"FAILED: {e}")
     return 0
 
