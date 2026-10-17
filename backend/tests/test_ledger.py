@@ -177,3 +177,13 @@ async def test_runtime_records_a_failure(maker):
         row = await db.get(Task, t.id)
         assert row.status == "failed" and "broken" in row.error
         assert await db.scalar(sa.select(sa.func.count()).select_from(Task)) == 1
+
+
+def test_stream_reads_survive_a_stalled_event_loop():
+    """A 5s socket timeout killed worker-io mid-ingest on prod (the read times out while parsing blocks
+    the loop); the brokers must not set one."""
+    from jobfinder.tasks.brokers import BROKERS
+
+    for broker in BROKERS.values():
+        kw = broker.connection_pool.connection_kwargs
+        assert kw.get("socket_timeout") is None and kw.get("socket_keepalive") is True
