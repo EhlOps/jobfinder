@@ -18,12 +18,14 @@ from jobfinder.models.base import JSONType
 
 
 class Task(Base):
-    """Postgres-backed job queue; claimed with FOR UPDATE SKIP LOCKED."""
+    """The task ledger: the truth for every background task (tasks.ledger). valkey only delivers ids."""
 
     __tablename__ = "tasks"
     __table_args__ = (
         # At most one queued/running task per dedupe_key (NULL keys never conflict).
         Index("uq_tasks_dedupe_active", "dedupe_key", unique=True, postgresql_where=text("status IN ('queued','running')")),
+        # The scheduler's relay: due queued rows per stream (tasks.ledger.due_for_relay).
+        Index("ix_tasks_due", "queue", "run_after", postgresql_where=text("status = 'queued'")),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -31,6 +33,8 @@ class Task(Base):
         ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True
     )
     kind: Mapped[str] = mapped_column(String(64))
+    # The valkey stream that delivers it (tasks.kinds.QUEUES): ai | io | render.
+    queue: Mapped[str] = mapped_column(String(16), default="io", server_default="io")
     payload: Mapped[dict] = mapped_column(JSONType, default=dict)
     status: Mapped[str] = mapped_column(String(16), default="queued", index=True)  # queued|running|done|failed
     result: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
@@ -39,6 +43,9 @@ class Task(Base):
     dedupe_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
     run_after: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # When the scheduler's relay last published it; NULL until then (the api's after-commit publish
+    # doesn't record one). The relay re-sends due rows that stay queued.
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 

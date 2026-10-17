@@ -22,6 +22,9 @@ dependencies = [
   "itsdangerous>=2.2.0",
   "reportlab>=5.0.1",
   "lxml>=5.0",  # HTML scraping (SuccessFactors RMK); already pulled in by trafilatura
+  "taskiq>=0.13",
+  "taskiq-redis>=1.2",
+  "typer>=0.27",
 ]
 
 [project.optional-dependencies]
@@ -96,6 +99,7 @@ source_modules = [
   "jobfinder.services",
   "jobfinder.schemas",
   "jobfinder.storage",
+  "jobfinder.tasks",
   "jobfinder.worker",
 ]
 forbidden_modules = ["jobfinder.api"]
@@ -142,6 +146,7 @@ forbidden_modules = [
   "jobfinder.services",
   "jobfinder.schemas",
   "jobfinder.storage",
+  "jobfinder.tasks",
   "jobfinder.worker",
 ]
 
@@ -163,3 +168,9 @@ type = "forbidden"
 source_modules = ["jobfinder.api"]
 forbidden_modules = ["jobfinder.repositories"]
 allow_indirect_imports = true  # api -> services -> repositories is the layering
+
+[[tool.importlinter.contracts]]
+name = "Requests and services queue tasks through the ledger; only workers import the task runtime (#48)"
+type = "forbidden"
+source_modules = ["jobfinder.api", "jobfinder.services", "jobfinder.repositories"]
+forbidden_modules = ["jobfinder.tasks.runtime", "jobfinder.worker"]
