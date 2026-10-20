@@ -41,7 +41,7 @@ def _ingest_every(s: Settings) -> dict:
 
 
 TABLE = [
-    Cron("ingest_jobs", "interval", _ingest_every, first_run=timedelta(minutes=2)),
+    Cron("ingest_tick", "interval", _ingest_every, first_run=timedelta(minutes=2)),
     Cron("plan_work", "interval", lambda s: {"minutes": s.planner_interval_minutes}, first_run=timedelta(minutes=5)),
     # hourly; each user's lands at their own hour, and it queues question collection ahead of it (#50)
     Cron("daily_emails", "cron", lambda s: {"minute": 5}),

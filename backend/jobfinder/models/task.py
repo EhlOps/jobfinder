@@ -27,6 +27,8 @@ class Task(Base):
         Index("uq_tasks_dedupe_queued", "dedupe_key", unique=True, postgresql_where=text("status = 'queued'")),
         # The scheduler's relay: due queued rows in (run_after, id) order (tasks.ledger.due_for_relay).
         Index("ix_tasks_due", "run_after", "id", postgresql_where=text("status = 'queued'")),
+        # Maintenance's prune: finished rows by age (tasks.ledger.prune).
+        Index("ix_tasks_finished", "finished_at", postgresql_where=text("status IN ('done', 'failed')")),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)

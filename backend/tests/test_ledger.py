@@ -218,6 +218,29 @@ async def test_due_for_relay(db):
     assert {r[0] for r in await ledger.due_for_relay(db, much_later)} == {fresh.id, later.id, sent.id}
 
 
+async def test_prune_deletes_only_old_finished_rows_in_batches(db):
+    old = utcnow() - timedelta(days=get_settings().task_prune_days + 1)
+    recent = utcnow() - timedelta(days=1)
+    rows = {
+        name: Task(kind="plan_work", status=status, finished_at=at, created_at=old, run_after=old)
+        for name, status, at in [
+            ("old_done", "done", old), ("old_failed", "failed", old - timedelta(hours=1)),
+            ("recent_done", "done", recent), ("unfinished_done", "done", None),
+            # A queued or running row is never pruned, even with a stale finished_at (a retry).
+            ("queued", "queued", old), ("running", "running", old),
+        ]
+    }
+    db.add_all(rows.values())
+    await db.flush()
+    ids = {name: t.id for name, t in rows.items()}
+    left = lambda: db.scalars(sa.select(Task.id))
+    assert await ledger.prune(db, batch=1) == 1  # the oldest first
+    assert ids["old_failed"] not in set(await left())
+    assert await ledger.prune(db) == 1
+    assert await ledger.prune(db) == 0
+    assert set(await left()) == {ids[n] for n in ("recent_done", "unfinished_done", "queued", "running")}
+
+
 def test_every_handler_kind_has_a_queue():
     from jobfinder.renderer import KINDS
     from jobfinder.scheduling.handlers import HANDLERS

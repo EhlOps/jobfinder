@@ -141,7 +141,7 @@ Status = Literal["queued", "running", "done", "failed"]
 @tasks.command("list")
 def tasks_list(
     status: Annotated[Status | None, typer.Option(help="Only this status.")] = None,
-    kind: Annotated[str | None, typer.Option(help="Only this kind, e.g. ingest_jobs.")] = None,
+    kind: Annotated[str | None, typer.Option(help="Only this kind, e.g. ingest_board.")] = None,
     limit: Annotated[int, typer.Option(min=1, max=1000, help="How many, newest first.")] = 50,
 ) -> None:
     """The newest tasks: id, kind, queue, status, attempts, user, created, finished."""
