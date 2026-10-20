@@ -296,7 +296,12 @@ async def authed(client, creds, make_account):
 
 class Published(list):
     """What the ledger published after commit: [(queue, kind, task_id)]. Await `settle()` first: the
-    publish runs as a task scheduled by the commit."""
+    publish runs as a task scheduled by the commit. `marked` holds the ids it then marked sent, in
+    savepoint mode only (there the mark can't open its own session on the shared connection)."""
+
+    def __init__(self):
+        super().__init__()
+        self.marked: list[int] = []
 
     async def settle(self) -> "Published":
         from jobfinder.tasks import ledger
@@ -307,9 +312,10 @@ class Published(list):
 
 
 @pytest.fixture
-def published(monkeypatch):
-    """TASKS_BACKEND=ledger with valkey replaced by a recorder (tasks.brokers.publish)."""
-    from jobfinder.tasks import brokers
+def published(request, monkeypatch):
+    """TASKS_BACKEND=ledger with valkey replaced by a recorder (tasks.brokers.publish). real_commit tests
+    mark the published rows sent for real; savepoint-mode ones record the ids in `marked` instead."""
+    from jobfinder.tasks import brokers, ledger
 
     out = Published()
     monkeypatch.setattr(get_settings(), "tasks_backend", "ledger")
@@ -317,5 +323,10 @@ def published(monkeypatch):
     async def record(queue, kind, task_id):
         out.append((queue, kind, task_id))
 
+    async def record_marks(ids):
+        out.marked.extend(ids)
+
     monkeypatch.setattr(brokers, "publish", record)
+    if not request.node.get_closest_marker("real_commit"):
+        monkeypatch.setattr(ledger, "_mark_published", record_marks)
     return out

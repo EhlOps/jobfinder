@@ -1,7 +1,4 @@
 """Minimal Postgres task queue: enqueue, claim (SKIP LOCKED), heartbeat, complete, fail with backoff."""
-import hashlib
-import json
-import logging
 from datetime import datetime, timedelta
 
 from sqlalchemy import select, update
@@ -11,8 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from jobfinder.core.clock import utcnow
 from jobfinder.core.config import settings
 from jobfinder.models import Task
+from jobfinder.tasks import ledger
+from jobfinder.tasks.ledger import dedupe_key  # the one key, shared with ledger rows
 
-log = logging.getLogger("jobfinder.queue")
 # Retry policy from settings: TASK_MAX_ATTEMPTS, TASK_BACKOFF_SECONDS (x4 per attempt) and
 # TASK_STUCK_AFTER_MINUTES (the worker heartbeats every TASK_HEARTBEAT_SECONDS while a task runs).
 ACTIVE = ("queued", "running")
@@ -21,10 +19,6 @@ RENDER_PREFIX = "render_"  # tasks for the opt-in browser container (jobfinder.r
 
 def _now() -> datetime:
     return utcnow()
-
-
-def dedupe_key(kind: str, user_id: int | None, payload: dict) -> str:
-    return hashlib.sha256(f"{kind}|{user_id}|{json.dumps(payload, sort_keys=True, default=str)}".encode()).hexdigest()
 
 
 async def enqueue(
@@ -113,14 +107,6 @@ async def heartbeat(db: AsyncSession, task_id: int) -> None:
 async def reap_stuck(db: AsyncSession) -> int:
     """Recover tasks whose worker died mid-run: requeue them, or fail them once they used all their attempts.
     Returns the number requeued."""
-    attempts = settings.task_max_attempts
-    stale = (Task.status == "running", Task.locked_at < _now() - timedelta(minutes=settings.task_stuck_after_minutes))
-    failed = await db.execute(
-        update(Task).where(*stale, Task.attempts >= attempts)
-        .values(status="failed", finished_at=_now(), error=f"worker stopped responding during {attempts} attempts")
-    )
-    requeued = await db.execute(update(Task).where(*stale).values(status="queued"))
+    requeued = await ledger.reap(db)
     await db.commit()
-    if failed.rowcount:
-        log.warning("failed %d task(s) that kept timing out", failed.rowcount)
-    return requeued.rowcount or 0
+    return requeued
