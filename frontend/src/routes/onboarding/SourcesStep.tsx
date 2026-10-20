@@ -81,6 +81,9 @@ export default function SourcesStep({ onDone, onBack }: { onDone?: () => void; o
   // Only finished, non-empty content counts: a document still processing has nothing to analyze yet.
   const readable = (docs.data?.some((d) => statusOf(d) === "ready" && d.chars > 0) ?? false)
     || (links.data?.some((l) => statusOf(l) === "ready" && l.fetched) ?? false);
+  // The api refuses to analyze while anything is still being read (409 documents_processing, #51).
+  const processing = (docs.data?.some((d) => statusOf(d) === "processing") ?? false)
+    || (links.data?.some((l) => statusOf(l) === "processing") ?? false);
 
   return (
     <div className="card">
@@ -135,9 +138,10 @@ export default function SourcesStep({ onDone, onBack }: { onDone?: () => void; o
         <>
           <div className="actions">
             {onBack && <button type="button" className="secondary" onClick={onBack}>Back</button>}
-            <button type="button" disabled={!readable} onClick={onDone}>Analyze my background</button>
+            <button type="button" disabled={!readable || processing} onClick={onDone}>Analyze my background</button>
           </div>
           {!readable && <p className="hint">Add a resume or a readable link to continue.</p>}
+          {readable && processing && <p className="hint">Still reading your files and links…</p>}
         </>
       )}
     </div>

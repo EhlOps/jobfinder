@@ -175,4 +175,15 @@ describe("sources step", () => {
     expect(analyze()).toBeDisabled();
     expect(screen.getByText("Add a resume or a readable link to continue.")).toBeInTheDocument();
   });
+
+  it("keeps analyze disabled while a second document is still processing", async () => {
+    mockApi({
+      ...base,
+      "GET /api/documents": () => [doc(), doc({ id: "d2", status: "processing", chars: 0 })],
+      "GET /api/links": () => [],
+    });
+    renderApp(<SourcesStep onDone={() => {}} />);
+    await screen.findByText("Still reading your files and links…");
+    expect(analyze()).toBeDisabled();
+  });
 });
