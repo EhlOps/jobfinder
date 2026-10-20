@@ -96,7 +96,7 @@ def make_scheduler() -> AsyncIOScheduler:
         {"minutes": s.ingest_tick_minutes} if s.adaptive_schedule_enabled else {"hours": s.ingest_interval_hours}
     )
     scheduler.add_job(
-        enqueue_scheduled, "interval", **every, args=["ingest_jobs"], id="ingest_jobs",
+        enqueue_scheduled, "interval", **every, args=["ingest_tick"], id="ingest_tick",
         next_run_time=datetime.now(UTC) + timedelta(minutes=2), coalesce=True, max_instances=1,
     )
     scheduler.add_job(
@@ -151,9 +151,12 @@ async def main() -> None:
             try:
                 async with dbmod.SessionLocal() as db:
                     await queue.reap_stuck(db)
+                    pruned = await ledger.prune(db)
                     await ratelimit.prune(db)
                     await prune_sessions(db)
                     await db.commit()
+                if pruned:
+                    log.info("pruned %d finished task(s) older than %d days", pruned, settings.task_prune_days)
             except Exception:
                 log.exception("maintenance tick failed")
         claimed = None

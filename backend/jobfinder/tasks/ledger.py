@@ -11,7 +11,7 @@ import json
 import logging
 from datetime import datetime, timedelta
 
-from sqlalchemy import event, exists, or_, select, update
+from sqlalchemy import delete, event, exists, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,7 +21,7 @@ from jobfinder.core.clock import utcnow
 from jobfinder.core.config import settings
 from jobfinder.core.errors import Conflict, NotFound
 from jobfinder.models import Task
-from jobfinder.tasks.kinds import queue_for
+from jobfinder.tasks.kinds import QUEUES, queue_for
 
 log = logging.getLogger("jobfinder.tasks")
 ACTIVE = ("queued", "running")
@@ -30,6 +30,8 @@ RELAY_GRACE = timedelta(seconds=15)  # the after-commit publish gets this long b
 RELAY_RESEND = timedelta(minutes=10)  # a relayed row still queued after this is sent again
 DEDUPE_INDEX = "uq_tasks_dedupe_queued"  # at most one queued task per dedupe_key
 TWIN_WAIT = timedelta(seconds=30)  # how long `claim` defers a rerun whose twin is still running
+FINISHED = ("done", "failed")
+PRUNE_BATCH = 5000  # rows one prune deletes, so a large backlog is cleared over several ticks
 
 
 def dedupe_key(kind: str, user_id: int | None, payload: dict) -> str:
@@ -214,6 +216,18 @@ async def reap(db: AsyncSession) -> int:
     return requeued.rowcount if requeued else 0
 
 
+async def prune(db: AsyncSession, *, batch: int = PRUNE_BATCH) -> int:
+    """Delete up to `batch` done or failed rows that finished more than TASK_PRUNE_DAYS ago (#50).
+    Queued and running rows are never touched. Returns the number deleted."""
+    cutoff = utcnow() - timedelta(days=settings.task_prune_days)
+    old = (
+        select(Task.id).where(Task.status.in_(FINISHED), Task.finished_at < cutoff)
+        .order_by(Task.finished_at).limit(batch)
+    )
+    result = await db.execute(delete(Task).where(Task.id.in_(old.scalar_subquery())))
+    return result.rowcount
+
+
 async def due_for_relay(db: AsyncSession, now: datetime, *, limit: int = 500) -> list[tuple[int, str, str]]:
     """(id, queue, kind) of queued, due rows the relay should publish: never relayed and older than the
     after-commit publish's grace, or relayed more than RELAY_RESEND ago and still queued."""
@@ -244,7 +258,8 @@ _publishing: set[asyncio.Task] = set()  # strong refs until each publish finishe
 
 def _note(db: AsyncSession, task: Task, now: datetime) -> None:
     if task.run_after <= now:  # later rows wait for the relay
-        db.info.setdefault(PENDING, []).append((task.queue, task.kind, task.id))
+        # The kind decides the stream, as in the relay: a row queued before its kind moved keeps the old column.
+        db.info.setdefault(PENDING, []).append((QUEUES.get(task.kind, task.queue), task.kind, task.id))
 
 
 @event.listens_for(Session, "after_commit")

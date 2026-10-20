@@ -169,6 +169,15 @@ async def test_requeue_runs_a_failed_task_again_once(db, published):
         await ledger.requeue(db, t.id)
 
 
+async def test_a_row_queued_before_its_kind_moved_publishes_to_the_new_stream(db, published):
+    t = Task(kind="daily_emails", queue="ai", payload={}, status="failed")  # daily_emails was on ai before #50
+    db.add(t)
+    await db.flush()
+    await ledger.requeue(db, t.id)
+    await db.commit()
+    assert (await published.settle()) == [("io", "daily_emails", t.id)]
+
+
 async def test_requeue_turns_a_twin_racing_the_check_into_a_conflict(db, monkeypatch):
     t = await ledger.add(db, "ai_check", dedupe=True)
     t = await ledger.claim(db, t.id)
@@ -207,6 +216,29 @@ async def test_due_for_relay(db):
     assert await ledger.due_for_relay(db, soon) == [(fresh.id, "io", "plan_work")]
     much_later = now + timedelta(hours=2)
     assert {r[0] for r in await ledger.due_for_relay(db, much_later)} == {fresh.id, later.id, sent.id}
+
+
+async def test_prune_deletes_only_old_finished_rows_in_batches(db):
+    old = utcnow() - timedelta(days=get_settings().task_prune_days + 1)
+    recent = utcnow() - timedelta(days=1)
+    rows = {
+        name: Task(kind="plan_work", status=status, finished_at=at, created_at=old, run_after=old)
+        for name, status, at in [
+            ("old_done", "done", old), ("old_failed", "failed", old - timedelta(hours=1)),
+            ("recent_done", "done", recent), ("unfinished_done", "done", None),
+            # A queued or running row is never pruned, even with a stale finished_at (a retry).
+            ("queued", "queued", old), ("running", "running", old),
+        ]
+    }
+    db.add_all(rows.values())
+    await db.flush()
+    ids = {name: t.id for name, t in rows.items()}
+    left = lambda: db.scalars(sa.select(Task.id))
+    assert await ledger.prune(db, batch=1) == 1  # the oldest first
+    assert ids["old_failed"] not in set(await left())
+    assert await ledger.prune(db) == 1
+    assert await ledger.prune(db) == 0
+    assert set(await left()) == {ids[n] for n in ("recent_done", "unfinished_done", "queued", "running")}
 
 
 def test_every_handler_kind_has_a_queue():
