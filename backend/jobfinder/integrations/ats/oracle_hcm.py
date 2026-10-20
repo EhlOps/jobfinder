@@ -221,7 +221,7 @@ async def fetch_oracle_hcm(
             break
 
     if list_only:
-        return parse_oracle_hcm(listed, company_name, slug)
+        return await asyncio.to_thread(parse_oracle_hcm, listed, company_name, slug)
 
     sem = asyncio.Semaphore(DETAIL_CONCURRENCY)
     failed = 0
@@ -241,4 +241,4 @@ async def fetch_oracle_hcm(
     details = list(await asyncio.gather(*(detail(i) for i in head)))
     if len(head) >= 3 and failed == len(head):  # one closed posting on a tiny board is not a broken board
         raise RuntimeError(f"all {failed} posting detail requests failed")
-    return parse_oracle_hcm(details + tail, company_name, slug)
+    return await asyncio.to_thread(parse_oracle_hcm, details + tail, company_name, slug)

@@ -1,5 +1,6 @@
 """json_api recipes: call a JSON endpoint (the one the careers page itself uses), page through it, and map
 each item with a small JSONPath subset: $ . key [n] [*] (no filters, no scripts)."""
+import asyncio
 import re
 from datetime import UTC, datetime
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -15,7 +16,7 @@ from jobfinder.ingest.base import (
     parse_salary_range,
     safe_http_url,
 )
-from jobfinder.ingest.http_safety import JSON_TYPES, safe_fetch
+from jobfinder.ingest.http_safety import JSON_TYPES, SafeResponse, safe_fetch
 from jobfinder.integrations.recipes import (
     MAX_ITEMS,
     RECIPE_RUNNERS,
@@ -145,6 +146,15 @@ def page_request(recipe: Recipe, page: int) -> tuple[str, dict | None]:
     return urlunsplit(parts._replace(query=urlencode(q))), body
 
 
+def _map_page(r: SafeResponse, recipe: Recipe, slug: str, company_name: str) -> list[JobPosting]:
+    try:
+        data = r.json()
+    except ValueError:
+        raise RecipeError("endpoint did not return JSON") from None
+    mapped = (map_item(item, recipe, slug, company_name, r.url) for item in get_all(data, recipe.items))
+    return [p for p in mapped if p]
+
+
 async def run_json_api(client: httpx.AsyncClient, recipe: Recipe, slug: str, company_name: str
                        ) -> list[JobPosting]:
     pages = 1 if recipe.pagination.kind == "none" else recipe.pagination.max_pages
@@ -154,15 +164,10 @@ async def run_json_api(client: httpx.AsyncClient, recipe: Recipe, slug: str, com
         url, body = page_request(recipe, page)
         r = await safe_fetch(client, url, method=recipe.list.method, headers=recipe.list.headers or None,
                              json=body, accept=JSON_TYPES + ("text/plain",))
-        try:
-            data = r.json()
-        except ValueError:
-            raise RecipeError("endpoint did not return JSON") from None
-        items = get_all(data, recipe.items)
+        # JSON decode + mapping is CPU-bound on big pages: keep it off the event loop
         added = 0
-        for item in items:
-            p = map_item(item, recipe, slug, company_name, r.url)
-            if p and p.external_id not in seen:
+        for p in await asyncio.to_thread(_map_page, r, recipe, slug, company_name):
+            if p.external_id not in seen:
                 seen.add(p.external_id)
                 out.append(p)
                 added += 1

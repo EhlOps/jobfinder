@@ -305,7 +305,7 @@ async def fetch_taleo(
     listed = [r for r in listed if _columns(r)[0]]  # only postings parse_taleo keeps are worth a page fetch
     sample = JOB_URL.format(tenant=tenant, cs=cs, job="1")
     if list_only or not listed or not await robots.allowed(sample):
-        return parse_taleo(listed, company_name, slug)
+        return await asyncio.to_thread(parse_taleo, listed, company_name, slug)
 
     sem = asyncio.Semaphore(DETAIL_CONCURRENCY)
     failed = 0
@@ -316,7 +316,7 @@ async def fetch_taleo(
             try:
                 job_url = JOB_URL.format(tenant=tenant, cs=cs, job=_job_no(item))
                 r = await _get_page(robots, job_url, tenant)
-                return {**item, "description": job_description(r.text)}
+                return {**item, "description": await asyncio.to_thread(job_description, r.text)}
             except Exception:  # HTTP error / robots / odd page: keep the listing data
                 failed += 1
                 return item
@@ -325,4 +325,4 @@ async def fetch_taleo(
     details = list(await asyncio.gather(*(detail(i) for i in head)))
     if len(head) >= 3 and failed == len(head):
         raise RuntimeError(f"all {failed} job page requests failed")
-    return parse_taleo(details + tail, company_name, slug)
+    return await asyncio.to_thread(parse_taleo, details + tail, company_name, slug)
