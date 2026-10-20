@@ -96,7 +96,7 @@ def make_scheduler() -> AsyncIOScheduler:
         {"minutes": s.ingest_tick_minutes} if s.adaptive_schedule_enabled else {"hours": s.ingest_interval_hours}
     )
     scheduler.add_job(
-        enqueue_scheduled, "interval", **every, args=["ingest_jobs"], id="ingest_jobs",
+        enqueue_scheduled, "interval", **every, args=["ingest_tick"], id="ingest_tick",
         next_run_time=datetime.now(UTC) + timedelta(minutes=2), coalesce=True, max_instances=1,
     )
     scheduler.add_job(
