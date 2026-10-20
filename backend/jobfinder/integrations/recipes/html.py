@@ -7,6 +7,7 @@ descendant (space) and child (`>`) combinators, and `:scope` (the item itself) a
 end in `@attr` to read an attribute instead of the text: `a.job-title@href`, `time@datetime`, `@href`.
 Anything else is a RecipeError before any request is made.
 """
+import asyncio
 import re
 from dataclasses import dataclass, field
 from urllib.parse import urljoin, urlsplit
@@ -268,6 +269,11 @@ def map_items(page: str, recipe: Recipe, compiled: CompiledRecipe, slug: str, co
     return out
 
 
+def _map_page(r: SafeResponse, recipe: Recipe, compiled: CompiledRecipe, slug: str, company_name: str
+              ) -> list[JobPosting]:
+    return map_items(page_text(r), recipe, compiled, slug, company_name, r.url)
+
+
 async def run_html(client: httpx.AsyncClient, recipe: Recipe, slug: str, company_name: str
                    ) -> list[JobPosting]:
     compiled = compile_recipe(recipe)  # refuse a bad selector before any request
@@ -280,7 +286,8 @@ async def run_html(client: httpx.AsyncClient, recipe: Recipe, slug: str, company
         r = await safe_fetch(client, url, method=recipe.list.method, headers=recipe.list.headers or None,
                              json=body, accept=TEXT_TYPES, max_bytes=PAGE_MAX_BYTES, robots=robots)
         added = 0
-        for p in map_items(page_text(r), recipe, compiled, slug, company_name, r.url):
+        # decoding + lxml parsing a page is CPU-bound: keep it off the event loop
+        for p in await asyncio.to_thread(_map_page, r, recipe, compiled, slug, company_name):
             if p.external_id not in seen:
                 seen.add(p.external_id)
                 out.append(p)

@@ -225,7 +225,7 @@ async def fetch_successfactors(
     total, start = None, 0
     for page in range(1 if list_only else MAX_PAGES):
         body = await _get(client, robots, SEARCH_URL.format(base=base, start=start))
-        rows = parse_search(body, host, base)
+        rows = await asyncio.to_thread(parse_search, body, host, base)
         if page == 0:
             total = parse_total(body)
         fresh = [r for r in rows if r["id"] not in seen]
@@ -236,7 +236,7 @@ async def fetch_successfactors(
             break
 
     if list_only:
-        return parse_successfactors(listed, company_name, slug)
+        return await asyncio.to_thread(parse_successfactors, listed, company_name, slug)
 
     sem = asyncio.Semaphore(DETAIL_CONCURRENCY)
     failed = 0
@@ -245,7 +245,8 @@ async def fetch_successfactors(
         nonlocal failed
         async with sem:
             try:
-                return {**row, "detail": parse_detail(await _get(client, robots, row["url"]))}
+                page = await _get(client, robots, row["url"])
+                return {**row, "detail": await asyncio.to_thread(parse_detail, page)}
             except (FetchError, httpx.HTTPError, ValueError, etree.LxmlError):
                 failed += 1  # keep the listing data; the upsert preserves any stored description
                 return row
@@ -254,7 +255,7 @@ async def fetch_successfactors(
     details = list(await asyncio.gather(*(detail(r) for r in head)))
     if len(head) >= 3 and failed == len(head):
         raise RuntimeError(f"all {failed} job page requests failed")
-    return parse_successfactors(details + tail, company_name, slug)
+    return await asyncio.to_thread(parse_successfactors, details + tail, company_name, slug)
 
 
 def detect_successfactors(page_url: str, page_html: str) -> tuple[str, str] | None:

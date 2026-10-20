@@ -84,8 +84,10 @@ async def fetch_smartrecruiters(
             break
 
     if list_only:
-        return parse_smartrecruiters(
-            [{**i, "postingUrl": f"https://jobs.smartrecruiters.com/{slug}/{i.get('id')}"} for i in listed], company_name
+        return await asyncio.to_thread(
+            parse_smartrecruiters,
+            [{**i, "postingUrl": f"https://jobs.smartrecruiters.com/{slug}/{i.get('id')}"} for i in listed],
+            company_name,
         )
 
     sem = asyncio.Semaphore(DETAIL_CONCURRENCY)
@@ -108,4 +110,4 @@ async def fetch_smartrecruiters(
     details = list(await asyncio.gather(*(detail(i) for i in listed)))
     if listed and failed == len(listed):
         raise RuntimeError(f"all {failed} posting detail requests failed")
-    return parse_smartrecruiters(details, company_name)
+    return await asyncio.to_thread(parse_smartrecruiters, details, company_name)

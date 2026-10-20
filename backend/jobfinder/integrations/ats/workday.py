@@ -161,7 +161,7 @@ async def fetch_workday(
             break
 
     if list_only:
-        return parse_workday(listed, company_name, slug)
+        return await asyncio.to_thread(parse_workday, listed, company_name, slug)
 
     sem = asyncio.Semaphore(DETAIL_CONCURRENCY)
     failed = 0
@@ -182,4 +182,4 @@ async def fetch_workday(
     details = list(await asyncio.gather(*(detail(i) for i in head)))
     if len(head) >= 3 and failed == len(head):
         raise RuntimeError(f"all {failed} posting detail requests failed")
-    return parse_workday(details + tail, company_name, slug)
+    return await asyncio.to_thread(parse_workday, details + tail, company_name, slug)
