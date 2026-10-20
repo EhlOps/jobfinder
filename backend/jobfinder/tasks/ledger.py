@@ -11,7 +11,7 @@ import json
 import logging
 from datetime import datetime, timedelta
 
-from sqlalchemy import delete, event, exists, or_, select, update
+from sqlalchemy import delete, event, exists, literal_column, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -67,7 +67,10 @@ async def add(
     twin = select(Task).where(Task.dedupe_key == key).order_by(Task.id.desc()).limit(1)
     insert = (
         pg_insert(Task).values(**values, dedupe_key=key)
-        .on_conflict_do_nothing(index_elements=["dedupe_key"], index_where=Task.status == "queued")
+        # A literal, not a bind: under a generic plan (asyncpg's prepared statement, after five runs) a
+        # bound status can't match the partial index's predicate, and Postgres rejects the insert.
+        .on_conflict_do_nothing(index_elements=["dedupe_key"],
+                                index_where=Task.status == literal_column("'queued'"))
         .returning(Task)
     )
     for _ in range(2):  # the second pass covers the queued twin being claimed between our insert and select
