@@ -165,6 +165,20 @@ async def test_maintenance_reaps_a_stale_running_row(maker):
         assert (row.status, row.sent_at) == ("queued", None)
 
 
+async def test_maintenance_prunes_old_finished_rows(maker, caplog):
+    caplog.set_level(logging.INFO, "jobfinder.scheduler")
+    old = utcnow() - timedelta(days=get_settings().task_prune_days + 1)
+    async with maker() as db:
+        done = Task(kind="plan_work", status="done", finished_at=old)
+        queued = Task(kind="plan_work", status="queued", finished_at=old)
+        db.add_all([done, queued])
+        await db.commit()
+    await maintenance.tick()
+    async with maker() as db:
+        assert await db.get(Task, done.id) is None and await db.get(Task, queued.id) is not None
+    assert "pruned 1 finished task(s)" in caplog.text
+
+
 async def test_a_failing_maintenance_tick_is_logged_not_raised(monkeypatch, caplog):
     async def boom(*a, **k):
         raise RuntimeError("db down")

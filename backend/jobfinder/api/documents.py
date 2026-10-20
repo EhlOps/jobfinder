@@ -4,8 +4,8 @@ from typing import Annotated
 from fastapi import APIRouter, File, Form, Query, UploadFile
 from fastapi.responses import FileResponse, PlainTextResponse
 
-from jobfinder.api.deps import CurrentUser, Store
-from jobfinder.schemas.documents import DocumentOut
+from jobfinder.api.deps import CurrentUser, DbSession, Store
+from jobfinder.schemas.documents import DocumentOut, DocumentUpload
 from jobfinder.services import documents as service
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
@@ -21,15 +21,17 @@ async def list_documents(
     return [DocumentOut.of(d) for d in service.list_documents(store, user.id, kind, tag)]
 
 
-@router.post("", response_model=DocumentOut, status_code=201)
+@router.post("", response_model=DocumentUpload, status_code=202)
 async def upload_document(
     user: CurrentUser,
+    db: DbSession,
     store: Store,
     file: Annotated[UploadFile, File()],
     kind: Annotated[str, Form()] = "resume",
 ):
-    meta, created = await service.upload(store, user.id, kind, file.filename, file.read)
-    return DocumentOut.of(meta, duplicate=not created)
+    """Store the file and read it in the worker: the document is "processing" until then. Poll
+    GET /api/tasks/{task_id}, then GET the document (ready, or error if it couldn't be read)."""
+    return await service.upload(db, store, user.id, kind, file.filename, file.read)
 
 
 @router.get("/{doc_id}", response_model=DocumentOut)

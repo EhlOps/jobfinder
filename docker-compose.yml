@@ -174,8 +174,9 @@ services:
       valkey:
         condition: service_healthy
 
-  # Stream jobfinder:io: ingestion, planning, discovery, coverage scoring; WORKER_IO_CONCURRENCY at once.
-  # No Claude and no document store; the worker image for ingestion's dependencies.
+  # Stream jobfinder:io: ingestion, planning, discovery, coverage scoring, and reading uploads and profile
+  # links (parse_document, fetch_link: #51, so the store); WORKER_IO_CONCURRENCY at once. No Claude; the
+  # worker image for ingestion's dependencies.
   worker-io:
     build:
       context: ./backend
@@ -194,7 +195,10 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
+      STORE_DIR: /data/store
       TASKS_BACKEND: ${TASKS_BACKEND:-legacy}
+    volumes:
+      - store:/data/store
     depends_on:
       db:
         condition: service_healthy

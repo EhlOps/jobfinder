@@ -42,17 +42,26 @@ resume_tailor = _legacy("resume_tailor")
 ai_check = _legacy("ai_check")
 resolve_job_link = _legacy("resolve_job_link")
 audit_coverage = _legacy("audit_coverage")
+induce_recipe = _legacy("induce_recipe")
 reinduce_recipe = _legacy("reinduce_recipe")
 ingest_jobs = _legacy("ingest_jobs")
+ingest_tick = _legacy("ingest_tick")
+ingest_board = _legacy("ingest_board")
+ingest_source = _legacy("ingest_source")
 plan_work = _legacy("plan_work")
 discover_boards = _legacy("discover_boards")
 score_coveted = _legacy("score_coveted")
+parse_document = _legacy("parse_document")
+fetch_link = _legacy("fetch_link")
 
 HANDLERS: dict[str, Handler] = {
     "extract_profile": extract_profile,
     "followup_questions": followup_questions,
     "audit_profile": audit_profile,
     "ingest_jobs": ingest_jobs,
+    "ingest_tick": ingest_tick,
+    "ingest_board": ingest_board,
+    "ingest_source": ingest_source,
     "plan_work": plan_work,
     "ai_check": ai_check,
     "match_user": match_user,
@@ -64,5 +73,8 @@ HANDLERS: dict[str, Handler] = {
     "resolve_job_link": resolve_job_link,
     "score_coveted": score_coveted,
     "audit_coverage": audit_coverage,
+    "induce_recipe": induce_recipe,
     "reinduce_recipe": reinduce_recipe,
+    "parse_document": parse_document,
+    "fetch_link": fetch_link,
 }

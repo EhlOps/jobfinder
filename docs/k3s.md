@@ -178,7 +178,7 @@ browser → host Caddy (TLS, staging.ehlops.com) → Traefik 127.0.0.1:8280 → 
 | `worker` ×0 | `jobfinder-worker` | the legacy worker (`TASKS_BACKEND=legacy`; ×1 in prod), uid 10001, `strategy: Recreate` |
 | `scheduler` ×1 | `jobfinder-api` | cron, relay, reaper ("Task platform"); `strategy: Recreate`, heartbeat-file liveness |
 | `worker-ai` ×1 | `jobfinder-worker` | stream `jobfinder:ai`, `AI_MAX_CONCURRENCY`; the only one with Claude (store and claude-auth volumes) |
-| `worker-io` ×1 | `jobfinder-worker` | stream `jobfinder:io`, `WORKER_IO_CONCURRENCY`; no volumes |
+| `worker-io` ×1 | `jobfinder-worker` | stream `jobfinder:io`, `WORKER_IO_CONCURRENCY`; store volume (it reads uploads and fetches links, #51) |
 | `renderer` ×0 | `jobfinder-renderer` | opt-in; patch replicas to 1 and merge `RENDERER_ENABLED=true`; under the ledger it consumes `jobfinder:render` |
 | `smtp` | `boky/postfix:5.1.0` | root (postfix needs it); staging relays to mailpit only, egress NetworkPolicy |
 | `mailpit` | `axllent/mailpit:v1.31.3` | staging only; the app's `SMTP_HOST` |
@@ -270,7 +270,7 @@ api / workers ──(1) INSERT the tasks row, in the caller's transaction──�
       │ (2) after COMMIT: XADD the row's id to its queue's stream
       ▼
 valkey  jobfinder:ai     ──▶ worker-ai  (AI_MAX_CONCURRENCY=2; the only one with the claude CLI)
-        jobfinder:io     ──▶ worker-io  (WORKER_IO_CONCURRENCY=10: ingest, planning, discovery, coverage scores)
+        jobfinder:io     ──▶ worker-io  (WORKER_IO_CONCURRENCY=10: ingest, planning, discovery, coverage scores, uploads, links)
         jobfinder:render ──▶ renderer   (RENDERER_CONCURRENCY; opt-in, 0 replicas)
         worker: (3) claim the row (one atomic UPDATE, queued → running) → run → finish → XACK
 
@@ -278,7 +278,7 @@ scheduler (1 replica, Recreate)
         cron:   writes the scheduled rows (ingest ticks, daily emails, ...), deduped like user work
         relay:  every RELAY_SECONDS (15s), XADDs due rows that are still queued, so a lost publish is re-sent
         reaper: a running row whose heartbeat is older than TASK_STUCK_AFTER_MINUTES (5) goes back to queued
-        prune:  old tasks, rate events and sessions
+        prune:  done/failed tasks older than TASK_PRUNE_DAYS (30; up to 5000 rows a tick), rate events, sessions
 ```
 
 **How does the api hand work to the workers? Through valkey as well?** Yes, but valkey only delivers. The api writes the ledger row in the request's own transaction. After the commit, it publishes the row's id to the queue's valkey stream, so a worker never sees an uncommitted row. Suppose the publish is lost (valkey is down, or the pod is killed between the commit and the publish). The row is still queued in Postgres, and the scheduler's relay re-sends it on a later tick. A duplicate delivery does no harm: the worker's claim is a single `UPDATE … WHERE status = 'queued'`, so one delivery wins and the others are acked and dropped. Workers enqueue their follow-ups the same way (ingest → `plan_work`, matching → `collect_questions`).
@@ -294,12 +294,12 @@ scheduler (1 replica, Recreate)
 |---|---|---|---|---|
 | `scheduler` | `jobfinder-api` | `python -m jobfinder.scheduler` | 0 / 1, Recreate, never more than 1 | `/tmp` (heartbeat) |
 | `worker-ai` | `jobfinder-worker` | `python -m jobfinder.tasks ai` | 0 / 1, Recreate (the Claude cap is per process) | store, claude-auth, `/tmp`, `$HOME` |
-| `worker-io` | `jobfinder-worker` | `python -m jobfinder.tasks io` | 0 / 1, Recreate | `/tmp` |
+| `worker-io` | `jobfinder-worker` | `python -m jobfinder.tasks io` | 0 / 1, Recreate | store, `/tmp` |
 | `renderer` | `jobfinder-renderer` | `python -m jobfinder.renderer` | 0 / 0 (opt-in) | `/tmp`, `/dev/shm` |
 | `worker` (legacy) | `jobfinder-worker` | `python -m jobfinder.worker` | 1 / 0 | store, claude-auth, `/tmp`, `$HOME` |
 
 - **Labels.** All of them carry `jobfinder.io/postgres-client` and `jobfinder.io/valkey-client`, so the NetworkPolicies let them in.
-- **Claude.** Only worker-ai runs Claude. worker-io uses the worker image only for ingestion's dependencies; none of its kinds reads the document store or the Claude token.
+- **Claude.** Only worker-ai runs Claude. worker-io uses the worker image only for ingestion's dependencies, and never reads the Claude token. It does mount the store: `parse_document` and `fetch_link` read uploads and profile links there off the api, which saves them as "processing" (#51; `SYNC_UPLOADS=true` keeps the old in-request path for one release).
 - **Liveness.** The scheduler touches `/tmp/scheduler-alive` on every relay tick and is restarted when the file is more than 2 minutes old. The workers have no HTTP endpoint, so their probe checks that the `jobfinder.tasks` process is there (like the legacy worker's).
 - **Shutdown.** The workers get `terminationGracePeriodSeconds: 60`, so an in-flight task can finish and ack.
 - **Backend checks.** The scheduler refuses to start unless `TASKS_BACKEND=ledger`, and the legacy worker refuses to start under it.

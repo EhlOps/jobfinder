@@ -216,8 +216,8 @@
     ],
     "name": "upload_document",
     "path": "/api/documents",
-    "response_model": "DocumentOut",
-    "status_code": 201
+    "response_model": "DocumentUpload",
+    "status_code": 202
   },
   {
     "include_in_schema": true,
@@ -337,8 +337,8 @@
     ],
     "name": "add_link",
     "path": "/api/links",
-    "response_model": "ProfileLinkOut",
-    "status_code": 201
+    "response_model": "LinkUpload",
+    "status_code": 202
   },
   {
     "include_in_schema": true,
@@ -359,8 +359,8 @@
     ],
     "name": "refresh_link",
     "path": "/api/links/{link_id}/refresh",
-    "response_model": "ProfileLinkOut",
-    "status_code": null
+    "response_model": "LinkUpload",
+    "status_code": 202
   },
   {
     "include_in_schema": true,

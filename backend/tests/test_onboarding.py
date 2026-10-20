@@ -5,13 +5,19 @@ from jobfinder.worker import run_task
 from tests.fakes import FakeOnboardingAI
 
 
+async def upload(authed, maker, name: str, data: bytes) -> None:
+    """Upload a file and let the worker read it (parse_document, #51)."""
+    r = await authed.post("/api/documents", files={"file": (name, data, "text/plain")})
+    await run_task(r.json()["task_id"], None, maker)
+
+
 async def test_extract_requires_something_to_read(authed):
     r = await authed.post("/api/onboarding/extract")
     assert r.status_code == 422
 
 
 async def test_extract_flow(authed, maker):
-    await authed.post("/api/documents", files={"file": ("resume.txt", b"Intern at Acme", "text/plain")})
+    await upload(authed, maker, "resume.txt", b"Intern at Acme")
     r = await authed.post("/api/onboarding/extract")
     assert r.status_code == 202
     tid = r.json()["task_id"]
@@ -30,7 +36,7 @@ async def test_extract_ignores_tailored_resumes(authed, maker):
     from jobfinder.resumes.service import match_tags
     from jobfinder.storage.documents import get_store
 
-    await authed.post("/api/documents", files={"file": ("resume.txt", b"Intern at Acme", "text/plain")})
+    await upload(authed, maker, "resume.txt", b"Intern at Acme")
     uid = (await authed.get("/api/auth/me")).json()["id"]
     get_store().put(uid, "resume", "Tailored resume - x.json", text='{"summary": "reworded"}',
                     content_type="application/json", tags=match_tags(7))
@@ -55,7 +61,7 @@ async def test_followups_flow(authed, maker):
 
 @pytest.mark.parametrize(("exc", "status"), [(AIError("rate_limited", "limit"), "queued"), (AIError("auth", "login"), "failed")])
 async def test_ai_errors_retry_only_when_retryable(authed, maker, exc, status):
-    await authed.post("/api/documents", files={"file": ("r.txt", b"x", "text/plain")})
+    await upload(authed, maker, "r.txt", b"x")
     tid = (await authed.post("/api/onboarding/extract")).json()["task_id"]
     ai = FakeOnboardingAI()
     ai.fail_with = exc
@@ -64,8 +70,8 @@ async def test_ai_errors_retry_only_when_retryable(authed, maker, exc, status):
     assert t["status"] == status and exc.kind in t["error"]
 
 
-async def test_tasks_are_private(authed, client, make_account):
-    await authed.post("/api/documents", files={"file": ("r.txt", b"x", "text/plain")})
+async def test_tasks_are_private(authed, client, make_account, maker):
+    await upload(authed, maker, "r.txt", b"x")
     tid = (await authed.post("/api/onboarding/extract")).json()["task_id"]
     await client.post("/api/auth/logout")
     await make_account("z@x.com", "password-zzzz")

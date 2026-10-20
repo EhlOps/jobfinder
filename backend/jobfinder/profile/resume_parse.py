@@ -5,11 +5,13 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from itertools import islice
 
-ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt", ".md"}
+from jobfinder.profile.formats import ALLOWED_EXTENSIONS  # noqa: F401  (re-exported)
+
 MAX_CHARS = 60_000
 MAX_PDF_PAGES = 30  # a resume is a few pages; anything longer is cut off, not parsed to the end
 PARSE_TIMEOUT_S = 20.0
 MAX_PARSES = 2
+SLOT_POLL_S = 0.25  # how often worker-io looks for a free slot
 _slots = threading.BoundedSemaphore(MAX_PARSES)
 _pool = ThreadPoolExecutor(max_workers=MAX_PARSES, thread_name_prefix="parse")
 
@@ -54,6 +56,20 @@ async def extract_text_async(data: bytes, ext: str) -> str:
     event loop's default executor (used for DNS lookups) is never touched."""
     if not _slots.acquire(blocking=False):
         raise ParserBusy
+    try:
+        fut = asyncio.get_running_loop().run_in_executor(_pool, _run, data, ext)
+    except BaseException:
+        _slots.release()
+        raise
+    return await asyncio.wait_for(fut, PARSE_TIMEOUT_S)
+
+
+async def extract_text_in_worker(data: bytes, ext: str) -> str:
+    """The same pool, slots and time limit for worker-io's parse_document (#51), which waits for a free
+    slot instead of answering busy: a task can wait, and ingestion's DNS lookups and to_thread calls on
+    the default executor never queue behind a stuck parse."""
+    while not _slots.acquire(blocking=False):
+        await asyncio.sleep(SLOT_POLL_S)
     try:
         fut = asyncio.get_running_loop().run_in_executor(_pool, _run, data, ext)
     except BaseException:

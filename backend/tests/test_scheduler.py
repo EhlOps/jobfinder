@@ -18,9 +18,9 @@ def test_scheduler_has_ingest_and_daily_email_jobs(monkeypatch):
     monkeypatch.setattr(get_settings(), "coverage_enabled", False)
     sched = worker.make_scheduler()
     jobs = {j.id: j for j in sched.get_jobs()}
-    assert set(jobs) == {"ingest_jobs", "daily_emails", "plan_work"}
-    assert jobs["ingest_jobs"].args == ("ingest_jobs",) and jobs["daily_emails"].args == ("daily_emails",)
-    assert "interval[3:00:00]" in str(jobs["ingest_jobs"].trigger)
+    assert set(jobs) == {"ingest_tick", "daily_emails", "plan_work"}
+    assert jobs["ingest_tick"].args == ("ingest_tick",) and jobs["daily_emails"].args == ("daily_emails",)
+    assert "interval[3:00:00]" in str(jobs["ingest_tick"].trigger)
     assert "minute='5'" in str(jobs["daily_emails"].trigger) and "hour" not in str(jobs["daily_emails"].trigger).replace("minute", "")
 
 
@@ -28,15 +28,15 @@ def test_adaptive_schedule_ingests_on_a_short_tick(monkeypatch):
     monkeypatch.setattr(get_settings(), "adaptive_schedule_enabled", True)
     monkeypatch.setattr(get_settings(), "ingest_tick_minutes", 15)
     jobs = {j.id: j for j in worker.make_scheduler().get_jobs()}
-    assert "interval[0:15:00]" in str(jobs["ingest_jobs"].trigger)
-    assert jobs["ingest_jobs"].args == ("ingest_jobs",)
+    assert "interval[0:15:00]" in str(jobs["ingest_tick"].trigger)
+    assert jobs["ingest_tick"].args == ("ingest_tick",)
 
 
 def test_scheduler_adds_weekly_discovery_when_enabled(monkeypatch):
     monkeypatch.setattr(get_settings(), "discovery_enabled", True)
     monkeypatch.setattr(get_settings(), "coverage_enabled", False)
     jobs = {j.id: j for j in worker.make_scheduler().get_jobs()}
-    assert set(jobs) == {"ingest_jobs", "daily_emails", "plan_work", "discover_boards"}
+    assert set(jobs) == {"ingest_tick", "daily_emails", "plan_work", "discover_boards"}
     assert jobs["discover_boards"].args == ("discover_boards",)
     assert "day_of_week='sun'" in str(jobs["discover_boards"].trigger)
 
