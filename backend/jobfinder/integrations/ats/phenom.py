@@ -221,7 +221,7 @@ async def fetch_phenom(
     listed = [j for j in listed if _keepable(j)]  # only postings parse_phenom keeps are worth a page fetch
     sample = JOB_URL.format(host=host, country=country, lang=lang, job_id="x")
     if list_only or not listed or not await robots.allowed(sample):  # job pages off limits: keep the teasers
-        return parse_phenom(listed, company_name, slug)
+        return await asyncio.to_thread(parse_phenom, listed, company_name, slug)
 
     sem = asyncio.Semaphore(DETAIL_CONCURRENCY)
     failed = 0
@@ -233,7 +233,7 @@ async def fetch_phenom(
             try:
                 page_url = JOB_URL.format(host=host, country=country, lang=lang, job_id=job_id)
                 r = await safe_fetch(client, page_url, accept=TEXT_TYPES, robots=robots, max_bytes=PAGE_MAX_BYTES)
-                return {**item, "detail": job_posting_ld(r.text)}
+                return {**item, "detail": await asyncio.to_thread(job_posting_ld, r.text)}
             except Exception:  # FetchError / robots / bad page: keep the listing data (teaser description)
                 failed += 1
                 return item
@@ -242,4 +242,4 @@ async def fetch_phenom(
     details = list(await asyncio.gather(*(detail(i) for i in head)))
     if len(head) >= 3 and failed == len(head):
         raise RuntimeError(f"all {failed} job page requests failed")
-    return parse_phenom(details + tail, company_name, slug)
+    return await asyncio.to_thread(parse_phenom, details + tail, company_name, slug)

@@ -279,7 +279,7 @@ async def fetch_eightfold(
     listed = list(by_id.values())
 
     if list_only:
-        return parse_eightfold(listed, company_name, slug)
+        return await asyncio.to_thread(parse_eightfold, listed, company_name, slug)
 
     sem = asyncio.Semaphore(DETAIL_CONCURRENCY)
     failed = 0
@@ -297,4 +297,4 @@ async def fetch_eightfold(
     details = list(await asyncio.gather(*(detail(i) for i in head)))
     if len(head) >= 3 and failed == len(head):
         raise RuntimeError(f"all {failed} posting detail requests failed")
-    return parse_eightfold(details + tail, company_name, slug)
+    return await asyncio.to_thread(parse_eightfold, details + tail, company_name, slug)

@@ -312,7 +312,8 @@ async def _get(client: httpx.AsyncClient, url: str, robots: _PortalRobots, max_b
 async def _list_search(client, host: str, robots, list_only: bool) -> list[dict]:
     cards: dict[str, dict] = {}
     for page in range(1 if list_only else MAX_PAGES):
-        found, pages = parse_search_page(await _get(client, SEARCH.format(host=host, page=page), robots), host)
+        page_html = await _get(client, SEARCH.format(host=host, page=page), robots)
+        found, pages = await asyncio.to_thread(parse_search_page, page_html, host)
         new = [c for c in found if c["id"] not in cards]
         cards.update((c["id"], c) for c in new)
         if not new or page + 1 >= pages:
@@ -335,13 +336,14 @@ async def fetch_icims(
         search_error = None
     if not listed:
         try:
-            listed = parse_sitemap(await _get(client, SITEMAP.format(host=host), robots, SITEMAP_MAX_BYTES), host)
+            xml = await _get(client, SITEMAP.format(host=host), robots, SITEMAP_MAX_BYTES)
+            listed = await asyncio.to_thread(parse_sitemap, xml, host)
         except (httpx.HTTPError, FetchError):
             if search_error is not None:
                 raise search_error from None
             raise
     if list_only:
-        return parse_icims(listed, company_name, slug)
+        return await asyncio.to_thread(parse_icims, listed, company_name, slug)
 
     sem = asyncio.Semaphore(DETAIL_CONCURRENCY)
     failed = 0
@@ -354,11 +356,11 @@ async def fetch_icims(
             except (httpx.HTTPError, FetchError, NotIcimsBoard):
                 failed += 1  # keep the listing data; the upsert preserves any stored description
                 return item
-        ld = parse_jsonld(page)
+        ld = await asyncio.to_thread(parse_jsonld, page)
         return {**item, "detail": ld} if ld else item
 
     head, tail = listed[:MAX_DETAILS], listed[MAX_DETAILS:]
     details = list(await asyncio.gather(*(detail(i) for i in head)))
     if len(head) >= 3 and failed == len(head):
         raise RuntimeError(f"all {failed} iCIMS job page requests failed")
-    return parse_icims(details + tail, company_name, slug)
+    return await asyncio.to_thread(parse_icims, details + tail, company_name, slug)

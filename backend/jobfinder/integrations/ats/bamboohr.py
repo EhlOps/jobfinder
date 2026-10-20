@@ -75,9 +75,9 @@ async def fetch_bamboohr(
     base = BASE.format(slug=slug)
     resp = await client.get(f"{base}/list", headers={"Accept": "application/json"})
     resp.raise_for_status()
-    listing = resp.json()
+    listing = await asyncio.to_thread(resp.json)
     if list_only:
-        return parse_bamboohr(listing, {}, company_name, slug)
+        return await asyncio.to_thread(parse_bamboohr, listing, {}, company_name, slug)
     sem = asyncio.Semaphore(DETAIL_CONCURRENCY)
 
     failed = 0
@@ -97,4 +97,4 @@ async def fetch_bamboohr(
     details = dict(await asyncio.gather(*(detail(i) for i in ids)))
     if ids and failed == len(ids):
         raise RuntimeError(f"all {failed} opening detail requests failed")
-    return parse_bamboohr(listing, details, company_name, slug)
+    return await asyncio.to_thread(parse_bamboohr, listing, details, company_name, slug)

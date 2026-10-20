@@ -1,3 +1,4 @@
+import asyncio
 import html
 from datetime import datetime
 
@@ -55,4 +56,5 @@ def parse_greenhouse(payload: dict, company_name: str) -> list[JobPosting]:
 async def fetch_greenhouse(client: httpx.AsyncClient, slug: str, company_name: str) -> list[JobPosting]:
     resp = await client.get(API.format(slug=slug), params={"content": "true"})
     resp.raise_for_status()
-    return parse_greenhouse(resp.json(), company_name)
+    # JSON decode + parse are CPU-bound on big boards: keep them off the event loop.
+    return await asyncio.to_thread(lambda: parse_greenhouse(resp.json(), company_name))
