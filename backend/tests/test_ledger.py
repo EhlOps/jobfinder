@@ -35,6 +35,61 @@ async def test_a_rollback_discards_the_row_and_its_publish(maker, published):
     assert await count(maker, Task) == 0
 
 
+@pytest.mark.real_commit
+async def test_the_after_commit_publish_marks_the_row_sent(maker, published):
+    async with maker() as db:
+        t = await ledger.add(db, "plan_work")
+        await db.commit()
+    await published.settle()
+    async with maker() as db:
+        assert (await db.get(Task, t.id)).sent_at is not None
+        assert await ledger.due_for_relay(db, utcnow() + timedelta(minutes=1)) == []  # no second send
+
+
+@pytest.mark.real_commit
+async def test_a_failed_publish_leaves_its_queue_to_the_relay(maker, published, monkeypatch, caplog):
+    from jobfinder.tasks import brokers
+
+    calls = []
+
+    async def ai_down(queue, kind, task_id):
+        calls.append(queue)
+        if queue == "ai":
+            raise TimeoutError
+
+    monkeypatch.setattr(brokers, "publish", ai_down)
+    async with maker() as db:
+        ai = [await ledger.add(db, "cover_letter", {"match_id": i}) for i in range(3)]
+        io = await ledger.add(db, "plan_work")
+        await db.commit()
+    await published.settle()
+    assert calls == ["ai", "io"]  # one try per down queue, not one per row
+    assert "the relay will retry: TimeoutError" in caplog.text
+    async with maker() as db:
+        assert [(await db.get(Task, t.id)).sent_at for t in ai] == [None] * 3
+        assert (await db.get(Task, io.id)).sent_at is not None
+        assert {r[0] for r in await ledger.due_for_relay(db, utcnow() + timedelta(minutes=1))} == {t.id for t in ai}
+
+
+async def test_a_claimed_row_is_not_marked_sent_late(db):
+    t = await ledger.add(db, "plan_work")
+    await ledger.claim(db, t.id)
+    await ledger.fail(db, t, "fast", retry=True)  # sent_at NULL: the relay must deliver the retry
+    await ledger.mark_sent(db, [t.id], utcnow(), unclaimed_only=True)
+    await db.refresh(t)
+    assert t.sent_at is None
+
+
+async def test_a_released_savepoint_publishes_nothing_yet(maker, published):
+    async with maker() as db:
+        t = await ledger.add(db, "plan_work")
+        async with db.begin_nested():
+            pass
+        assert await published.settle() == []  # the outer transaction hasn't committed
+        await db.commit()
+    assert await published.settle() == [("io", "plan_work", t.id)] and published.marked == [t.id]
+
+
 async def test_legacy_backend_publishes_nothing(maker, published, monkeypatch):
     monkeypatch.setattr(get_settings(), "tasks_backend", "legacy")
     async with maker() as db:
@@ -112,6 +167,23 @@ async def test_requeue_runs_a_failed_task_again_once(db, published):
     assert (again.status, again.attempts, again.error) == ("queued", 0, None)
     with pytest.raises(Conflict):
         await ledger.requeue(db, t.id)
+
+
+async def test_requeue_turns_a_twin_racing_the_check_into_a_conflict(db, monkeypatch):
+    t = await ledger.add(db, "ai_check", dedupe=True)
+    t = await ledger.claim(db, t.id)
+    await ledger.fail(db, t, "bad", retry=False)
+    twin = await ledger.add(db, "ai_check", dedupe=True)  # queued since: only the unique index stops it now
+    real_scalar = db.scalar
+
+    async def miss_the_twin(stmt, *a, **kw):  # as if the twin committed right after the check ran
+        monkeypatch.setattr(db, "scalar", real_scalar)  # returns None: no twin found
+
+    monkeypatch.setattr(db, "scalar", miss_the_twin)
+    with pytest.raises(Conflict, match="identical ai_check task"):
+        await ledger.requeue(db, t.id)
+    await db.refresh(t)
+    assert t.status == "failed" and (await db.get(Task, twin.id)).status == "queued"  # the session still works
 
 
 async def test_reap_requeues_stale_running_rows_for_the_relay(db):
