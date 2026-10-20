@@ -5,6 +5,7 @@ Each kind is its own taskiq task name, registered on its queue's broker by @ledg
 broker does no I/O; the first publish in a process starts it.
 """
 import asyncio
+import socket
 
 from taskiq import AsyncBroker
 from taskiq.kicker import AsyncKicker
@@ -13,15 +14,24 @@ from taskiq_redis import RedisStreamBroker
 from jobfinder.core.config import settings
 
 STREAM_MAXLEN = 10_000  # ids only; trimmed approximately, so valkey memory stays flat
+PUBLISH_TIMEOUT = 5  # seconds; a valkey that hangs rather than refuses must not stall the caller
+
+# Idle 30s, then a probe every 5s, dead after 3 missed: a vanished valkey is noticed in ~45s. Probes
+# only run on an idle connection; TCP_USER_TIMEOUT (ms) gives up on unacknowledged writes as quickly.
+KEEPALIVE_OPTIONS = {getattr(socket, name): value
+                     for name, value in (("TCP_KEEPIDLE", 30), ("TCP_KEEPINTVL", 5), ("TCP_KEEPCNT", 3),
+                                         ("TCP_USER_TIMEOUT", 45_000))
+                     if hasattr(socket, name)}
 
 
 def _broker(queue: str) -> RedisStreamBroker:
     # No socket timeout: redis-py's default (5s) fires when a task's synchronous work (ingest parsing)
     # stalls the event loop past it, and taskiq then restarts the worker process, killing the tasks in
-    # flight. TCP keepalive still notices a dead valkey.
+    # flight. TCP keepalive detects a dead peer instead (~45s); connecting keeps redis-py's 5s timeout.
     return RedisStreamBroker(url=settings.valkey_url, queue_name=f"jobfinder:{queue}",
                              consumer_group_name=f"jobfinder-{queue}", maxlen=STREAM_MAXLEN,
-                             socket_timeout=None, socket_keepalive=True)
+                             socket_timeout=None, socket_keepalive=True,
+                             socket_keepalive_options=KEEPALIVE_OPTIONS)
 
 
 ai_broker = _broker("ai")
@@ -34,12 +44,14 @@ _lock = asyncio.Lock()
 
 
 async def publish(queue: str, kind: str, task_id: int) -> None:
-    """Send one ledger id to its queue's stream. Raises when valkey is unreachable (callers log it; the
-    relay re-sends)."""
+    """Send one ledger id to its queue's stream within PUBLISH_TIMEOUT. Raises when valkey is
+    unreachable or hangs (callers log it; the relay re-sends)."""
     broker = BROKERS[queue]
-    if queue not in _started:
-        async with _lock:
-            if queue not in _started:
-                await broker.startup()
-                _started.add(queue)
-    await AsyncKicker(task_name=kind, broker=broker, labels={}).kiq(task_id)
+    async with asyncio.timeout(PUBLISH_TIMEOUT):
+        # A worker's own broker is started by taskiq; starting it again would re-fire WORKER_STARTUP.
+        if queue not in _started and not broker.is_worker_process:
+            async with _lock:  # the timeout bounds a hung startup too, so it cannot keep the lock
+                if queue not in _started:
+                    await broker.startup()
+                    _started.add(queue)
+        await AsyncKicker(task_name=kind, broker=broker, labels={}).kiq(task_id)

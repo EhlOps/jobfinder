@@ -285,7 +285,8 @@ scheduler (1 replica, Recreate)
 
 **Failure handling.**
 - **Acks.** A worker acks a message only after its task has finished (`--ack-type when_executed`). Every outcome (done, failed, retry scheduled) acks.
-- **A worker killed mid-task** leaves its row `running` and its message unacked. Once the heartbeat is stale, the reaper requeues the row and the relay re-sends it. The old message comes back after taskiq's idle timeout (10 minutes), fails the claim and is dropped.
+- **A worker killed mid-task** leaves its row `running` and its message unacked. Once the heartbeat is stale, the reaper requeues the row and the relay re-sends it. The old message stays pending: taskiq-redis reclaims messages idle for over 10 minutes only on a read that also fetched new messages, so on a quiet stream it comes back once new work arrives. Then it fails the claim and is dropped. Nothing waits on it, since the relay already re-sent the row.
+- **A valkey that hangs** rather than refuses (paused, or a network that drops packets) cannot stall a publish: it gives up after 5 seconds, the broker's lazy startup included, and the relay sends the row later. The stream connections have no read timeout (a task's synchronous work may block the event loop for longer), so TCP keepalive notices a vanished valkey instead, in about 45 seconds (idle 30s, then 3 probes 5s apart; `TCP_USER_TIMEOUT` gives up on unacknowledged writes as quickly). A valkey process that is alive but stuck still answers at the TCP level, so a worker's reads and acks wait until it recovers.
 - **A retryable Claude error** (a rate limit) sets `run_after` with a 30s/2m/8m backoff, and the relay delivers the row when it is due.
 - **Rows that were never published** (queued under the legacy system, or inserted by hand) are picked up by the relay on its first ticks.
 
