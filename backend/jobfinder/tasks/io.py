@@ -7,6 +7,7 @@ Handlers are `(db, ai, task, payload) -> dict` like tasks.ai's; `ai` is unused h
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import jobfinder.tasks.documents  # noqa: F401  (registers parse_document and fetch_link on io, #51)
 from jobfinder.models import Task
 from jobfinder.tasks import ledger
 from jobfinder.tasks.brokers import io_broker

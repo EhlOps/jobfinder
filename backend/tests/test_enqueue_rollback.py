@@ -46,7 +46,16 @@ async def test_interview_refresh_rolls_back(authed, maker, monkeypatch, publishe
     assert await published.settle() == []
 
 
+async def test_upload_rolls_back_its_parse_task(authed, maker, monkeypatch, published):
+    raise_after(monkeypatch, ledger, "add")
+    with pytest.raises(Boom):
+        await authed.post("/api/documents", files={"file": ("a.txt", b"hi", "text/plain")})
+    assert await count(maker, Task, kind="parse_document") == 0
+    assert await published.settle() == []
+
+
 async def test_onboarding_extract_rolls_back(authed, maker, monkeypatch, published):
+    monkeypatch.setattr(get_settings(), "sync_uploads", True)  # read now: no parse_document task to publish
     await authed.post("/api/documents", files={"file": ("resume.txt", b"Intern at Acme", "text/plain")})
     await _fails_after_add(authed, monkeypatch, "POST", "/api/onboarding/extract")
     assert await count(maker, Task, kind="extract_profile") == 0

@@ -53,6 +53,18 @@ class DocumentMeta:
     has_original: bool = False
     fetch_error: str | None = None
     fetched_at: str | None = None
+    # processing while worker-io reads the file or fetches the link, then ready or error (#51). Files
+    # written before that have no key and read back as ready.
+    status: str = "ready"
+
+
+def _stored(meta: DocumentMeta) -> dict:
+    """meta.json's content. A ready document is written without `status`, as before #51, so the previous
+    release (which reads meta.json with DocumentMeta(**json)) can still read it after a rollback."""
+    data = asdict(meta)
+    if data["status"] == "ready":
+        del data["status"]
+    return data
 
 
 def new_id() -> str:
@@ -108,6 +120,7 @@ class DocumentStore:
         tags: dict[str, str] | None = None,
         fetch_error: str | None = None,
         fetched: bool = False,
+        status: str = "ready",
     ) -> tuple[DocumentMeta, bool]:
         """Store a document. Returns (meta, created). Uploading identical bytes twice returns
         the existing document (created=False) instead of storing a duplicate."""
@@ -136,6 +149,7 @@ class DocumentStore:
             has_original=data is not None,
             fetch_error=fetch_error,
             fetched_at=now if fetched else None,
+            status=status,
         )
         user_dir = self._user_dir(user_id)
         user_dir.mkdir(parents=True, exist_ok=True)
@@ -145,7 +159,7 @@ class DocumentStore:
             if data is not None:
                 (tmp / f"original{ext.lower()}").write_bytes(data)
             (tmp / "text.txt").write_text(text)
-            (tmp / "meta.json").write_text(json.dumps(asdict(meta), indent=1))
+            (tmp / "meta.json").write_text(json.dumps(_stored(meta), indent=1))
             os.rename(tmp, user_dir / doc_id)
         except BaseException:
             shutil.rmtree(tmp, ignore_errors=True)
@@ -158,20 +172,29 @@ class DocumentStore:
         custom = validate_tags(tags)
         auto = {k: v for k, v in meta.tags.items() if k in RESERVED_TAGS or k == MATCH_TAG}
         meta.tags = {**custom, **auto}
-        self._write_json(self._doc_dir(user_id, doc_id) / "meta.json", asdict(meta))
+        self._write_json(self._doc_dir(user_id, doc_id) / "meta.json", _stored(meta))
         return meta
 
     def replace_text(
-        self, user_id: int, doc_id: str, text: str, *, fetch_error: str | None = None, fetched: bool = True
+        self, user_id: int, doc_id: str, text: str, *, fetch_error: str | None = None, fetched: bool = True,
+        status: str = "ready",
     ) -> DocumentMeta:
         meta = self.get(user_id, doc_id)
         d = self._doc_dir(user_id, doc_id)
         (d / "text.txt").write_text(text)
         meta.chars = len(text)
         meta.fetch_error = fetch_error
+        meta.status = status
         if fetched:
             meta.fetched_at = datetime.now(UTC).isoformat()
-        self._write_json(d / "meta.json", asdict(meta))
+        self._write_json(d / "meta.json", _stored(meta))
+        return meta
+
+    def set_status(self, user_id: int, doc_id: str, status: str) -> DocumentMeta:
+        """Only the status: a link being fetched again keeps its old text until the new one lands (#51)."""
+        meta = self.get(user_id, doc_id)
+        meta.status = status
+        self._write_json(self._doc_dir(user_id, doc_id) / "meta.json", _stored(meta))
         return meta
 
     def delete(self, user_id: int, doc_id: str) -> None:

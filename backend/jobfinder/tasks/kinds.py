@@ -21,6 +21,8 @@ QUEUES: dict[str, Queue] = {
     "plan_work": "io",
     "discover_boards": "io",
     "score_coveted": "io",
+    "parse_document": "io",  # uploads and profile links, read off the api (#51)
+    "fetch_link": "io",
     "render_capture": "render",
     "render_list": "render",
 }

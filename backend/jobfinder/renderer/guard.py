@@ -1,14 +1,14 @@
 """The renderer's sandbox rules, kept free of Playwright so they can be tested without a browser.
 
 Every request the page makes goes through `Guard.verdict`: only http(s), and only hosts whose every address is
-public (the same check as profile/web_page.resolve_public). Recipe selectors are data handed to a fixed
+public (core/http.resolve_public, the check profile/web_page uses). Recipe selectors are data handed to a fixed
 extractor, and `check_selector` keeps them to plain CSS.
 """
 import re
 from collections.abc import Awaitable, Callable
 from urllib.parse import urlsplit
 
-from jobfinder.profile import web_page
+from jobfinder.core import http  # not profile/web_page: the api imports this module (#51)
 
 ALLOWED_SCHEMES = ("http", "https")
 # Resource types the capture never needs: aborting them saves bytes and time on a small arm64 box.
@@ -56,11 +56,11 @@ class Guard:
         if reason is None:
             host = (urlsplit(url).hostname or "").lower()
             if host not in self._hosts:
-                resolve = self._resolver or web_page.resolve_public
+                resolve = self._resolver or http.resolve_public
                 try:
                     await resolve(url)
                     self._hosts[host] = None
-                except web_page.FetchError as e:
+                except http.FetchError as e:
                     self._hosts[host] = str(e) or "address refused"
             reason = self._hosts[host]
         if reason and len(self.blocked) < 50:

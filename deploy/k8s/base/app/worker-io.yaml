@@ -1,7 +1,8 @@
 # worker-io (#48; compose: worker-io, profile "ledger"): the taskiq worker on stream `jobfinder:io`:
-# ingest_jobs, plan_work, discover_boards and score_coveted (tasks/kinds.py). None of them calls Claude
-# (anything that may, like the resolver, is on the ai queue), and none reads or writes the document
-# store, so no store or claude-auth volume. The worker image anyway: it has everything ingestion needs
+# ingest_jobs, plan_work, discover_boards, score_coveted, and parse_document and fetch_link, which read
+# uploads and profile links off the api into the document store (#51; tasks/kinds.py), so it mounts the
+# store. None of them calls Claude (anything that may, like the resolver, is on the ai queue), so no
+# claude-auth volume. The worker image anyway: it has everything ingestion needs
 # (the jobspy extra when built with it), and one image for both task workers keeps deploy.sh's pinning
 # simple. Up to WORKER_IO_CONCURRENCY tasks at once in one process.
 # Recreate like the other workers: a rollout pauses io work for a few seconds, and messages wait in the
@@ -75,10 +76,16 @@ spec:
             capabilities:
               drop: ["ALL"]
           volumeMounts:
+            # Uploads and link snapshots it reads and writes (parse_document, fetch_link).
+            - name: store
+              mountPath: /data/store
             # Temp files of ingestion.
             - name: tmp
               mountPath: /tmp
       volumes:
+        - name: store
+          persistentVolumeClaim:
+            claimName: store
         - name: tmp
           emptyDir:
             sizeLimit: 1Gi

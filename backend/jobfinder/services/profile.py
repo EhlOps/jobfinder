@@ -4,7 +4,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from jobfinder.core.errors import Invalid, NotFound
+from jobfinder.core.errors import Conflict, Invalid, NotFound
 from jobfinder.models import Profile, ProfileFact, Task
 from jobfinder.repositories import profiles
 from jobfinder.storage.documents import DocumentStore, is_tailored
@@ -15,6 +15,10 @@ class ProfileIncomplete(Invalid):
     """An AI step needs input the profile doesn't have yet."""
 
     code = "profile_incomplete"
+
+
+class StillReading(Conflict):
+    code, message = "documents_processing", "Still reading your files and links; try again when they're done"
 
 
 def bump_version(profile: Profile) -> None:
@@ -61,7 +65,10 @@ async def delete_fact(db: AsyncSession, user_id: int, fact_id: int) -> None:
 
 async def start_extract(db: AsyncSession, store: DocumentStore, user_id: int) -> Task:
     """Queue reading the profile out of the user's own uploads and links (never AI-tailored output)."""
-    if not any(d.chars > 0 and not is_tailored(d) for d in store.list(user_id)):
+    own = [d for d in store.list(user_id) if not is_tailored(d)]
+    if any(d.status == "processing" for d in own):  # its text isn't there yet: it would be left out (#51)
+        raise StillReading()
+    if not any(d.chars > 0 for d in own):
         raise ProfileIncomplete("Upload a resume or add a link we can read first")
     return await ledger.add(db, "extract_profile", user_id=user_id, dedupe=True)
 
