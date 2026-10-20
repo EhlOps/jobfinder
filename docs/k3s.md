@@ -278,7 +278,7 @@ scheduler (1 replica, Recreate)
         cron:   writes the scheduled rows (ingest ticks, daily emails, ...), deduped like user work
         relay:  every RELAY_SECONDS (15s), XADDs due rows that are still queued, so a lost publish is re-sent
         reaper: a running row whose heartbeat is older than TASK_STUCK_AFTER_MINUTES (5) goes back to queued
-        prune:  old tasks, rate events and sessions
+        prune:  done/failed tasks older than TASK_PRUNE_DAYS (30; up to 5000 rows a tick), rate events, sessions
 ```
 
 **How does the api hand work to the workers? Through valkey as well?** Yes, but valkey only delivers. The api writes the ledger row in the request's own transaction. After the commit, it publishes the row's id to the queue's valkey stream, so a worker never sees an uncommitted row. Suppose the publish is lost (valkey is down, or the pod is killed between the commit and the publish). The row is still queued in Postgres, and the scheduler's relay re-sends it on a later tick. A duplicate delivery does no harm: the worker's claim is a single `UPDATE … WHERE status = 'queued'`, so one delivery wins and the others are acked and dropped. Workers enqueue their follow-ups the same way (ingest → `plan_work`, matching → `collect_questions`).

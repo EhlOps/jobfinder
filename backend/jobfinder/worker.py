@@ -151,9 +151,12 @@ async def main() -> None:
             try:
                 async with dbmod.SessionLocal() as db:
                     await queue.reap_stuck(db)
+                    pruned = await ledger.prune(db)
                     await ratelimit.prune(db)
                     await prune_sessions(db)
                     await db.commit()
+                if pruned:
+                    log.info("pruned %d finished task(s) older than %d days", pruned, settings.task_prune_days)
             except Exception:
                 log.exception("maintenance tick failed")
         claimed = None
