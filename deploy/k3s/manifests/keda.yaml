@@ -1,0 +1,20 @@
+# KEDA (#52), deployed by k3s's Helm controller into its own namespace `keda`. Cluster-wide: one
+# operator serves every namespace's ScaledObjects (today only worker-io's, deploy/k8s/base/app/
+# worker-io-scaledobject.yaml), and its metrics server is the cluster's external.metrics.k8s.io
+# APIService, which nothing else serves. Must be installed before an overlay with a ScaledObject is
+# deployed: deploy.sh refuses one without the CRD (docs/k3s.md, "KEDA").
+# The operator dials valkey itself to read the stream lag; base/valkey/networkpolicy.yaml lets its pods
+# (label app.kubernetes.io/name=keda-operator in namespace keda) in.
+# 2.21 is the release tested against Kubernetes 1.34-1.36 (K3S_VERSION in install.sh is 1.36);
+# bump the two together.
+apiVersion: helm.cattle.io/v1
+kind: HelmChart
+metadata:
+  name: keda
+  namespace: kube-system
+spec:
+  repo: https://kedacore.github.io/charts
+  chart: keda
+  version: 2.21.0            # app v2.21.0
+  targetNamespace: keda
+  createNamespace: true

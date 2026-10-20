@@ -1,0 +1,69 @@
+# Autoscales worker-io on the io stream's backlog (#52): 1 to 4 replicas, one per 50 undelivered
+# messages. KEDA (cluster-wide, deploy/k3s/manifests/keda.yaml) creates and owns HPA keda-hpa-worker-io,
+# so worker-io.yaml has no `replicas`. Labelled rollout=app, so deploy.sh applies it in phase 2 with the
+# Deployments, after the migrate Job: unpausing it starts worker-io. deploy.sh first checks the CRD exists.
+#
+# The signal is the consumer group's lag (XINFO GROUPS: entries not yet delivered to any consumer), not
+# its pending list (delivered, not yet acked):
+#   - A new replica can only take undelivered entries. What a pod has read is pending on its consumer,
+#     and no other consumer can claim it for 10 minutes; counting it would scale out pods with nothing to
+#     do. (Each read takes at most WORKER_IO_CONCURRENCY entries, tasks/brokers.py, so little sits there.)
+#   - Pending also keeps the entries of killed pods (gone from the cluster, still listed as consumers)
+#     until they are reclaimed, which would hold replicas up for nothing.
+#   - Pending is capped by what the current pods have read, so it grows only as fast as the replicas it
+#     is supposed to size.
+# Lag needs Redis 7 semantics: valkey 8.1 reports redis_version 7.2.4.
+#
+# Only worker-io. worker-ai is never autoscaled: one process is the cap on parallel Claude calls
+# against the subscription (worker-ai.yaml); .github/workflows/k8s.yml fails a render that targets it.
+#
+# Valkey has no password (its NetworkPolicy is the access control and lets the keda-operator pods in),
+# so no TriggerAuthentication. The operator runs in namespace keda, so the address is the Service's FQDN:
+# this one is the base namespace's (prod's); overlays/staging patches in its own.
+#
+# Pause (`kubectl scale` alone is undone within seconds):
+#   kubectl -n <ns> annotate scaledobject worker-io autoscaling.keda.sh/paused-replicas=0 --overwrite
+#   kubectl -n <ns> annotate scaledobject worker-io autoscaling.keda.sh/paused-replicas-     # resume
+# A pause also marked jobfinder.io/paused-by (the scripts' keda_pause, deploy/k8s/pg-lib.sh) is lifted by
+# the next deploy.sh; an unmarked one survives deploys. The base keeps it paused at 0 as long as
+# TASKS_BACKEND is legacy (the stream carries no work then); an overlay on the ledger removes the
+# annotation (overlays/staging; docs/k3s.md, "KEDA").
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: worker-io
+  labels:
+    jobfinder.io/rollout: app   # deploy.sh phase 2, after the migrations
+  annotations:
+    autoscaling.keda.sh/paused-replicas: "0"
+spec:
+  scaleTargetRef:
+    name: worker-io
+  # Never below 1: plan_work and the other quick kinds start within seconds, not after a cold start.
+  minReplicaCount: 1
+  # 4 x WORKER_IO_CONCURRENCY (10) tasks at once. The fetchers' per-host caps (e.g. Workday's
+  # HOST_CONCURRENCY) are per process, so more replicas would also mean more load on each site.
+  maxReplicaCount: 4
+  # No pollingInterval or cooldownPeriod: with minReplicaCount above 0 they don't affect scaling (KEDA's
+  # webhook warns about both). The HPA reads the lag through KEDA's metrics server on its own 15s sync,
+  # and the scale-down delay is its stabilization window below.
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        # Out at once (the HPA's default policies, up to doubling every 15s); in only after the backlog
+        # has been low for 5 minutes, one pod a minute. A pod stopped mid-task is safe: SIGTERM lets
+        # its tasks finish within the 60s grace (tasks/__main__.py), and the reaper requeues anything cut
+        # off (#48).
+        scaleDown:
+          stabilizationWindowSeconds: 300
+          policies:
+            - type: Pods
+              value: 1
+              periodSeconds: 60
+  triggers:
+    - type: redis-streams
+      metadata:
+        address: valkey.jobfinder.svc.cluster.local:6379
+        stream: jobfinder:io                  # tasks/brokers.py
+        consumerGroup: jobfinder-io
+        lagCount: "50"                        # target lag per replica (an AverageValue)

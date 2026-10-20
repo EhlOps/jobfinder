@@ -1,5 +1,8 @@
 # Valkey has no password; this policy is its access control. Only same-namespace pods labelled
-# `jobfinder.io/valkey-client: "true"` (the api/scheduler/workers, #43/#48) reach 6379.
+# `jobfinder.io/valkey-client: "true"` (the api/scheduler/workers, #43/#48) reach 6379, plus the KEDA
+# operator (#52), which reads the io stream's consumer-group lag to scale worker-io
+# (base/app/worker-io-scaledobject.yaml). It runs in namespace `keda` (deploy/k3s/manifests/keda.yaml);
+# the label is the chart's own on the operator pod (not the metrics server's or the webhooks').
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -14,6 +17,17 @@ spec:
         - podSelector:
             matchLabels:
               jobfinder.io/valkey-client: "true"
+      ports:
+        - protocol: TCP
+          port: 6379
+    - from:
+        # One peer: namespace keda AND the operator's pods.
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: keda
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: keda-operator
       ports:
         - protocol: TCP
           port: 6379

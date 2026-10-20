@@ -42,8 +42,8 @@ configMapGenerator:
       - INGEST_MAX_DISCOVERED_BOARDS_PER_RUN=100
       - DISCOVERY_ENABLED=false
       - DISCOVERY_MAX_CANDIDATES=50
-      # The task platform (#48), with the replicas patches at the end (docs/k3s.md, "Task platform").
-      # Roll back to the single legacy `worker` by commenting them out again and deploying.
+      # The task platform (#48), with the replicas and ScaledObject patches at the end (docs/k3s.md,
+      # "Task platform"). Roll back to the single legacy `worker` by commenting them out again and deploying.
       - TASKS_BACKEND=ledger
 
 patches:
@@ -88,8 +88,16 @@ patches:
         value: 0
   - target:
       kind: Deployment
-      name: "scheduler|worker-ai|worker-io"
+      name: "scheduler|worker-ai"
     patch: |-
       - op: replace
         path: /spec/replicas
         value: 1
+  # worker-io: KEDA, 1-4 replicas (#52); unpauses its ScaledObject as in overlays/staging. The trigger's
+  # address in the base is already this namespace's valkey.
+  - target:
+      kind: ScaledObject
+      name: worker-io
+    patch: |-
+      - op: remove
+        path: /metadata/annotations/autoscaling.keda.sh~1paused-replicas

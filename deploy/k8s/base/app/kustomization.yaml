@@ -3,7 +3,8 @@
 # plus the alembic Job that migrates before every rollout (deploy/k8s/deploy.sh).
 # The task platform (#48) adds scheduler, worker-ai and worker-io, at 0 replicas here: TASKS_BACKEND
 # defaults to legacy (the single `worker`). An overlay that sets TASKS_BACKEND=ledger scales the legacy
-# worker to 0 and the three to 1 (overlays/staging; docs/k3s.md, "Task platform").
+# worker to 0, scheduler and worker-ai to 1, and unpauses worker-io's ScaledObject (KEDA, 1-4 replicas;
+# overlays/staging; docs/k3s.md, "Task platform").
 #
 # Config: ConfigMap `jobfinder-config` = backend/.env.defaults (backend/kustomization.yaml) with the
 # k8s overrides below; overlays merge their own on top. Secrets: each overlay supplies Secret
@@ -24,6 +25,7 @@ resources:
   - scheduler.yaml       # ledger: cron, relay, reaper
   - worker-ai.yaml       # ledger: stream jobfinder:ai (Claude)
   - worker-io.yaml       # ledger: stream jobfinder:io
+  - worker-io-scaledobject.yaml   # KEDA: worker-io 1-4 on the io backlog (#52)
   - renderer.yaml
   - web.yaml
   - smtp.yaml

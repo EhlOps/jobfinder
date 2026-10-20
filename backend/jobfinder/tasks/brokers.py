@@ -24,12 +24,21 @@ KEEPALIVE_OPTIONS = {getattr(socket, name): value
                      if hasattr(socket, name)}
 
 
+# The setting that caps each queue's tasks at once in one worker process (tasks/__main__.py).
+CONCURRENCY = {"ai": "ai_max_concurrency", "io": "worker_io_concurrency", "render": "renderer_concurrency"}
+
+
 def _broker(queue: str) -> RedisStreamBroker:
     # No socket timeout: redis-py's default (5s) fires when a task's synchronous work (ingest parsing)
     # stalls the event loop past it, and taskiq then restarts the worker process, killing the tasks in
     # flight. TCP keepalive detects a dead peer instead (~45s); connecting keeps redis-py's 5s timeout.
+    # xread_count: one XREADGROUP takes at most what the process runs at once (taskiq-redis's default is
+    # 100). Everything read is pending on this consumer, and no other can claim it for 10 minutes, so a
+    # big read-ahead would strand the unstarted rest when KEDA scales a pod in, and hide it from the
+    # group's lag that KEDA scales worker-io on (#52, deploy/k8s/base/app/worker-io-scaledobject.yaml).
     return RedisStreamBroker(url=settings.valkey_url, queue_name=f"jobfinder:{queue}",
                              consumer_group_name=f"jobfinder-{queue}", maxlen=STREAM_MAXLEN,
+                             xread_count=max(1, getattr(settings, CONCURRENCY[queue])),
                              socket_timeout=None, socket_keepalive=True,
                              socket_keepalive_options=KEEPALIVE_OPTIONS)
 

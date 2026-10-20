@@ -6,6 +6,7 @@
 # - firewalld trusts the pod/service CIDRs so pod-to-service traffic isn't dropped. Nothing is opened publicly,
 #   and firewalld is never reloaded (a reload can drop Docker's rules for the running compose stack).
 # - sealed-secrets is deployed by k3s itself from manifests/sealed-secrets.yaml; kubeseal is installed for sealing.
+# - KEDA (#52, autoscales worker-io) likewise, from manifests/keda.yaml; its chart version is pinned there.
 #
 # Usage: sudo bash deploy/k3s/install.sh      Runbook: docs/k3s.md
 set -euo pipefail
@@ -108,21 +109,25 @@ if [[ "$(kubeseal --version 2>/dev/null)" != *"$KUBESEAL_VERSION"* ]]; then
     rm -rf "$tmp"
 fi
 
-log "Waiting for the node, Traefik and sealed-secrets"
+log "Waiting for the node, Traefik, sealed-secrets and KEDA"
 export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 k3s kubectl wait --for=condition=Ready node --all --timeout=180s
-for _ in $(seq 90); do
-    k3s kubectl -n kube-system get deploy traefik sealed-secrets-controller >/dev/null 2>&1 && break
+for _ in $(seq 150); do   # KEDA's Deployments appear only once helm-controller has fetched the chart
+    k3s kubectl -n kube-system get deploy traefik sealed-secrets-controller >/dev/null 2>&1 \
+        && k3s kubectl -n keda get deploy keda-operator keda-operator-metrics-apiserver >/dev/null 2>&1 && break
     sleep 2
 done
 k3s kubectl -n kube-system rollout status deploy/traefik --timeout=300s
 k3s kubectl -n kube-system rollout status deploy/sealed-secrets-controller --timeout=300s
+k3s kubectl -n keda rollout status deploy/keda-operator --timeout=300s
+k3s kubectl -n keda rollout status deploy/keda-operator-metrics-apiserver --timeout=300s
 
 log "Checks"
 k3s kubectl get nodes -o wide
 ss -ltnp | grep -E ':(80|443|8280)\b' || true
 printf '  traefik 127.0.0.1:8280 %s (404 = up, no routes yet)\n' "$(code http://127.0.0.1:8280/)"
 kubeseal --kubeconfig /etc/rancher/k3s/k3s.yaml --fetch-cert >/dev/null && echo "  kubeseal --fetch-cert ok"
+k3s kubectl wait --for=condition=Available apiservice/v1beta1.external.metrics.k8s.io --timeout=120s
 
 log "Host services after"
 check_host | tee /tmp/k3s-install-after.txt

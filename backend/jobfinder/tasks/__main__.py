@@ -8,8 +8,7 @@ import sys
 
 from jobfinder.core import logging as core_logging
 from jobfinder.core.config import settings
-
-CONCURRENCY = {"ai": "ai_max_concurrency", "io": "worker_io_concurrency", "render": "renderer_concurrency"}
+from jobfinder.tasks.brokers import CONCURRENCY
 
 
 def worker_argv(queue: str) -> list[str]:

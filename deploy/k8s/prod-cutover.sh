@@ -205,10 +205,13 @@ restore_replicas() {
   for d in "${!replicas[@]}"; do
     kubectl -n "$NS" scale deployment "$d" --replicas="${replicas[$d]}" >/dev/null 2>&1 || true
   done
+  keda_resume "$NS" || log "WARNING: worker-io's autoscaler is still paused; the next deploy.sh resumes it"
   log "app scaled back: $(for d in "${!replicas[@]}"; do printf '%s=%s ' "$d" "${replicas[$d]}"; done)"
 }
 if [ ${#replicas[@]} -gt 0 ]; then
   restore_on_exit=1
+  # worker-io's autoscaler (#52) would scale it back up; resumed with the replicas, or by step 8's deploy.
+  keda_pause "$NS" prod-cutover
   kubectl -n "$NS" scale deployment "${!replicas[@]}" --replicas=0 >/dev/null
   kubectl -n "$NS" wait --for=delete pod -l "app.kubernetes.io/name in ($(IFS=,; echo "${APP_DEPLOYMENTS[*]}"))" --timeout=180s \
     >/dev/null 2>&1 || true
@@ -323,7 +326,8 @@ kubectl -n "$NS" delete pod "$HELPER" --wait=true >/dev/null
 
 # --- 8. deploy --------------------------------------------------------------------------------------
 step deploy
-# deploy.sh applies the Deployments with their manifest replicas, which also undoes step 3.
+# deploy.sh applies the Deployments with their manifest replicas, which also undoes step 3, and lifts
+# step 3's pause of worker-io's autoscaler once the app is up (on any later deploy.sh too, if this fails).
 # The manifests are this checkout's (deploy/k8s next to this script), not the tag's: the prod overlay
 # only exists from #47 on. Check `git diff <tag> -- deploy/k8s backend/.env.defaults` first.
 app_left_down=""

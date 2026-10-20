@@ -8,8 +8,12 @@
 # simple. Up to WORKER_IO_CONCURRENCY tasks at once in one process.
 # Recreate like the other workers: a rollout pauses io work for a few seconds, and messages wait in the
 # stream meanwhile. Claims are atomic, so overlapping consumers would be safe too.
-# Its stream only carries work under TASKS_BACKEND=ledger, so the base keeps it at 0 and an overlay
-# that flips to the ledger scales it to 1 (overlays/staging; docs/k3s.md, "Task platform").
+# Replicas: KEDA (worker-io-scaledobject.yaml, #52) scales it from 1 to 4 on the stream's backlog, so
+# there is no `replicas` here: a value would reset the HPA's count on every deploy. The ScaledObject is
+# paused at 0 in the base (the stream only carries work under TASKS_BACKEND=ledger) and an overlay on the
+# ledger unpauses it (overlays/staging; docs/k3s.md, "Task platform" and "KEDA").
+# No PodDisruptionBudget: on one node it only matters for a drain (a k3s upgrade), and minAvailable 1
+# would block that drain while a pod stopping mid-task costs nothing (graceful shutdown, then the reaper).
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -17,7 +21,6 @@ metadata:
   labels:
     jobfinder.io/rollout: app
 spec:
-  replicas: 0
   strategy:
     type: Recreate
   selector:
@@ -64,10 +67,14 @@ spec:
               command: ["sh", "-c", "grep -qs 'jobfinder[.]tasks' /proc/[0-9]*/cmdline"]
             initialDelaySeconds: 15
             periodSeconds: 30
+          # Requests are what the scheduler reserves per replica, up to 4 per environment on the 4-CPU node
+          # (#52): 8 x 250m on top of the rest (~1.7 CPU, KEDA included) still fits with both at the max.
+          # Ingest is mostly waiting on sites, so CPU is unlimited and bursts above the request. Memory
+          # requests cover a busy pod's working set (prod: ~700Mi after a tick).
           resources:
             requests:
-              cpu: 100m
-              memory: 256Mi
+              cpu: 250m
+              memory: 768Mi
             limits:
               # Python with WORKER_IO_CONCURRENCY tasks, each fetching one board (ingest_board, #50).
               memory: 1536Mi

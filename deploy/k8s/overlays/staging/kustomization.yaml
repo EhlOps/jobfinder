@@ -59,7 +59,8 @@ configMapGenerator:
       - COVERAGE_ENABLED=false
       - DISCOVERY_ENABLED=false
       # The task platform (#48): the api publishes after commit, scheduler + worker-ai + worker-io run
-      # the work (the replicas below). Back to the legacy worker: docs/k3s.md, "Task platform".
+      # the work (the replicas and the ScaledObject below). Back to the legacy worker: docs/k3s.md,
+      # "Task platform".
       - TASKS_BACKEND=ledger
 
 patches:
@@ -84,7 +85,8 @@ patches:
         path: /spec/rules/0/host
         value: staging.ehlops.com
   # TASKS_BACKEND=ledger (above): the legacy worker refuses to start, so it goes to 0 and the task
-  # platform's three Deployments (0 in the base) to 1. The renderer stays at 0 (opt-in, as in the base).
+  # platform's three Deployments (0 in the base) run: scheduler and worker-ai at 1, worker-io under KEDA.
+  # The renderer stays at 0 (opt-in, as in the base).
   # deploy.sh rolls them all after the migrate Job; for a moment the old worker and the new workers
   # overlap, which is safe: every claim is one atomic UPDATE of the ledger row. A task the old worker is
   # cut off from is requeued by the reaper (docs/k3s.md, "Task platform").
@@ -97,8 +99,20 @@ patches:
         value: 0
   - target:
       kind: Deployment
-      name: "scheduler|worker-ai|worker-io"
+      name: "scheduler|worker-ai"
     patch: |-
       - op: replace
         path: /spec/replicas
         value: 1
+  # worker-io has no replicas: KEDA scales it from 1 to 4 on the io backlog (#52; base/app/
+  # worker-io-scaledobject.yaml). This unpauses its ScaledObject (paused at 0 in the base) and points
+  # the trigger at this namespace's valkey (the operator runs in namespace keda).
+  - target:
+      kind: ScaledObject
+      name: worker-io
+    patch: |-
+      - op: remove
+        path: /metadata/annotations/autoscaling.keda.sh~1paused-replicas
+      - op: replace
+        path: /spec/triggers/0/metadata/address
+        value: valkey.jobfinder-staging.svc.cluster.local:6379

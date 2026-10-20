@@ -1,6 +1,7 @@
 # Renders every Kustomize entry point under deploy/k8s and validates the output against the
 # Kubernetes schemas (kubeconform), so a broken manifest is caught before anyone applies it.
-# SealedSecret has no upstream schema and is skipped (-ignore-missing-schemas).
+# Custom resources (SealedSecret, HelmChart, KEDA's ScaledObject) are checked against the community
+# CRDs-catalog; a kind that neither knows is skipped (-ignore-missing-schemas).
 name: k8s
 
 on:
@@ -45,10 +46,27 @@ jobs:
             echo "kustomize $k -> $out"
             kubectl kustomize "$k" > "$out"
           done
-          # Cluster add-on manifests that k3s applies itself (HelmChart CRDs have no schema).
+          # Cluster add-on manifests that k3s applies itself (HelmChart: validated through the catalog).
           cp deploy/k3s/manifests/*.yaml rendered/
 
       - name: Validate
         run: |
           docker run --rm -v "$PWD/rendered:/r" ghcr.io/yannh/kubeconform:v0.6.7 \
-            -strict -ignore-missing-schemas -summary -output text /r
+            -strict -ignore-missing-schemas -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            -summary -output text /r
+
+      # #52. worker-ai is never autoscaled: one process is the cap on parallel Claude calls against the
+      # subscription. worker-io's replicas belong to KEDA's HPA, so its Deployment must not set any
+      # (every deploy would reset the count). yq is preinstalled on the runner.
+      - name: Scaling policy
+        run: |
+          for f in rendered/deploy_k8s_overlays_*.yaml; do
+            n=$(yq ea '[select(.kind == "ScaledObject" or .kind == "HorizontalPodAutoscaler") | select(.spec.scaleTargetRef.name == "worker-ai")] | length' "$f")
+            [ "$n" = 0 ] || { echo "::error file=$f::worker-ai must never be autoscaled (#52)"; exit 1; }
+            r=$(yq ea 'select(.kind == "Deployment" and .metadata.name == "worker-ai") | .spec.replicas' "$f")
+            [ "$r" -le 1 ] || { echo "::error file=$f::worker-ai must run at most 1 replica, has $r"; exit 1; }
+            r=$(yq ea 'select(.kind == "Deployment" and .metadata.name == "worker-io") | .spec.replicas' "$f")
+            [ "$r" = null ] || { echo "::error file=$f::worker-io sets replicas ($r); KEDA owns them (#52)"; exit 1; }
+            echo "$f: ok"
+          done
