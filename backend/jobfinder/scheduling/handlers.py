@@ -42,6 +42,7 @@ resume_tailor = _legacy("resume_tailor")
 ai_check = _legacy("ai_check")
 resolve_job_link = _legacy("resolve_job_link")
 audit_coverage = _legacy("audit_coverage")
+induce_recipe = _legacy("induce_recipe")
 reinduce_recipe = _legacy("reinduce_recipe")
 ingest_jobs = _legacy("ingest_jobs")
 ingest_tick = _legacy("ingest_tick")
@@ -70,5 +71,6 @@ HANDLERS: dict[str, Handler] = {
     "resolve_job_link": resolve_job_link,
     "score_coveted": score_coveted,
     "audit_coverage": audit_coverage,
+    "induce_recipe": induce_recipe,
     "reinduce_recipe": reinduce_recipe,
 }

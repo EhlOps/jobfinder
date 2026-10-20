@@ -12,12 +12,13 @@ from jobfinder.ai.tasks import MAX_PAGE_CHARS, MAX_SAMPLE_CHARS, AITasks, page_e
 from jobfinder.config import get_settings
 from jobfinder.ingest import http_safety
 from jobfinder.ingest.recipes import Recipe, RecipeError
-from jobfinder.ingest.resolve import resolve_link
+from jobfinder.ingest.resolve import induce_link, resolve_link
 from jobfinder.ingest.resolve.ladder import RecipeHit, ResolveContext
 from jobfinder.ingest.resolve.rungs import RUNGS
 from jobfinder.ingest.resolve.rungs.llm import LlmRung, endpoint_candidates
 from jobfinder.models import AICall, Company, Job, JobLink, Task
 from jobfinder.scheduling import handlers
+from jobfinder.tasks.ai import INDUCE_RETRIES
 from tests.factories import make_user
 from tests.fakes import FakeClaude, fake_resolve_public, handle
 
@@ -264,7 +265,9 @@ async def test_rung_passes_when_not_allowed_or_disabled(monkeypatch, web):
         assert await LlmRung().run(ctx) is None and "llm: no AI available" in ctx.notes
 
 
-async def test_resolve_link_stores_the_induced_recipe_board(maker, web):
+async def test_resolve_link_defers_to_induce_link_which_stores_the_recipe_board(maker, web):
+    """The ladder's two halves (#50): resolve_link leaves the link 'resolving' with its hints, and
+    induce_link asks Claude and finishes it."""
     async with maker() as db:
         user = await make_user(db)
         link = JobLink(user_id=user.id, url=PASTED)
@@ -273,12 +276,17 @@ async def test_resolve_link_stores_the_induced_recipe_board(maker, web):
         recipe = induced(list={"method": "POST", "url": "https://careers.acme.com/api/search",
                                "json_body": {"q": ""}})
         page = PAGE.replace("/api/jobs?size=50", "/api/search")
-        out = await resolve_link(db, link.id, client=site(web, page=page), allow_llm=True,
-                                 ai=AITasks(FakeClaude(recipe)))
+        first = await resolve_link(db, link.id, client=site(web, page=page), allow_llm=True)
+        assert first["status"] == "resolving" and (await db.get(JobLink, link.id)).status == "resolving"
+        hints = first["induce"]
+        assert set(hints) == {"samples", "tried", "notes", "single_job", "board_error"}
+        json.dumps(hints)  # the induce_recipe payload
+        out = await induce_link(db, link.id, AITasks(FakeClaude(recipe)), client=site(web, page=page), **hints)
         company = await db.get(Company, out["company_id"])
         jobs = (await db.scalars(sa.select(Job).where(Job.company_id == company.id))).all()
         link = await db.get(JobLink, link.id)
     assert out["status"] == "resolved" and out["rung"] == "llm" and link.rung == "llm"
+    assert link.status == "resolved" and (link.ats, link.slug) == ("recipe", "acme.com")
     assert company.ats == "recipe" and company.slug == "acme.com" and company.recipe_state == "active"  # validated, then its first run
     assert company.recipe["provenance"]["induced_by"] == "llm" and company.recipe_health["baseline_yield"] == 3
     assert len(jobs) == 3
@@ -305,37 +313,130 @@ async def test_existing_recipe_board_is_reused_without_asking_the_llm(maker, web
         link = JobLink(user_id=user.id, url=PASTED)
         db.add_all([board, link])
         await db.commit()
-        out = await resolve_link(db, link.id, client=site(web, page=page), allow_llm=True, ai=AITasks(fake))
+        out = await resolve_link(db, link.id, client=site(web, page=page), allow_llm=True)
+        assert out["status"] == "resolved" and out["company_id"] == board.id and out["rung"] == "recipe_board"
+        # and one that appeared while the link waited for induce_recipe
+        link2 = JobLink(user_id=user.id, url=PASTED + "?x=1")
+        db.add(link2)
+        await db.commit()
+        out = await induce_link(db, link2.id, AITasks(fake), client=site(web, page=page))
     assert out["status"] == "resolved" and out["company_id"] == board.id and out["rung"] == "recipe_board"
     assert fake.calls == []
 
 
-async def test_resolve_job_link_handler_hands_the_ladder_its_ai(maker, monkeypatch):
+async def test_induce_link_keeps_the_single_job_and_board_error_when_the_llm_fails(maker, web):
+    posting = {"source": "jsonld", "external_id": "x", "company_name": "Acme", "title": "Robotics Engineer",
+               "url": "", "posted_at": "2026-10-01T00:00:00+00:00"}
+    async with maker() as db:
+        user = await make_user(db)
+        link, other = JobLink(user_id=user.id, url=PASTED), JobLink(user_id=user.id, url=PASTED + "?b=1")
+        db.add_all([link, other])
+        await db.commit()
+        fake = FakeClaude(AIError("bad_output", "nope"), AIError("bad_output", "nope"))
+        out = await induce_link(db, link.id, AITasks(fake), client=site(web), notes=["listing: none"],
+                                single_job=posting)
+        job = await db.get(Job, out["job_id"])
+        assert out["status"] == "unresolved" and out["notes"][0] == "listing: none"
+        assert job.posted_at.year == 2026 and job.source == "link"
+        out = await induce_link(db, other.id, AITasks(fake), client=site(web), board_error="That board couldn't be read: 404")
+        other = await db.get(JobLink, other.id)
+        assert other.status == "unresolved" and "404" in other.error
+        # a link that is no longer waiting is left alone
+        assert await induce_link(db, other.id, AITasks(FakeClaude())) == {"skipped": "link already unresolved"}
+
+
+async def test_induce_link_does_not_ask_claude_while_backing_off(maker, web):
+    async with maker() as db:
+        user = await make_user(db)
+        link = JobLink(user_id=user.id, url=PASTED)
+        db.add(link)
+        await db.commit()
+        out = await induce_link(db, link.id, AITasks(FakeClaude()), client=site(web), allow_llm=False)
+    assert out["status"] == "unresolved" and any("not allowed now" in n for n in out["notes"])
+
+
+async def test_resolve_job_link_handler_queues_induce_recipe_only_when_the_llm_is_allowed(maker, monkeypatch):
     from jobfinder.ingest import resolve
 
     got = {}
+    hints = {"samples": [], "tried": [], "notes": [], "single_job": None, "board_error": None}
 
-    async def fake_resolve(db, link_id, client=None, *, allow_llm=False, ai=None):
-        got.update(link_id=link_id, allow_llm=allow_llm, ai=ai)
-        return {"status": "unresolved"}
+    async def fake_resolve(db, link_id, client=None, *, allow_llm=False):
+        got.update(link_id=link_id, allow_llm=allow_llm)
+        return {"status": "resolving", "induce": hints} if allow_llm else {"status": "unresolved"}
+
+    async def induce_rows(db):
+        return (await db.scalars(sa.select(Task).where(Task.kind == "induce_recipe"))).all()
 
     monkeypatch.setattr(resolve, "resolve_link", fake_resolve)
-    ai = AITasks(FakeClaude())
     async with maker() as db:
-        await handlers.resolve_job_link(db, ai, Task(kind="resolve_job_link", payload={"link_id": 7}))
-        assert got == {"link_id": 7, "allow_llm": True, "ai": ai}
+        out = await handlers.resolve_job_link(db, None, Task(kind="resolve_job_link", payload={"link_id": 7}))
+        assert got == {"link_id": 7, "allow_llm": True}
+        assert out == {"status": "resolving", "queued": "induce_recipe"}  # the hints live on the row, not here
+        [row] = await induce_rows(db)
+        assert (row.queue, row.payload) == ("ai", {"link_id": 7, **hints})
+        await db.delete(row)
         # the planner is backing off a rate limit: no LLM calls from the resolver either
         db.add(AICall(task="score_match", model="sonnet", duration_ms=1, ok=False, error_kind="rate_limited",
                       created_at=datetime.now(UTC)))
         await db.commit()
-        await handlers.resolve_job_link(db, ai, Task(kind="resolve_job_link", payload={"link_id": 7}))
-        assert got["allow_llm"] is False
+        await handlers.resolve_job_link(db, None, Task(kind="resolve_job_link", payload={"link_id": 7}))
+        assert got["allow_llm"] is False and await induce_rows(db) == []
     monkeypatch.setattr(get_settings(), "resolver_llm_enabled", False)
     async with maker() as db:
         await db.execute(sa.delete(AICall))
         await db.commit()
-        await handlers.resolve_job_link(db, ai, Task(kind="resolve_job_link", payload={"link_id": 7}))
-        assert got["allow_llm"] is False
+        await handlers.resolve_job_link(db, None, Task(kind="resolve_job_link", payload={"link_id": 7}))
+        assert got["allow_llm"] is False and await induce_rows(db) == []
+
+
+async def test_induce_recipe_handler_hands_the_rung_its_ai(maker, monkeypatch):
+    from jobfinder.ingest import resolve
+
+    got = {}
+
+    async def fake_induce(db, link_id, ai, client=None, *, allow_llm=True, retry=False, **hints):
+        got.update(link_id=link_id, ai=ai, allow_llm=allow_llm, retry=retry, **hints)
+        return {"status": "resolved", "new": 2}
+
+    async def rows(db, kind):
+        return (await db.scalars(sa.select(Task).where(Task.kind == kind))).all()
+
+    monkeypatch.setattr(resolve, "induce_link", fake_induce)
+    ai = AITasks(FakeClaude())
+    async with maker() as db:
+        task = Task(kind="induce_recipe", payload={"link_id": 7, "notes": ["n"], "samples": [["u", "{}"]]})
+        assert (await handlers.induce_recipe(db, ai, task))["new"] == 2
+        assert got == {"link_id": 7, "ai": ai, "allow_llm": True, "retry": True, "samples": [("u", "{}")],
+                       "tried": [], "notes": ["n"], "single_job": None, "board_error": None}
+        assert len(await rows(db, "plan_work")) == 1
+        # the planner is backing off a rate limit: the link waits rather than giving up on Claude
+        got.clear()
+        db.add(AICall(task="score_match", model="sonnet", duration_ms=1, ok=False, error_kind="rate_limited",
+                      created_at=datetime.now(UTC)))
+        await db.commit()
+        out = await handlers.induce_recipe(db, ai, Task(kind="induce_recipe", payload={"link_id": 7}))
+        assert got == {} and out["skipped"] == "AI backing off" and "requeued" in out
+        [later] = await rows(db, "induce_recipe")
+        assert later.payload["attempt"] == 1 and later.payload["link_id"] == 7 and later.queue == "ai"
+        # out of attempts: the link is finished without the LLM
+        last = Task(kind="induce_recipe", payload={"link_id": 7, "attempt": INDUCE_RETRIES})
+        out = await handlers.induce_recipe(db, ai, last)
+        assert got["allow_llm"] is False and got["retry"] is False and "requeued" not in out
+
+
+async def test_a_retryable_ai_error_leaves_the_link_waiting(maker, web):
+    async with maker() as db:
+        user = await make_user(db)
+        link = JobLink(user_id=user.id, url=PASTED)
+        db.add(link)
+        await db.commit()
+        out = await induce_link(db, link.id, AITasks(FakeClaude(AIError("rate_limited", "slow"))),
+                                client=site(web), retry=True)
+        assert out["retry"] is True and (await db.get(JobLink, link.id)).status == "resolving"
+        out = await induce_link(db, link.id, AITasks(FakeClaude(AIError("rate_limited", "slow"))),
+                                client=site(web), retry=False)  # the last attempt finishes it
+        assert out["status"] == "unresolved" and (await db.get(JobLink, link.id)).status == "unresolved"
 
 
 def test_induced_recipe_schema_is_cli_friendly():

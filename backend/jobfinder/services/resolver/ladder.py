@@ -17,6 +17,7 @@ from jobfinder.integrations.recipes import Recipe
 from jobfinder.integrations.robots import PoliteFetcher
 
 if TYPE_CHECKING:
+    from jobfinder.integrations.claude.claude_code import AIError
     from jobfinder.integrations.claude.tasks import AITasks
 
 PAGE_MAX_BYTES = 3_000_000
@@ -55,6 +56,7 @@ class ResolveContext:
         self.client = client
         self.allow_llm = allow_llm
         self.ai = ai  # the LLM rung's Claude; None (or allow_llm False) and it passes
+        self.ai_error: AIError | None = None  # why the LLM rung's Claude failed, if it did
         self.robots = robots if robots is not None else PoliteFetcher(client)
         self.notes: list[str] = []  # why rungs passed, for Admin > Coverage
         self.single_job: JobPosting | None = None
