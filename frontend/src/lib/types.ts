@@ -67,8 +67,11 @@ export const emptyBackground: Background = {
 };
 
 export interface Profile { status: Partial<Status>; background: Partial<Background>; version: number; career_stage?: string | null }
+/** Uploads and links are read by a background task; "processing" until it finishes. */
+export type SourceStatus = "processing" | "ready" | "error";
 export interface DocumentOut {
   id: string;
+  status: SourceStatus;
   kind: string;
   filename: string;
   size: number;
@@ -77,7 +80,10 @@ export interface DocumentOut {
   created_at: string;
   duplicate: boolean;
 }
-export interface LinkOut { id: string; kind: string; url: string; fetched: boolean; fetch_error: string | null }
+export interface LinkOut { id: string; kind: string; url: string; status: SourceStatus; fetched: boolean; fetch_error: string | null }
+/** Upload and link endpoints answer 202; task_id is null when the item is already final (sync mode or a duplicate). */
+export interface DocumentAccepted { document: DocumentOut; task_id: number | null }
+export interface LinkAccepted { link: LinkOut; task_id: number | null }
 export interface TaskOut<R = unknown> { id: number; kind: string; status: "queued" | "running" | "done" | "failed"; result: R | null; error: string | null }
 export interface FollowupQuestion { question: string; why: string }
 
