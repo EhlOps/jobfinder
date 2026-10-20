@@ -114,6 +114,15 @@ async def test_dedupe_returns_the_active_task(maker, published):
     assert await published.settle() == [("ai", "match_user", a.id)]  # once
 
 
+async def test_dedupe_survives_the_generic_plan(maker):
+    # asyncpg prepares the insert, and after five runs Postgres may plan it generically, where a bound
+    # status in ON CONFLICT ... WHERE can't match the partial index (ingest_tick's fan-out, #50).
+    async with maker() as db:
+        await db.execute(sa.text("SET plan_cache_mode = force_generic_plan"))
+        ids = {(await ledger.add(db, "ingest_board", {"company_id": i}, dedupe=True)).id for i in range(8)}
+        assert len(ids) == 8
+
+
 @pytest.mark.real_commit
 async def test_concurrent_dedupe_converges_on_one_row(maker):
     async def add():

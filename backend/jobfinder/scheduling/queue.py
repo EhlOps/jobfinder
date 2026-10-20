@@ -1,7 +1,7 @@
 """Minimal Postgres task queue: enqueue, claim (SKIP LOCKED), heartbeat, complete, fail with backoff."""
 from datetime import datetime
 
-from sqlalchemy import select, update
+from sqlalchemy import literal_column, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -46,7 +46,7 @@ async def enqueue(
             pg_insert(Task)
             .values(kind=kind, payload=payload, user_id=user_id, run_after=run_after or _now(), dedupe_key=key,
                     status="queued", attempts=0)
-            .on_conflict_do_nothing(index_elements=["dedupe_key"], index_where=Task.status == "queued")
+            .on_conflict_do_nothing(index_elements=["dedupe_key"], index_where=Task.status == literal_column("'queued'"))  # see tasks.ledger.add
             .returning(Task.id)
         )
         await db.commit()
