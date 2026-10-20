@@ -5,7 +5,6 @@ publish that failed (valkey down), a process that died between commit and publis
 became due later (retries after a backoff, staggered planner runs). Rows relayed long ago and still
 queued are sent again (ledger.RELAY_RESEND). Duplicates are harmless: workers claim by id atomically.
 """
-import asyncio
 import logging
 from datetime import datetime
 
@@ -16,7 +15,6 @@ from jobfinder.tasks import brokers, ledger
 from jobfinder.tasks.kinds import QUEUES
 
 log = logging.getLogger("jobfinder.scheduler")
-PUBLISH_TIMEOUT = 5  # seconds; a valkey that hangs rather than refuses must not stall the tick
 
 
 async def tick(now: datetime | None = None) -> int:
@@ -40,9 +38,8 @@ async def _relay(now: datetime) -> int:
         queue = QUEUES.get(kind, queue)
         if queue in failed:
             continue
-        try:
-            async with asyncio.timeout(PUBLISH_TIMEOUT):
-                await brokers.publish(queue, kind, task_id)
+        try:  # within brokers.PUBLISH_TIMEOUT, so a valkey that hangs cannot stall the tick
+            await brokers.publish(queue, kind, task_id)
         except Exception as e:
             failed[queue] = e
             continue
