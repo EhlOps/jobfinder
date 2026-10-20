@@ -1,21 +1,39 @@
-"""The daily email run: every user whose chosen hour has come gets their digest (and, when they opted
-in, freshly collected questions). The `daily_emails` task and `jobfinder digest send` both call this."""
+"""The daily email run: every user whose chosen hour has come gets their digest, with whatever questions
+were collected for them. Collection runs on the `ai` queue ahead of the send hour (`schedule_questions`),
+so sending never calls Claude (#50). The `daily_emails` task and `jobfinder digest send` both call this."""
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
-from sqlalchemy import inspect
+from sqlalchemy import exists, inspect, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from jobfinder.integrations.claude.claude_code import AIError
+from jobfinder.core.config import settings
 from jobfinder.integrations.smtp import EmailError
+from jobfinder.models import Task
 from jobfinder.notify import daily
-from jobfinder.services import questions
+from jobfinder.tasks import ledger
 
 log = logging.getLogger("jobfinder.digest")
 
 
-async def send_due(db: AsyncSession, ai, now: datetime) -> dict:
-    """Each user is its own boundary: their work is committed before the next user, so one user's crash
+async def schedule_questions(db: AsyncSession, now: datetime) -> int:
+    """Queue `collect_questions` for each user whose digest is QUESTIONS_LEAD_HOURS or less away, once per
+    digest: any collection (this one, the planner's, match_user's) due since the window opened stops a
+    second. The row shares their dedupe key, so it never runs beside one of them. Flushes only. Returns
+    how many were queued."""
+    lead, queued = timedelta(hours=settings.questions_lead_hours), 0
+    for user, digest_at in await daily.question_users(db, now):
+        if await db.scalar(select(exists().where(
+            Task.user_id == user.id, Task.kind == "collect_questions", Task.run_after >= digest_at - lead,
+        ))):
+            continue
+        await ledger.add(db, "collect_questions", user_id=user.id, run_after=now, dedupe=True)
+        queued += 1
+    return queued
+
+
+async def send_due(db: AsyncSession, now: datetime) -> dict:
+    """Each user is its own boundary: their email is committed before the next user, so one user's crash
     rolls back only theirs. Returns counts plus per-user errors."""
     out = {"due": 0, "sent": 0, "nothing_to_send": 0, "errors": {}}
     for user in await daily.due_users(db, now):
@@ -23,14 +41,6 @@ async def send_due(db: AsyncSession, ai, now: datetime) -> dict:
         try:
             if inspect(user).expired_attributes:  # an earlier user's rollback expired the loaded rows
                 await db.refresh(user)
-            if user.question_emails_enabled:
-                try:
-                    await questions.collect_questions(db, ai, user.id)
-                except AIError as e:  # still send the matches; questions go out tomorrow
-                    log.warning("question collection for user %s failed: %s", user.id, e)
-                # Commit before sending: send_daily rolls back when another run already claimed the email,
-                # and the collected questions must survive that.
-                await db.commit()
             result = await daily.send_daily(db, user, now=now)
             await db.commit()
             out["sent" if result else "nothing_to_send"] += 1

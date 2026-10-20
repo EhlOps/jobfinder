@@ -53,7 +53,10 @@ def digest_send(
     email: Email = None,
     preview: Annotated[bool, typer.Option(help="With --email: send without marking anything as sent.")] = False,
 ) -> None:
-    """Send the daily email to every user whose hour has come, or with --email to that user now."""
+    """Send the daily email to every user whose hour has come, or with --email to that user now.
+
+    It sends the questions the scheduler collected ahead of each user's hour, never calling Claude.
+    Run `jobfinder questions collect` first to collect now."""
     if preview and not email:
         raise typer.BadParameter("needs --email", param_hint="--preview")
     run(_digest(email, preview))
@@ -62,7 +65,7 @@ def digest_send(
 async def _digest(email: str | None, preview: bool) -> int:
     async with transaction() as db:
         if not email:
-            out = await digest.send_due(db, default_context().claude, utcnow())
+            out = await digest.send_due(db, utcnow())
             typer.echo(out)
             return 1 if out["errors"] else 0
         user = await accounts.by_email(db, email)

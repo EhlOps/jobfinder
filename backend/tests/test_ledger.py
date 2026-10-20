@@ -169,6 +169,15 @@ async def test_requeue_runs_a_failed_task_again_once(db, published):
         await ledger.requeue(db, t.id)
 
 
+async def test_a_row_queued_before_its_kind_moved_publishes_to_the_new_stream(db, published):
+    t = Task(kind="daily_emails", queue="ai", payload={}, status="failed")  # daily_emails was on ai before #50
+    db.add(t)
+    await db.flush()
+    await ledger.requeue(db, t.id)
+    await db.commit()
+    assert (await published.settle()) == [("io", "daily_emails", t.id)]
+
+
 async def test_requeue_turns_a_twin_racing_the_check_into_a_conflict(db, monkeypatch):
     t = await ledger.add(db, "ai_check", dedupe=True)
     t = await ledger.claim(db, t.id)

@@ -21,7 +21,7 @@ from jobfinder.core.clock import utcnow
 from jobfinder.core.config import settings
 from jobfinder.core.errors import Conflict, NotFound
 from jobfinder.models import Task
-from jobfinder.tasks.kinds import queue_for
+from jobfinder.tasks.kinds import QUEUES, queue_for
 
 log = logging.getLogger("jobfinder.tasks")
 ACTIVE = ("queued", "running")
@@ -258,7 +258,8 @@ _publishing: set[asyncio.Task] = set()  # strong refs until each publish finishe
 
 def _note(db: AsyncSession, task: Task, now: datetime) -> None:
     if task.run_after <= now:  # later rows wait for the relay
-        db.info.setdefault(PENDING, []).append((task.queue, task.kind, task.id))
+        # The kind decides the stream, as in the relay: a row queued before its kind moved keeps the old column.
+        db.info.setdefault(PENDING, []).append((QUEUES.get(task.kind, task.queue), task.kind, task.id))
 
 
 @event.listens_for(Session, "after_commit")

@@ -174,7 +174,7 @@ async def test_daily_tick_isolates_a_crashing_user(maker, monkeypatch, outbox):
         bad = await make_user(db, "a-bad@x.com", hour=hour)  # first, so its rollback expires the user loaded next
         ok = await make_user(db, "b-ok@x.com", hour=hour)
         for u in (ok, bad):
-            await make_match(db, u.id, confidence=0.4, unknowns=[unknown(f"Kafka for {u.id}?")])
+            await make_question(db, u.id, f"Kafka for {u.id}?")  # collected ahead of the hour (#50)
     real = daily.send_daily
 
     async def send(db, user, **kw):
@@ -186,5 +186,5 @@ async def test_daily_tick_isolates_a_crashing_user(maker, monkeypatch, outbox):
     task = await _run(maker, "daily_emails")
     assert task.result["sent"] == 1 and set(task.result["errors"]) == {str(bad.id)}
     assert await count(maker, ClarifyingQuestion, user_id=ok.id, status="emailed") == 1
-    # The crash came after the bad user's questions were collected and committed: they wait for tomorrow.
+    # The bad user's crash rolled back only their claim: their questions wait for tomorrow.
     assert await count(maker, ClarifyingQuestion, user_id=bad.id, status="pending") == 1

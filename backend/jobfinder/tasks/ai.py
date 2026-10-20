@@ -116,18 +116,11 @@ async def match_user(db: AsyncSession, ai: AITasks, task: Task, _: None) -> dict
 
 @ledger_task(ai_broker, "collect_questions")
 async def collect_questions(db: AsyncSession, ai: AITasks, task: Task, _: None) -> dict:
-    """The runtime's completion commit is the boundary: the new questions and the reviewed flags go together."""
+    """The runtime's completion commit is the boundary: the new questions and the reviewed flags go together.
+    The payload is empty, or names the digest it runs ahead of (services.digest.schedule_questions)."""
     from jobfinder.services import questions as service
 
     return await service.collect_questions(db, ai, task.user_id)
-
-
-@ledger_task(ai_broker, "daily_emails")
-async def daily_emails(db: AsyncSession, ai: AITasks, task: Task, _: None) -> dict:
-    """Hourly tick: send the daily email to every user whose chosen hour has come (services.digest)."""
-    from jobfinder.services import digest
-
-    return await digest.send_due(db, ai, datetime.now(UTC))
 
 
 # ---------------------------------------------------------------- documents
