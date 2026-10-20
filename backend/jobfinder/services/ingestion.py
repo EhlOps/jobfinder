@@ -1,6 +1,6 @@
 """Ingestion: fetch boards, upsert into the `jobs` cache, expire jobs that disappeared.
 
-Nothing here commits except `ingest_boards`, which opens one session per board and is the boundary for
+Nothing here commits except `ingest_board`, which opens one session per board and is the boundary for
 each, so one board failing never loses another's run. Everything else runs in the caller's session and
 the caller commits (the task handler, the CLI, ingest.runner).
 """
@@ -234,54 +234,75 @@ async def ingest_company(db: AsyncSession, client: httpx.AsyncClient, company: C
     return stats
 
 
+async def due_board_ids(
+    db: AsyncSession, *, ats: str | None = None, slug: str | None = None, all_boards: bool = False,
+) -> list[int]:
+    """The boards a run fetches: every enabled one, or with the adaptive schedule only those that are due
+    (an explicit `ats`/`slug` or `all_boards` always fetches), the discovered ones capped by selection."""
+    due = settings.adaptive_schedule_enabled and not (ats or slug or all_boards)
+    boards = await boards_repo.enabled_boards(db, ats=ats, slug=slug, due_by=schedule.now() if due else None)
+    if not slug:  # an explicit board is always fetched; otherwise cap the discovered ones
+        statuses = await boards_repo.activated_statuses(db)
+        boards = select_boards(
+            boards, [Target.from_status(s) for s in statuses], settings.ingest_max_discovered_boards_per_run
+        )
+    return [b.id for b in boards]
+
+
+def http_client() -> httpx.AsyncClient:
+    return httpx.AsyncClient(timeout=30, follow_redirects=True, headers={"User-Agent": USER_AGENT})
+
+
+async def ingest_board(session_factory: SessionFactory, client: httpx.AsyncClient, company_id: int) -> IngestStats:
+    """Fetch one board in, and commit it with, its own session: the per-board boundary. Never raises
+    (but lets a cancellation through): a crash is recorded on the board and returned as the error."""
+    async with session_factory() as db:
+        # plain values, captured up front: after a rollback the ORM object is expired and
+        # touching it in async code raises (MissingGreenlet / PendingRollbackError)
+        name, board_ats = "?", "?"
+        try:
+            company = await db.get(Company, company_id)
+            if company is None or not company.enabled:  # removed or disabled since it was picked (#50)
+                return IngestStats(source="?", company=f"board {company_id}", error="skipped: board gone or disabled")
+            name, board_ats = company.name, company.ats
+            stats = await ingest_company(db, client, company)
+            await db.commit()
+            return stats
+        except Exception as e:  # last line of defence: never lose the whole run
+            log.exception("ingest failed for %s", name)
+            error = _describe(e)
+            try:  # still count it toward the board's health
+                await db.rollback()
+                company = await db.get(Company, company_id)
+                await _fail_board(db, company, error, datetime.now(UTC))
+                await db.commit()
+            except Exception:
+                log.exception("could not record failure for %s", name)
+            return IngestStats(source=board_ats, company=name, error=error)
+
+
 async def ingest_boards(
     session_factory: SessionFactory, *, ats: str | None = None, slug: str | None = None,
     concurrency: int | None = None, all_boards: bool = False,
 ) -> list[IngestStats]:
-    """Poll every enabled company board, or with the adaptive schedule only those that are due
-    (an explicit `ats`/`slug` or `all_boards` always fetches). One company failing never affects
-    the others: each board is fetched in, and committed by, its own session (the per-board boundary)."""
+    """Poll the boards `due_board_ids` picks, INGEST_CONCURRENCY at a time. One company failing never
+    affects the others: each board is fetched in, and committed by, its own session (ingest_board).
+    The CLI and the legacy worker run this; the ledger's ingest_tick fans out one ingest_board task per
+    board instead (#50)."""
     async with session_factory() as db:
-        due = settings.adaptive_schedule_enabled and not (ats or slug or all_boards)
-        boards = await boards_repo.enabled_boards(db, ats=ats, slug=slug, due_by=schedule.now() if due else None)
-        if not slug:  # an explicit board is always fetched; otherwise cap the discovered ones
-            statuses = await boards_repo.activated_statuses(db)
-            boards = select_boards(
-                boards, [Target.from_status(s) for s in statuses], settings.ingest_max_discovered_boards_per_run
-            )
-        ids = [b.id for b in boards]
+        ids = await due_board_ids(db, ats=ats, slug=slug, all_boards=all_boards)
 
     sem = asyncio.Semaphore(concurrency or settings.ingest_concurrency)
-    headers = {"User-Agent": USER_AGENT}
 
-    async with httpx.AsyncClient(timeout=30, follow_redirects=True, headers=headers) as client:
+    async with http_client() as client:
         async def one(company_id: int) -> IngestStats:
-            async with sem, session_factory() as db:
-                # plain values, captured up front: after a rollback the ORM object is expired and
-                # touching it in async code raises (MissingGreenlet / PendingRollbackError)
-                name, board_ats = "?", "?"
-                try:
-                    company = await db.get(Company, company_id)
-                    name, board_ats = company.name, company.ats
-                    stats = await ingest_company(db, client, company)
-                    await db.commit()
-                    return stats
-                except Exception as e:  # last line of defence: never lose the whole run
-                    log.exception("ingest failed for %s", name)
-                    error = _describe(e)
-                    try:  # still count it toward the board's health
-                        await db.rollback()
-                        company = await db.get(Company, company_id)
-                        await _fail_board(db, company, error, datetime.now(UTC))
-                        await db.commit()
-                    except Exception:
-                        log.exception("could not record failure for %s", name)
-                    return IngestStats(source=board_ats, company=name, error=error)
+            async with sem:
+                return await ingest_board(session_factory, client, company_id)
 
         results = await asyncio.gather(*(one(i) for i in ids), return_exceptions=True)
         out: list[IngestStats] = []
         for company_id, r in zip(ids, results, strict=True):
-            if isinstance(r, BaseException):  # one() swallows Exception; this catches e.g. cancellation
+            if isinstance(r, BaseException):  # ingest_board swallows Exception; this catches e.g. cancellation
                 log.error("board task crashed", exc_info=r)
                 r = IngestStats(source="?", company=f"board {company_id}", error=_describe(r) if isinstance(r, Exception) else type(r).__name__)
             out.append(r)

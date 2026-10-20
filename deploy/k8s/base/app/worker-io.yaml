@@ -1,5 +1,6 @@
 # worker-io (#48; compose: worker-io, profile "ledger"): the taskiq worker on stream `jobfinder:io`:
-# ingest_jobs, plan_work, discover_boards and score_coveted (tasks/kinds.py). None of them calls Claude
+# the ingest kinds (ingest_tick fans out one ingest_board per board), plan_work, discover_boards and
+# score_coveted (tasks/kinds.py). None of them calls Claude
 # (anything that may, like the resolver, is on the ai queue), and none reads or writes the document
 # store, so no store or claude-auth volume. The worker image anyway: it has everything ingestion needs
 # (the jobspy extra when built with it), and one image for both task workers keeps deploy.sh's pinning
@@ -67,7 +68,7 @@ spec:
               cpu: 100m
               memory: 256Mi
             limits:
-              # Python with WORKER_IO_CONCURRENCY tasks, each fetching up to INGEST_CONCURRENCY boards.
+              # Python with WORKER_IO_CONCURRENCY tasks, each fetching one board (ingest_board, #50).
               memory: 1536Mi
           securityContext:
             allowPrivilegeEscalation: false

@@ -44,6 +44,9 @@ resolve_job_link = _legacy("resolve_job_link")
 audit_coverage = _legacy("audit_coverage")
 reinduce_recipe = _legacy("reinduce_recipe")
 ingest_jobs = _legacy("ingest_jobs")
+ingest_tick = _legacy("ingest_tick")
+ingest_board = _legacy("ingest_board")
+ingest_source = _legacy("ingest_source")
 plan_work = _legacy("plan_work")
 discover_boards = _legacy("discover_boards")
 score_coveted = _legacy("score_coveted")
@@ -53,6 +56,9 @@ HANDLERS: dict[str, Handler] = {
     "followup_questions": followup_questions,
     "audit_profile": audit_profile,
     "ingest_jobs": ingest_jobs,
+    "ingest_tick": ingest_tick,
+    "ingest_board": ingest_board,
+    "ingest_source": ingest_source,
     "plan_work": plan_work,
     "ai_check": ai_check,
     "match_user": match_user,
