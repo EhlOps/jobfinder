@@ -409,6 +409,15 @@
             "title": "Size",
             "type": "integer"
           },
+          "status": {
+            "enum": [
+              "processing",
+              "ready",
+              "error"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
           "tags": {
             "additionalProperties": {
               "type": "string"
@@ -424,9 +433,35 @@
           "size",
           "chars",
           "tags",
-          "created_at"
+          "created_at",
+          "status"
         ],
         "title": "DocumentOut",
+        "type": "object"
+      },
+      "DocumentUpload": {
+        "description": "An accepted upload: the document, and the parse_document task reading it while it is processing.\nPoll GET /api/tasks/{task_id}, then GET the document. task_id is null when there is nothing left to\nwait for (SYNC_UPLOADS, or a duplicate of a file already read).",
+        "properties": {
+          "document": {
+            "$ref": "#/components/schemas/DocumentOut"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
+          }
+        },
+        "required": [
+          "document",
+          "task_id"
+        ],
+        "title": "DocumentUpload",
         "type": "object"
       },
       "EditIn": {
@@ -1378,6 +1413,31 @@
         "title": "LinkRequest",
         "type": "object"
       },
+      "LinkUpload": {
+        "description": "An added or refreshed link, and the fetch_link task fetching it while it is processing. task_id is\nnull when nothing is fetched: LinkedIn and X links are only saved, and SYNC_UPLOADS fetches in the request.",
+        "properties": {
+          "link": {
+            "$ref": "#/components/schemas/ProfileLinkOut"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
+          }
+        },
+        "required": [
+          "link",
+          "task_id"
+        ],
+        "title": "LinkUpload",
+        "type": "object"
+      },
       "LoginBody": {
         "properties": {
           "email": {
@@ -1783,6 +1843,15 @@
             "title": "Kind",
             "type": "string"
           },
+          "status": {
+            "enum": [
+              "processing",
+              "ready",
+              "error"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
           "url": {
             "title": "Url",
             "type": "string"
@@ -1793,7 +1862,8 @@
           "kind",
           "url",
           "fetched",
-          "fetch_error"
+          "fetch_error",
+          "status"
         ],
         "title": "ProfileLinkOut",
         "type": "object"
@@ -3940,6 +4010,7 @@
         ]
       },
       "post": {
+        "description": "Store the file and read it in the worker: the document is \"processing\" until then. Poll\nGET /api/tasks/{task_id}, then GET the document (ready, or error if it couldn't be read).",
         "operationId": "upload_document_api_documents_post",
         "parameters": [
           {
@@ -3970,11 +4041,11 @@
           "required": true
         },
         "responses": {
-          "201": {
+          "202": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DocumentOut"
+                  "$ref": "#/components/schemas/DocumentUpload"
                 }
               }
             },
@@ -4562,6 +4633,7 @@
         ]
       },
       "post": {
+        "description": "Save the link and fetch it in the worker (\"processing\" until then; poll GET /api/tasks/{task_id}).\nLinkedIn and X links are saved, never fetched: ready at once, no task.",
         "operationId": "add_link_api_links_post",
         "parameters": [
           {
@@ -4592,11 +4664,11 @@
           "required": true
         },
         "responses": {
-          "201": {
+          "202": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ProfileLinkOut"
+                  "$ref": "#/components/schemas/LinkUpload"
                 }
               }
             },
@@ -4701,11 +4773,11 @@
           }
         ],
         "responses": {
-          "200": {
+          "202": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ProfileLinkOut"
+                  "$ref": "#/components/schemas/LinkUpload"
                 }
               }
             },

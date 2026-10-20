@@ -10,6 +10,7 @@ from typing import Literal
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import jobfinder.tasks.documents  # noqa: F401  (registers parse_document and fetch_link on io, #51)
 from jobfinder.models import Task
 from jobfinder.tasks import ledger
 from jobfinder.tasks.brokers import io_broker

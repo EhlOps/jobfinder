@@ -25,6 +25,8 @@ QUEUES: dict[str, Queue] = {
     "score_coveted": "io",
     "resolve_job_link": "io",  # deterministic rungs only (#50)
     "audit_coverage": "io",  # its resolver runs never ask Claude
+    "parse_document": "io",  # uploads and profile links, read off the api (#51)
+    "fetch_link": "io",
     "render_capture": "render",
     "render_list": "render",
 }

@@ -51,6 +51,8 @@ ingest_source = _legacy("ingest_source")
 plan_work = _legacy("plan_work")
 discover_boards = _legacy("discover_boards")
 score_coveted = _legacy("score_coveted")
+parse_document = _legacy("parse_document")
+fetch_link = _legacy("fetch_link")
 
 HANDLERS: dict[str, Handler] = {
     "extract_profile": extract_profile,
@@ -73,4 +75,6 @@ HANDLERS: dict[str, Handler] = {
     "audit_coverage": audit_coverage,
     "induce_recipe": induce_recipe,
     "reinduce_recipe": reinduce_recipe,
+    "parse_document": parse_document,
+    "fetch_link": fetch_link,
 }
