@@ -25,10 +25,15 @@ def test_the_legacy_handlers_are_the_ledger_handlers():
      {"match_id": 3, "tone": "warm", "notes": "hi"}),
     (ai_tasks.ResumeTailorArgs, {"match_id": 5}, {"match_id": 5, "force": False}),
     (ai_tasks.ResumeTailorArgs, {"match_id": 5, "force": True}, {"match_id": 5, "force": True}),
-    (ai_tasks.ResolveLinkArgs, {"link_id": 7}, {"link_id": 7}),
+    (io_tasks.ResolveLinkArgs, {"link_id": 7}, {"link_id": 7}),
     (io_tasks.ScoreCovetedArgs, {}, {"no_audit": False}),
-    (ai_tasks.AuditCoverageArgs, {}, {"company_id": None, "target_id": None}),
-    (ai_tasks.AuditCoverageArgs, {"target_id": 2}, {"company_id": None, "target_id": 2}),
+    (io_tasks.AuditCoverageArgs, {}, {"company_id": None, "target_id": None}),
+    (io_tasks.AuditCoverageArgs, {"target_id": 2}, {"company_id": None, "target_id": 2}),
+    (ai_tasks.InduceRecipeArgs, {"link_id": 7}, {"link_id": 7, "samples": [], "tried": [], "notes": [],
+                                                 "single_job": None, "board_error": None, "attempt": 0}),
+    (ai_tasks.InduceRecipeArgs, {"link_id": 7, "samples": [["https://a.com/api", "{}"]]},
+     {"link_id": 7, "samples": [("https://a.com/api", "{}")], "tried": [], "notes": [], "single_job": None,
+      "board_error": None, "attempt": 0}),
     (ai_tasks.ReinduceArgs, {"company_id": 4}, {"company_id": 4, "attempt": 0}),
 ])
 def test_payloads_queued_today_validate(model, payload, expected):
@@ -37,7 +42,9 @@ def test_payloads_queued_today_validate(model, payload, expected):
 
 def test_a_payload_missing_its_id_is_refused():
     with pytest.raises(ValidationError):
-        ai_tasks.ResolveLinkArgs.model_validate({})
+        io_tasks.ResolveLinkArgs.model_validate({})
+    with pytest.raises(ValidationError):
+        ai_tasks.InduceRecipeArgs.model_validate({})
 
 
 async def test_the_legacy_adapter_hands_over_the_validated_payload(maker, monkeypatch):
@@ -66,5 +73,5 @@ async def test_follow_ups_are_ledger_rows_flushed_into_the_task(db, monkeypatch)
     monkeypatch.setattr(coverage, "score_all", score_all)
     await io_tasks.score_coveted(db, None, Task(kind="score_coveted", payload={}), io_tasks.ScoreCovetedArgs())
     [audit] = (await db.scalars(sa.select(Task).where(Task.kind == "audit_coverage"))).all()
-    assert (audit.queue, audit.status) == ("ai", "queued")
+    assert (audit.queue, audit.status) == ("io", "queued")
     assert ledger.PENDING in db.info  # published once the runtime commits

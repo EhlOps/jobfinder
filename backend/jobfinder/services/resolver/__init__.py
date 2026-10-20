@@ -5,13 +5,18 @@ deterministic rungs first, the LLM last. The first rung that yields a board (kno
 recipe wins. A board found here is added with origin 'user' and shared with everyone; only the JobLink row
 is private. If no board turns up but a rung found the posting itself, that one job is kept.
 
-Nothing here commits: the resolve_job_link task (or the coverage audit) is the boundary.
+The ladder runs in two tasks (#50). resolve_link runs the deterministic rungs (resolve_job_link, on io).
+When none reads the site and the LLM is allowed, the link stays 'resolving' and the result carries what
+they found; induce_link then runs the LLM rung with it (induce_recipe, on ai) and finishes the link.
+
+Nothing here commits: those tasks (or the coverage audit) are the boundaries.
 """
 import dataclasses
 import hashlib
 import logging
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import httpx
 from sqlalchemy.exc import IntegrityError
@@ -53,16 +58,44 @@ UNSUPPORTED = (
 SINGLE_ONLY = "We saved this job, but couldn't find the rest of the company's job board yet."
 _HEADERS = {"User-Agent": USER_AGENT}
 LINK_SOURCE = "link"  # Job.source for a pasted posting kept on its own (no board)
+MAX_TRIED_HINTS = 50  # URLs the deterministic rungs tried as JSON, carried over to induce_link
 
 
 async def existing_board(db: AsyncSession, ats: str, slug: str) -> Company | None:
     return await boards_repo.existing(db, ats, slug)
 
 
+async def llm_allowed(db: AsyncSession) -> bool:
+    """The resolver may ask Claude unless it's switched off or the planner is backing off a rate limit."""
+    from jobfinder.core.config import settings
+    from jobfinder.scheduling import planner
+
+    return settings.resolver_llm_enabled and await planner.backoff_until(db, datetime.now(UTC)) is None
+
+
 async def resolve_link(db: AsyncSession, link_id: int, client: httpx.AsyncClient | None = None, *,
-                       allow_llm: bool = False, ai: "AITasks | None" = None) -> dict:
-    """Resolve one pasted link: find its board, add it if it's new, then fetch that board right away.
-    Never raises for a bad board: the outcome is recorded on the link so the user sees why."""
+                       allow_llm: bool = False) -> dict:
+    """Resolve one pasted link with the deterministic rungs: find its board, add it if it's new, then fetch
+    that board right away. Never raises for a bad board: the outcome is recorded on the link so the user
+    sees why. With `allow_llm`, a link no rung could read stays 'resolving' and the result's "induce" holds
+    the arguments for induce_link (#50)."""
+    return await _guarded(db, link_id, client, lambda link, c: _resolve(db, link, c, allow_llm))
+
+
+async def induce_link(db: AsyncSession, link_id: int, ai: "AITasks | None", client: httpx.AsyncClient | None = None,
+                      *, allow_llm: bool = True, retry: bool = False, samples: list = (), tried: list[str] = (),
+                      notes: list[str] = (), single_job: dict | None = None, board_error: str | None = None) -> dict:
+    """The LLM rung for a link resolve_link left 'resolving' (#50), given what the deterministic rungs found:
+    their JSON samples and the URLs they tried, their notes, a single posting, a board that couldn't be read.
+    Finishes the link as resolve_link would have, except that with `retry` a retryable AI error leaves it
+    'resolving' and returns "retry": True for the caller to try again later."""
+    hints = {"samples": samples, "tried": tried, "notes": notes, "single_job": single_job,
+             "board_error": board_error}
+    return await _guarded(db, link_id, client, lambda link, c: _induce(db, link, c, ai, allow_llm, retry, **hints))
+
+
+async def _guarded(db: AsyncSession, link_id: int, client: httpx.AsyncClient | None,
+                   run: Callable[[JobLink, httpx.AsyncClient], Awaitable[dict]]) -> dict:
     link = await db.get(JobLink, link_id)
     if link is None:
         return {"skipped": "link deleted"}
@@ -70,7 +103,7 @@ async def resolve_link(db: AsyncSession, link_id: int, client: httpx.AsyncClient
     client = client or httpx.AsyncClient(timeout=30, follow_redirects=True, headers=_HEADERS)
     try:
         async with db.begin_nested():  # a failure undoes this resolve's writes, not the caller's
-            return await _resolve(db, link, client, allow_llm, ai)
+            return await run(link, client)
     except Exception as e:  # never leave a link stuck in 'resolving'
         log.exception("resolving job link %s failed", link_id)
         link = await db.get(JobLink, link_id)
@@ -147,25 +180,38 @@ class _Outcome:
     rung: str | None = None
     hit: tuple[str, str] | None = None  # (ats, slug) of the last board or recipe hit tried
     board_error: str | None = None
+    stopped: bool = False  # a reviewed custom site's board failed: no later rung may scrape its pages
 
 
-async def _ladder(db: AsyncSession, url: str, client: httpx.AsyncClient, allow_llm: bool, *,
-                  page: SafeResponse | None = None, robots: PoliteFetcher | None = None, label: str = "",
-                  ai: "AITasks | None" = None) -> _Outcome:
-    """Run the rungs over `url`, cheapest first, until one yields a board that can be added or reused.
-    `page` (already fetched, SSRF- and robots-checked) saves the context fetching it again."""
-    ctx = ResolveContext(url, client, allow_llm=allow_llm, robots=robots, ai=ai)
+async def _take_hit(db: AsyncSession, out: _Outcome, rung: str, hit: BoardHit | RecipeHit,
+                    client: httpx.AsyncClient) -> bool:
+    """Add or reuse the board behind a hit. False, with the reason noted, when it can't be."""
+    if isinstance(hit, BoardHit):
+        out.hit = (hit.ats, hit.slug)
+        company, added, reason = await _board_company(db, hit, client)
+    else:
+        out.hit = ("recipe", hit.domain)
+        company, added, reason = await _recipe_company(db, hit)
+    if company is None:
+        out.board_error = f"That board couldn't be read: {reason}"
+        out.ctx.note(f"{rung}: {reason}")
+        return False
+    out.company, out.added, out.rung = company, added, rung
+    return True
+
+
+async def _ladder(db: AsyncSession, url: str, client: httpx.AsyncClient, *, page: SafeResponse | None = None,
+                  robots: PoliteFetcher | None = None, label: str = "") -> _Outcome:
+    """Run the deterministic rungs over `url`, cheapest first, until one yields a board that can be added or
+    reused; the LLM rung is induce_link's (#50). `page` (already fetched, SSRF- and robots-checked) saves
+    the context fetching it again."""
+    ctx = ResolveContext(url, client, robots=robots)
     if page is not None:  # what ctx.page() would have cached after a successful fetch
         ctx._page, ctx._fetched = page, True
     out = _Outcome(ctx)
     for rung in RUNGS:
-        if rung.name == "llm" and ctx.allow_llm:
-            # a recipe board for this domain already exists and would be kept (_recipe_company): use it
-            # rather than paying for an induction whose result is thrown away
-            known = await existing_board(db, "recipe", registrable_domain(url))
-            if known is not None:
-                out.hit, out.company, out.added, out.rung = ("recipe", known.slug), known, False, "recipe_board"
-                return out
+        if rung.name == "llm":
+            continue
         try:
             hit = await rung.run(ctx)
         except Exception as e:  # a broken rung passes; the next one gets a go
@@ -177,32 +223,23 @@ async def _ladder(db: AsyncSession, url: str, client: httpx.AsyncClient, allow_l
         if isinstance(hit, SingleJob):
             ctx.single_job = ctx.single_job or hit.posting
             continue
-        if isinstance(hit, BoardHit):
-            out.hit = (hit.ats, hit.slug)
-            company, added, reason = await _board_company(db, hit, client)
-        else:
-            out.hit = ("recipe", hit.domain)
-            company, added, reason = await _recipe_company(db, hit)
-        if company is None:
-            out.board_error = f"That board couldn't be read: {reason}"
-            ctx.note(f"{rung.name}: {reason}")
-            if isinstance(hit, BoardHit) and site_for_url(url) is not None:
-                break  # a reviewed custom site maps to its one board; its own pages are not to be scraped
-            continue
-        out.company, out.added, out.rung = company, added, rung.name
-        return out
+        if await _take_hit(db, out, rung.name, hit, client):
+            return out
+        if isinstance(hit, BoardHit) and site_for_url(url) is not None:
+            out.stopped = True
+            break  # a reviewed custom site maps to its one board; its own pages are not to be scraped
     return out
 
 
-async def resolve_url(db: AsyncSession, url: str, client: httpx.AsyncClient, *, allow_llm: bool = False,
-                      page: SafeResponse | None = None, robots: PoliteFetcher | None = None,
-                      ai: "AITasks | None" = None) -> tuple[Company | None, str | None, list[str]]:
+async def resolve_url(db: AsyncSession, url: str, client: httpx.AsyncClient, *, page: SafeResponse | None = None,
+                      robots: PoliteFetcher | None = None) -> tuple[Company | None, str | None, list[str]]:
     """Resolve a URL with no JobLink behind it (the coverage audit): (company, rung, notes). A board that
-    is new is added with origin 'user' and fetched right away, as for a pasted link."""
+    is new is added with origin 'user' and fetched right away, as for a pasted link. Deterministic rungs
+    only: the audit runs on io and never asks Claude (#50)."""
     refused = refusal_for_url(url)
     if refused is not None:  # terms/robots review said no: nothing here may fetch or scrape this site
         return None, None, [refusal_message(refused)]
-    out = await _ladder(db, url, client, allow_llm, page=page, robots=robots, ai=ai)
+    out = await _ladder(db, url, client, page=page, robots=robots)
     company = out.company
     if company is not None and out.added:
         await ingest_company(db, client, company)
@@ -213,24 +250,108 @@ async def resolve_url(db: AsyncSession, url: str, client: httpx.AsyncClient, *, 
     return company, out.rung, notes
 
 
-async def _resolve(db: AsyncSession, link: JobLink, client: httpx.AsyncClient, allow_llm: bool,
-                   ai: "AITasks | None" = None) -> dict:
+async def _resolve(db: AsyncSession, link: JobLink, client: httpx.AsyncClient, allow_llm: bool) -> dict:
     refused = refusal_for_url(link.url)
     if refused is not None:  # terms/robots review said no: no rung may fetch or scrape this site
         _finish(link, "unresolved", error=refusal_message(refused), rung="terms_refused")
         return {"status": "unresolved", "reason": "terms refused", "site": refused.name}
-    out = await _ladder(db, link.url, client, allow_llm, label=f"link {link.id}", ai=ai)
-    ctx = out.ctx
+    out = await _ladder(db, link.url, client, label=f"link {link.id}")
     if out.hit is not None:
         link.ats, link.slug = out.hit
     if out.company is not None:
         return await _done(db, link, out.company, out.added, out.rung, client)
+    if allow_llm and not out.stopped:
+        if (known := await _known_recipe_board(db, link)) is not None:
+            return await _done(db, link, known, False, "recipe_board", client)
+        if out.ctx.page_error is None:  # an unreadable page: the LLM rung would get none either
+            # the link stays 'resolving' (the SPA keeps polling) until induce_recipe finishes it
+            return {"status": "resolving", "notes": out.ctx.notes, "induce": _hints(out)}
+    return await _unresolved(db, link, out.ctx, out.board_error)
 
+
+async def _known_recipe_board(db: AsyncSession, link: JobLink) -> Company | None:
+    """A recipe board that already exists for the link's domain would be kept (_recipe_company): use it
+    rather than paying for an induction whose result is thrown away."""
+    known = await existing_board(db, "recipe", registrable_domain(link.url))
+    if known is not None:
+        link.ats, link.slug = "recipe", known.slug
+    return known
+
+
+def _hints(out: _Outcome) -> dict[str, Any]:
+    """induce_link's arguments from the deterministic pass, JSON-safe for the induce_recipe payload. The
+    samples are carried, not fetched again: they are small (MAX_SAMPLE_CHARS) and some came through the renderer."""
+    from jobfinder.services.resolver.rungs.llm import MAX_SAMPLE_FETCHES
+
+    ctx, job = out.ctx, None
+    if ctx.single_job is not None:
+        job = dataclasses.asdict(ctx.single_job)
+        job["posted_at"] = job["posted_at"].isoformat() if job["posted_at"] else None
+    samples = ctx.json_samples[:MAX_SAMPLE_FETCHES]
+    tried = [u for u, _ in samples] + sorted(ctx.json_tried - {u for u, _ in samples})  # the samples' own first
+    return _no_nul({"samples": [list(s) for s in samples], "tried": tried[:MAX_TRIED_HINTS],
+                    "notes": list(ctx.notes), "single_job": job, "board_error": out.board_error})
+
+
+def _no_nul(v):
+    """Scraped text without NUL characters, which Postgres can't store in jsonb."""
+    if isinstance(v, str):
+        return v.replace("\x00", "")
+    if isinstance(v, dict):
+        return {k: _no_nul(x) for k, x in v.items()}
+    if isinstance(v, list | tuple):
+        return [_no_nul(x) for x in v]
+    return v
+
+
+def _posting(job: dict) -> JobPosting:
+    names = {f.name for f in dataclasses.fields(JobPosting)}
+    job = {k: v for k, v in job.items() if k in names}
+    if job.get("posted_at"):
+        job["posted_at"] = datetime.fromisoformat(job["posted_at"])
+    return JobPosting(**job)
+
+
+async def _induce(db: AsyncSession, link: JobLink, client: httpx.AsyncClient, ai: "AITasks | None",
+                  allow_llm: bool, retry: bool, *, samples, tried, notes, single_job, board_error) -> dict:
+    from jobfinder.services.resolver.rungs.llm import LlmRung
+
+    if link.status != "resolving":  # finished already (a duplicate delivery, or a re-paste resolved it)
+        return {"skipped": f"link already {link.status}"}
+    if (known := await _known_recipe_board(db, link)) is not None:  # one may have appeared since
+        return await _done(db, link, known, False, "recipe_board", client)
+    ctx = ResolveContext(link.url, client, allow_llm=allow_llm, ai=ai)
+    ctx.notes = list(notes)
+    ctx.json_samples = [(u, body) for u, body in samples]
+    ctx.json_tried = set(tried)
+    ctx.single_job = _posting(single_job) if single_job else None
+    out = _Outcome(ctx, board_error=board_error)
+    hit = None
+    if not allow_llm:
+        ctx.note("llm: not allowed now (switched off or backing off a rate limit)")
+    else:
+        try:
+            hit = await LlmRung().run(ctx)
+        except Exception as e:  # as in _ladder: a broken rung passes
+            log.warning("rung llm failed on link %s: %s", link.id, e)
+            ctx.note(f"llm: {type(e).__name__}")
+    if hit is None and retry and ctx.ai_error is not None and ctx.ai_error.retryable:
+        # not the site's fault (a rate limit, a timeout): the link waits for another go
+        return {"retry": True, "reason": f"AI unavailable ({ctx.ai_error.kind})", "notes": ctx.notes}
+    if hit is not None:
+        took = await _take_hit(db, out, "llm", hit, client)
+        link.ats, link.slug = out.hit
+        if took:
+            return await _done(db, link, out.company, out.added, out.rung, client)
+    return await _unresolved(db, link, ctx, out.board_error)
+
+
+async def _unresolved(db: AsyncSession, link: JobLink, ctx: ResolveContext, board_error: str | None) -> dict:
+    """No board: keep the pasted posting on its own if a rung found it, else record why."""
     if ctx.single_job is not None:
         job_id = await _keep_single_job(db, link, ctx.single_job)
         _finish(link, "unresolved", error=SINGLE_ONLY, rung="single_job")
         return {"status": "unresolved", "reason": "single job only", "job_id": job_id, "notes": ctx.notes}
-    board_error = out.board_error
     _finish(link, "unresolved", error=board_error or UNSUPPORTED)
     return {"status": "unresolved", "reason": "unsupported" if not board_error else board_error,
             "notes": ctx.notes}

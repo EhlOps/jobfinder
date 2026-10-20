@@ -23,6 +23,7 @@ from jobfinder.tasks.runtime import ledger_task
 
 MAX_LINK_CHARS = 8_000
 REINDUCE_RETRIES = 6  # re-induction attempts put off by a rate limit or an unreachable site
+INDUCE_RETRIES = 3  # a pasted link's induction put off by a rate limit, before it's left unresolved
 
 
 # ---------------------------------------------------------------- payloads
@@ -41,13 +42,15 @@ class ResumeTailorArgs(BaseModel):
     force: bool = False
 
 
-class ResolveLinkArgs(BaseModel):
+class InduceRecipeArgs(BaseModel):
+    """What resolve_job_link's deterministic rungs found (services.resolver._hints)."""
     link_id: int
-
-
-class AuditCoverageArgs(BaseModel):
-    company_id: int | None = None  # audit just this employer's targets
-    target_id: int | None = None  # or just this one
+    samples: list[tuple[str, str]] = []  # same-site JSON (url, body) they fetched
+    tried: list[str] = []  # URLs they tried as JSON
+    notes: list[str] = []
+    single_job: dict | None = None  # the posting alone, kept if no board turns up
+    board_error: str | None = None
+    attempt: int = 0
 
 
 class ReinduceArgs(BaseModel):
@@ -116,18 +119,11 @@ async def match_user(db: AsyncSession, ai: AITasks, task: Task, _: None) -> dict
 
 @ledger_task(ai_broker, "collect_questions")
 async def collect_questions(db: AsyncSession, ai: AITasks, task: Task, _: None) -> dict:
-    """The runtime's completion commit is the boundary: the new questions and the reviewed flags go together."""
+    """The runtime's completion commit is the boundary: the new questions and the reviewed flags go together.
+    The payload is empty, or names the digest it runs ahead of (services.digest.schedule_questions)."""
     from jobfinder.services import questions as service
 
     return await service.collect_questions(db, ai, task.user_id)
-
-
-@ledger_task(ai_broker, "daily_emails")
-async def daily_emails(db: AsyncSession, ai: AITasks, task: Task, _: None) -> dict:
-    """Hourly tick: send the daily email to every user whose chosen hour has come (services.digest)."""
-    from jobfinder.services import digest
-
-    return await digest.send_due(db, ai, datetime.now(UTC))
 
 
 # ---------------------------------------------------------------- documents
@@ -159,40 +155,29 @@ async def ai_check(db: AsyncSession, ai: AITasks, task: Task, _: None) -> dict:
     return {"ok": True}
 
 
-# ---------------------------------------------------------------- resolver (may ask Claude)
+# ---------------------------------------------------------------- resolver's LLM rung
 
 
-async def _llm_allowed(db: AsyncSession) -> bool:
-    """The resolver may ask Claude unless it's switched off or the planner is backing off a rate limit."""
+@ledger_task(ai_broker, "induce_recipe", payload=InduceRecipeArgs)
+async def induce_recipe(db: AsyncSession, ai: AITasks, task: Task, p: InduceRecipeArgs) -> dict:
+    """A pasted link no deterministic rung could read (queued by resolve_job_link on io, #50): ask Claude for
+    a recipe, then finish the link, fetch a new board now and let the planner match its jobs."""
     from jobfinder.core.config import settings
-    from jobfinder.scheduling import planner
+    from jobfinder.services.resolver import induce_link, llm_allowed
 
-    return settings.resolver_llm_enabled and await planner.backoff_until(db, datetime.now(UTC)) is None
-
-
-@ledger_task(ai_broker, "resolve_job_link", payload=ResolveLinkArgs)
-async def resolve_job_link(db: AsyncSession, ai: AITasks, task: Task, p: ResolveLinkArgs) -> dict:
-    """A pasted job link whose board is new: add it, fetch it now, then let the planner match the new jobs."""
-    from jobfinder.services.resolver import resolve_link
-
-    out = await resolve_link(db, p.link_id, allow_llm=await _llm_allowed(db), ai=ai)
+    allowed, retry = await llm_allowed(db), p.attempt < INDUCE_RETRIES
+    if not allowed and retry and settings.resolver_llm_enabled:
+        out = {"skipped": "AI backing off", "retry": True}  # the link waited for this: don't give up on it yet
+    else:
+        out = await induce_link(db, p.link_id, ai, allow_llm=allowed, retry=retry, samples=p.samples,
+                                tried=p.tried, notes=p.notes, single_job=p.single_job, board_error=p.board_error)
     await db.commit()  # the boundary: the link's outcome, and the board and jobs it found
+    if out.pop("retry", False):  # still 'resolving': try again after the planner's backoff
+        later = datetime.now(UTC) + timedelta(minutes=settings.planner_backoff_minutes)
+        await ledger.add(db, "induce_recipe", {**p.model_dump(), "attempt": p.attempt + 1},
+                         user_id=task.user_id, run_after=later, dedupe=True)
+        out["requeued"] = later.isoformat()
     if out.get("new"):
-        await ledger.add(db, "plan_work", dedupe=True)
-    return out
-
-
-@ledger_task(ai_broker, "audit_coverage", payload=AuditCoverageArgs)
-async def audit_coverage(db: AsyncSession, ai: AITasks, task: Task, p: AuditCoverageArgs) -> dict:
-    """Send coveted employers with no working board through the resolver (payload may name just one)."""
-    from jobfinder.services import coverage
-
-    out = await coverage.audit_coverage(
-        db, company_id=p.company_id, target_id=p.target_id,
-        checkpoint=db.commit,  # keep each target's outcome as the audit goes
-    )
-    await db.commit()
-    if out.get("resolved"):
         await ledger.add(db, "plan_work", dedupe=True)
     return out
 
@@ -202,11 +187,12 @@ async def reinduce_recipe(db: AsyncSession, ai: AITasks, task: Task, p: Reinduce
     """Self-heal a degraded recipe board (queued by ingest_company): ask Claude for a new recipe, at most
     twice a week per domain (ingest.recipes.health)."""
     from jobfinder.core.config import settings
+    from jobfinder.services.resolver import llm_allowed
     from jobfinder.services.resolver.rungs.llm import reinduce_company
 
     if not settings.resolver_llm_enabled:
         return {"skipped": "llm disabled"}
-    if await _llm_allowed(db):
+    if await llm_allowed(db):
         out = await reinduce_company(db, ai, p.company_id)
         await db.commit()  # the boundary: the new recipe (or the disabled board) and its jobs
     else:

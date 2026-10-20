@@ -93,6 +93,7 @@ class Settings(BaseSettings):
     digest_send_window_hours: int
     questions_per_email: int
     max_open_questions: int
+    questions_lead_hours: int
     planner_interval_minutes: int
     planner_max_per_tick: int
     planner_stagger_seconds: int
@@ -102,6 +103,7 @@ class Settings(BaseSettings):
     task_stuck_after_minutes: int
     task_backoff_seconds: int
     task_heartbeat_seconds: float
+    task_prune_days: int
     worker_poll_seconds: float
     worker_reap_seconds: float
     tasks_backend: Literal["legacy", "ledger"]
