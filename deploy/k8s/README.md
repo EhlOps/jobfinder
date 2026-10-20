@@ -17,7 +17,8 @@ deploy/k8s/
     storage/            # #40: PVCs store, claude-auth
     data/               # #47: backup CronJob and PVC backups
     app/                # #43: web, api, worker, renderer, smtp, migrate Job, Ingress, config overrides;
-                        # #48: scheduler, worker-ai, worker-io (0 replicas until an overlay sets TASKS_BACKEND=ledger)
+                        # #48: scheduler, worker-ai, worker-io (0 replicas until an overlay sets TASKS_BACKEND=ledger);
+                        # #52: worker-io's KEDA ScaledObject (1-4 replicas on the io backlog)
   overlays/
     staging/            # namespace `jobfinder-staging`; sealed secrets, mailpit, staging config
     prod/               # namespace `jobfinder` (the base default); sealed secrets, Gmail relay, prod config
@@ -27,7 +28,7 @@ deploy/k8s/
   staging-restore.sh    # #43: copy prod's compose database into staging
   prod-cutover.sh       # #47: compose -> k3s data move and first prod deploy (--rehearsal on staging)
   backup-restore.sh     # #47: restore drill of the newest backup into a scratch database
-  pg-lib.sh             # #47: row-count helpers the two scripts above share
+  pg-lib.sh             # #47: row-count, stream and KEDA-pause helpers the scripts above share
 ```
 
 The app's ConfigMap comes from `backend/kustomization.yaml`, which turns

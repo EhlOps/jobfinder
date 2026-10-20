@@ -42,6 +42,15 @@ def test_each_queue_broker_carries_exactly_its_kinds():
     assert brokers.ai_broker.queue_name != brokers.io_broker.queue_name
 
 
+def test_each_broker_reads_no_more_than_its_worker_runs_at_once():
+    """No read-ahead beyond the concurrency (#52): what a pod has read but not started is stranded on its
+    consumer when KEDA scales it in, and is invisible to the lag KEDA scales on."""
+    for queue, setting in brokers.CONCURRENCY.items():
+        concurrency = getattr(brokers.settings, setting)
+        assert brokers.BROKERS[queue].count == max(1, concurrency)
+        assert worker_argv(queue)[worker_argv(queue).index("--max-async-tasks") + 1] == str(concurrency)
+
+
 async def test_the_registered_taskiq_task_runs_the_handler(maker, monkeypatch):
     seen = []
 

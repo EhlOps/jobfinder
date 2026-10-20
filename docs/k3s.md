@@ -14,7 +14,9 @@ Production moves from compose to the `jobfinder` namespace with the cutover (#47
 - **Manifests:** `deploy/k8s/` (Kustomize base + overlays). CI renders and validates them (`.github/workflows/k8s.yml`).
 - **Storage:** k3s's local-path provisioner; stateful data uses the `local-path-retain` class (see Data services).
 
-Pinned versions live at the top of `deploy/k3s/install.sh` and in `manifests/sealed-secrets.yaml`. Upgrades are PRs that bump them.
+- **Autoscaling:** KEDA in namespace `keda` scales worker-io on its stream's backlog ("KEDA" below).
+
+Pinned versions live at the top of `deploy/k3s/install.sh` and in the HelmCharts `manifests/sealed-secrets.yaml` (chart 2.20.0) and `manifests/keda.yaml` (chart 2.21.0, tested against Kubernetes 1.34–1.36; bump it with k3s). Upgrades are PRs that bump them.
 
 ## Install / re-converge
 
@@ -29,7 +31,7 @@ The script is idempotent. It prints the status of the compose site, the api and 
 3. Installs k3s at the pinned version (skipped if already at it). If k3s was already running and the binary version or `config.yaml` changed, it restarts k3s so the change takes effect (`systemctl enable --now` alone is a no-op on a running unit).
 4. Adds the cluster CIDRs to firewalld's `trusted` zone, runtime and permanent, **without** `firewall-cmd --reload` (a reload can drop Docker's rules for the running compose stack).
 5. Copies the kubeconfig to `~opc/.kube/k3s.yaml` (0600; `~/.kube/config` is never touched) and installs `kubeseal`.
-6. Waits for the node, Traefik and the sealed-secrets controller.
+6. Waits for the node, Traefik, the sealed-secrets controller and KEDA (its operator, its metrics server and the `external.metrics.k8s.io` APIService).
 
 ## Verify
 
@@ -41,6 +43,8 @@ sudo iptables-save | grep 'dport 8280.*DNAT'        # hostPort is a DNAT rule, -
 curl -s -m 4 http://$(hostname -I | cut -d' ' -f1):8280/ || echo 'not reachable off loopback: good'
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8280/          # 404: Traefik, no routes
 kubeseal --fetch-cert | head -1                     # -----BEGIN CERTIFICATE-----
+kubectl -n keda get pods                            # keda-operator, -metrics-apiserver, -admission-webhooks Running
+kubectl get apiservice v1beta1.external.metrics.k8s.io   # AVAILABLE True
 kubectl apply -k deploy/k8s/hello && kubectl -n jobfinder-hello rollout status deploy/hello
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8280/healthz   # 200
 ```
@@ -167,7 +171,7 @@ Today's app runs in `jobfinder-staging` next to the data services, on a copy of 
 
 ```text
 browser → host Caddy (TLS, staging.ehlops.com) → Traefik 127.0.0.1:8280 → web (Caddy :8080) → api:8000 (2 pods)
-                                                                           scheduler (1) · worker-ai (1) · worker-io (1) · renderer (0) · smtp → mailpit
+                                                                           scheduler (1) · worker-ai (1) · worker-io (1–4) · renderer (0) · smtp → mailpit
                                                                            (TASKS_BACKEND=ledger; the legacy worker is at 0)
 ```
 
@@ -178,7 +182,7 @@ browser → host Caddy (TLS, staging.ehlops.com) → Traefik 127.0.0.1:8280 → 
 | `worker` ×0 | `jobfinder-worker` | the legacy worker (`TASKS_BACKEND=legacy`; ×1 in prod), uid 10001, `strategy: Recreate` |
 | `scheduler` ×1 | `jobfinder-api` | cron, relay, reaper ("Task platform"); `strategy: Recreate`, heartbeat-file liveness |
 | `worker-ai` ×1 | `jobfinder-worker` | stream `jobfinder:ai`, `AI_MAX_CONCURRENCY`; the only one with Claude (store and claude-auth volumes) |
-| `worker-io` ×1 | `jobfinder-worker` | stream `jobfinder:io`, `WORKER_IO_CONCURRENCY`; store volume (it reads uploads and fetches links, #51) |
+| `worker-io` ×1–4 | `jobfinder-worker` | stream `jobfinder:io`, `WORKER_IO_CONCURRENCY`; store volume (it reads uploads and fetches links, #51); replicas by KEDA ("KEDA") |
 | `renderer` ×0 | `jobfinder-renderer` | opt-in; patch replicas to 1 and merge `RENDERER_ENABLED=true`; under the ledger it consumes `jobfinder:render` |
 | `smtp` | `boky/postfix:5.1.0` | root (postfix needs it); staging relays to mailpit only, egress NetworkPolicy |
 | `mailpit` | `axllent/mailpit:v1.31.3` | staging only; the app's `SMTP_HOST` |
@@ -294,7 +298,7 @@ scheduler (1 replica, Recreate)
 |---|---|---|---|---|
 | `scheduler` | `jobfinder-api` | `python -m jobfinder.scheduler` | 0 / 1, Recreate, never more than 1 | `/tmp` (heartbeat) |
 | `worker-ai` | `jobfinder-worker` | `python -m jobfinder.tasks ai` | 0 / 1, Recreate (the Claude cap is per process) | store, claude-auth, `/tmp`, `$HOME` |
-| `worker-io` | `jobfinder-worker` | `python -m jobfinder.tasks io` | 0 / 1, Recreate | store, `/tmp` |
+| `worker-io` | `jobfinder-worker` | `python -m jobfinder.tasks io` | 0 / 1–4 by KEDA (ScaledObject paused at 0 in the base), Recreate | store, `/tmp` |
 | `renderer` | `jobfinder-renderer` | `python -m jobfinder.renderer` | 0 / 0 (opt-in) | `/tmp`, `/dev/shm` |
 | `worker` (legacy) | `jobfinder-worker` | `python -m jobfinder.worker` | 1 / 0 | store, claude-auth, `/tmp`, `$HOME` |
 
@@ -302,17 +306,19 @@ scheduler (1 replica, Recreate)
 - **Claude.** Only worker-ai runs Claude. worker-io uses the worker image only for ingestion's dependencies, and never reads the Claude token. It does mount the store: `parse_document` and `fetch_link` read uploads and profile links there off the api, which saves them as "processing" (#51; `SYNC_UPLOADS=true` keeps the old in-request path for one release).
 - **Liveness.** The scheduler touches `/tmp/scheduler-alive` on every relay tick and is restarted when the file is more than 2 minutes old. The workers have no HTTP endpoint, so their probe checks that the `jobfinder.tasks` process is there (like the legacy worker's).
 - **Shutdown.** The workers get `terminationGracePeriodSeconds: 60`, so an in-flight task can finish and ack.
+- **Scaling.** Only worker-io scales (KEDA, "KEDA" below). worker-ai stays at exactly 1: its process is the cap on parallel Claude calls, and CI fails a render that autoscales it or gives it more replicas.
 - **Backend checks.** The scheduler refuses to start unless `TASKS_BACKEND=ledger`, and the legacy worker refuses to start under it.
 
 ### Switch an environment
 
 `TASKS_BACKEND` is a `jobfinder-config` key; the base has `legacy` (from `.env.defaults`). An environment on the ledger does two things:
 - merges `TASKS_BACKEND=ledger`;
-- patches the replicas: the legacy `worker` to 0, and `scheduler`, `worker-ai` and `worker-io` to 1.
+- patches the replicas: the legacy `worker` to 0, and `scheduler` and `worker-ai` to 1;
+- unpauses worker-io's ScaledObject (the base pauses it at 0) and points its trigger at the namespace's valkey; KEDA then keeps worker-io at 1–4 replicas.
 
 `overlays/staging/kustomization.yaml` and `overlays/prod/kustomization.yaml` both do. **How prod was flipped (and how to flip another environment):**
 1. Run the kill-tests on staging (below).
-2. Uncomment the `TASKS_BACKEND=ledger` literal and the two replicas patches.
+2. Uncomment the `TASKS_BACKEND=ledger` literal, the two replicas patches and the ScaledObject patch.
 3. Merge, then deploy (`deploy.sh prod sha-<commit>`, "Deploying prod").
 
 **What a flip does, in one deploy:**
@@ -326,10 +332,10 @@ scheduler (1 replica, Recreate)
 - The relay sends the rows that the old pods queued without publishing.
 - A cron job that both the old APScheduler and the new scheduler fire in that minute is deduped by the unique index on active rows.
 
-**Roll back to legacy.** Remove the `TASKS_BACKEND` literal (or comment it out) and the replicas patches, then deploy. That puts scheduler, worker-ai and worker-io back at 0 and the worker at 1.
+**Roll back to legacy.** Remove the `TASKS_BACKEND` literal (or comment it out), the replicas patches and the ScaledObject patch, then deploy. That puts scheduler and worker-ai back at 0, pauses worker-io's ScaledObject at 0, and puts the worker at 1.
 
 In a hurry, without a deploy:
-1. `kubectl -n <ns> scale deploy scheduler worker-ai worker-io --replicas=0`
+1. `kubectl -n <ns> annotate scaledobject worker-io autoscaling.keda.sh/paused-replicas=0 --overwrite && kubectl -n <ns> scale deploy scheduler worker-ai worker-io --replicas=0` (without the pause KEDA scales worker-io straight back up)
 2. Find the ConfigMap the pods use: `kubectl -n <ns> get deploy api -o jsonpath='{.spec.template.spec.containers[0].envFrom[0].configMapRef.name}'`
 3. Set it back: `kubectl -n <ns> patch configmap <that name> -p '{"data":{"TASKS_BACKEND":"legacy"}}'`
 4. `kubectl -n <ns> scale deploy worker --replicas=1 && kubectl -n <ns> rollout restart deploy/api deploy/renderer` (the renderer only matters when it is enabled; under the old setting it would keep waiting on its stream)
@@ -362,8 +368,8 @@ kubectl -n $NS exec deploy/scheduler -- ls -l --time-style=+%T /tmp/scheduler-al
 ```
 
 What healthy looks like:
-- **Groups:** one per stream (`jobfinder-ai`, `jobfinder-io`, `jobfinder-render`), with `lag` at 0 or falling.
-- **Pending:** no higher than the worker's concurrency (2 for ai, 10 for io), apart from messages of killed pods. Those come back within 10 minutes and are dropped.
+- **Groups:** one per stream (`jobfinder-ai`, `jobfinder-io`, `jobfinder-render`), with `lag` at 0 or falling. `jobfinder-io`'s lag is what KEDA scales worker-io on.
+- **Pending:** no higher than about twice the worker's concurrency per pod (each read takes at most the concurrency, and the next read comes when a slot frees: 4 for ai, 20 for each worker-io replica), apart from messages of killed pods. Those come back within 10 minutes and are dropped.
 - **Length:** `xlen` stays under 10,000, the length the streams are trimmed to (each entry is only an id).
 - **Consumers:** a killed pod's consumer stays listed in `xinfo consumers`. Once its `pending` is 0, `valkey-cli xgroup delconsumer jobfinder:ai jobfinder-ai <name>` removes it.
 
@@ -375,6 +381,54 @@ from tasks where status in ('queued', 'running') group by 1, 2;
 ```
 
 A queued row that has been due for more than a minute or two means the relay or that queue's worker isn't running.
+
+### KEDA (#52)
+
+worker-io scales from 1 to 4 replicas on the backlog of `jobfinder:io`; nothing else autoscales. KEDA runs cluster-wide in namespace `keda` (`deploy/k3s/manifests/keda.yaml`, chart 2.21.0) and serves `external.metrics.k8s.io`. Each environment has a ScaledObject `worker-io` (`deploy/k8s/base/app/worker-io-scaledobject.yaml`), from which KEDA creates HPA `keda-hpa-worker-io`.
+
+```text
+KEDA operator ──every 15s: XINFO GROUPS jobfinder:io──▶ valkey.<ns>.svc.cluster.local:6379 (NetworkPolicy valkey admits it)
+      │ lag of group jobfinder-io (entries not yet delivered to any consumer)
+      ▼
+HPA keda-hpa-worker-io: replicas = ceil(lag / 50), between 1 and 4
+      up:   at once (up to double every 15s)
+      down: after 5 minutes of a lower backlog, one pod a minute
+```
+
+- **Why lag and not pending.** A new replica can only take entries no consumer has read yet. The pending list is what the existing pods have already read (which no other consumer can claim for 10 minutes), plus the entries of killed pods until they are reclaimed. Scaling on it would add pods with nothing to take.
+- **No read-ahead.** Each XREADGROUP takes at most the queue's concurrency (`tasks/brokers.py`; taskiq-redis's default is 100), so the lag is the real backlog, and a pod scaled in leaves at most one read's worth of unstarted entries behind (back after 10 minutes, or re-sent by the relay).
+- **Replicas.** The Deployment has no `replicas`: the HPA owns the count, and a value in the manifest would reset it on every deploy. CI checks this.
+- **Deploys.** The ScaledObject carries `jobfinder.io/rollout=app`, so `deploy.sh` applies it in phase 2, after the migrate Job: an unpause never starts worker-io on an unmigrated schema.
+- **Scale-down is safe.** A stopped pod gets SIGTERM and 60s: taskiq stops reading and waits up to 50s for its running tasks, which ack. A task cut off anyway stays `running` until the reaper requeues it; its unread prefetched messages stay pending and come back to another consumer after 10 minutes (and are dropped, since the relay already re-sent the rows).
+- **No PodDisruptionBudget.** On one node it would only matter for a drain (a k3s upgrade), and `minAvailable: 1` would block that drain, while a pod stopping mid-task costs nothing.
+- **Capacity.** Each replica requests 250m CPU and 768Mi (limit 1536Mi); both environments at 4 replicas still fit the 4 CPUs. The per-host caps in the fetchers are per process, so 4 replicas mean up to 4x the load on one site.
+- **If KEDA fails**, the HPA can't read the metric and keeps the current replica count (never below 1). If valkey is down, the workers can't work anyway.
+
+**Install / upgrade.** `sudo bash deploy/k3s/install.sh` copies the HelmChart into k3s's manifests directory, which k3s's Helm controller installs. `kubectl apply -f deploy/k3s/manifests/keda.yaml` as opc does the same right away (idempotent; the copy in the manifests directory is what survives a k3s reinstall). Install it before deploying an overlay with a ScaledObject: `deploy.sh` refuses to deploy without the `scaledobjects.keda.sh` CRD.
+
+**Verify.**
+
+```sh
+NS=jobfinder-staging
+kubectl -n keda get pods                                   # operator, metrics-apiserver, admission-webhooks Running
+kubectl get apiservice v1beta1.external.metrics.k8s.io      # AVAILABLE True
+kubectl -n $NS get scaledobject worker-io                  # READY True, ACTIVE True/False, PAUSED (empty)
+kubectl -n $NS get hpa keda-hpa-worker-io                  # TARGETS <lag>/50 (avg), MINPODS 1, MAXPODS 4
+kubectl -n $NS describe hpa keda-hpa-worker-io | tail -5   # scaling events
+kubectl -n keda logs deploy/keda-operator --tail=50 | grep -i -e error -e worker-io
+kubectl get --raw "/apis/external.metrics.k8s.io/v1beta1/namespaces/$NS/s0-redis-streams-jobfinder-io?labelSelector=scaledobject.keda.sh%2Fname%3Dworker-io"
+```
+
+**Pause and resume.** `kubectl scale deploy/worker-io` is undone within 15 seconds; pause the ScaledObject instead:
+
+```sh
+kubectl -n $NS annotate scaledobject worker-io autoscaling.keda.sh/paused-replicas=0 --overwrite   # worker-io at 0, HPA removed
+kubectl -n $NS annotate scaledobject worker-io autoscaling.keda.sh/paused-replicas-                # back to KEDA (1-4)
+```
+
+A pause set like this survives deploys (the manifests don't carry the annotation). `staging-restore.sh` and `prod-cutover.sh` pause it themselves, also marking it `jobfinder.io/paused-by=<script>`, and resume it when they scale the app back; a pause they didn't set is left alone. `deploy.sh` lifts a marked pause after its rollout, so a script that failed halfway recovers with the redeploy its log asks for. To pause for something that ends with a deploy, mark it too: add `jobfinder.io/paused-by=<you>` to the annotate command.
+
+After a change to `deploy.sh`, reinstall the root-owned copy the SSH deploy runs ("One-time setup"), or staging deploys from GitHub Actions keep the old one.
 
 ### Kill-tests
 
@@ -484,7 +538,7 @@ deploy/k8s/backup-restore.sh jobfinder db-20261018-031500.dump        # or a giv
 
 It restores the dump into a scratch database (`restore_drill_<ts>`) in that namespace's postgres from a helper pod that mounts `backups` read-only, compares every table's row count with the live database, checks that the matching files tar reads back, and drops the scratch database. The live database and the app are never touched. The live database moves on after the dump, so drill right after `create job --from=cronjob/backup`; tables written in between show as MISMATCH (exit 1). Rehearsed on staging (2026-10-17, worker paused for an exact comparison): 86 MB dump, restored in 15 s, 16 tables, 0 mismatched, 19 s in all.
 
-**Restoring for real** (replaces the namespace's data): scale `api worker renderer scheduler worker-ai worker-io` to 0; in `postgres-0`, `dropdb --force jobfinder && createdb -O jobfinder jobfinder`; run `pg_restore -h postgres -U jobfinder -d jobfinder --no-owner --no-privileges --exit-on-error --single-transaction /backups/db-<ts>.dump` from a pod like the drill's (don't stream a dump out through `kubectl exec` stdout: large outputs break off with a websocket EOF; stdin is fine); untar `files-<ts>.tar.gz` into the PVCs (`store/` into `store`, `claude/` into `claude-auth`) from a root helper pod with `--numeric-owner`; empty the task streams (`for q in ai io render; do kubectl -n <ns> exec valkey-0 -- valkey-cli XTRIM jobfinder:$q MAXLEN 0; done`); then `deploy.sh <overlay> <running tag>`.
+**Restoring for real** (replaces the namespace's data): pause worker-io's ScaledObject, marked so the final deploy resumes it (`kubectl -n <ns> annotate scaledobject worker-io autoscaling.keda.sh/paused-replicas=0 jobfinder.io/paused-by=restore --overwrite`, "KEDA"), and scale `api worker renderer scheduler worker-ai worker-io` to 0; in `postgres-0`, `dropdb --force jobfinder && createdb -O jobfinder jobfinder`; run `pg_restore -h postgres -U jobfinder -d jobfinder --no-owner --no-privileges --exit-on-error --single-transaction /backups/db-<ts>.dump` from a pod like the drill's (don't stream a dump out through `kubectl exec` stdout: large outputs break off with a websocket EOF; stdin is fine); untar `files-<ts>.tar.gz` into the PVCs (`store/` into `store`, `claude/` into `claude-auth`) from a root helper pod with `--numeric-owner`; empty the task streams (`for q in ai io render; do kubectl -n <ns> exec valkey-0 -- valkey-cli XTRIM jobfinder:$q MAXLEN 0; done`); then `deploy.sh <overlay> <running tag>`.
 
 ## Production (#47)
 
@@ -568,10 +622,10 @@ On prod the data-tier step also creates the namespace and four PVCs and initiali
 
 **Rollback** (while compose's volumes exist; whatever was written on k3s after the switch is lost unless you dump it back first):
 
-1. `kubectl -n jobfinder scale deploy api worker renderer scheduler worker-ai worker-io --replicas=0` (two workers would run every scheduled job and email twice).
+1. `kubectl -n jobfinder annotate scaledobject worker-io autoscaling.keda.sh/paused-replicas=0 --overwrite && kubectl -n jobfinder scale deploy api worker renderer scheduler worker-ai worker-io --replicas=0` (two workers would run every scheduled job and email twice; without the pause KEDA brings worker-io back).
 2. `sudo cp -a /etc/caddy/Caddyfile.pre-cutover /etc/caddy/Caddyfile` (upstream back to `127.0.0.1:8180`), validate, `sudo systemctl reload caddy`.
 3. `docker compose start api worker web smtp`; `curl -sI https://jobs.ehlops.com/ | head -1` → 200.
 
 ## Resources
 
-The host has 4 vCPU / 22 GB. k3s with Traefik, CoreDNS, metrics-server and sealed-secrets adds roughly 0.6–1 GB; watch `free -g` while staging (#43) runs next to compose.
+The host has 4 vCPU / 22 GB. k3s with Traefik, CoreDNS, metrics-server, sealed-secrets and KEDA (3 pods, 300m CPU and 300Mi requested) adds roughly 0.8–1.2 GB; watch `free -g` while staging (#43) runs next to compose.

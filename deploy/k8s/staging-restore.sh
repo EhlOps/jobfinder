@@ -61,11 +61,14 @@ restore_replicas() {
   for d in "${!replicas[@]}"; do
     kubectl -n "$NS" scale deployment "$d" --replicas="${replicas[$d]}" >/dev/null || true
   done
+  keda_resume "$NS" || log "WARNING: worker-io's autoscaler is still paused; the next deploy.sh resumes it"
   log "app scaled back: $(for d in "${!replicas[@]}"; do printf '%s=%s ' "$d" "${replicas[$d]}"; done)"
 }
 if [ ${#replicas[@]} -gt 0 ]; then
   trap restore_replicas EXIT
   log "scaling ${!replicas[*]} to 0"
+  # worker-io's autoscaler (#52) would scale it back up mid-restore.
+  keda_pause "$NS" staging-restore
   kubectl -n "$NS" scale deployment "${!replicas[@]}" --replicas=0 >/dev/null
   kubectl -n "$NS" wait --for=delete pod -l "app.kubernetes.io/name in ($(IFS=,; echo "${APP_DEPLOYMENTS[*]}"))" --timeout=180s \
     >/dev/null 2>&1 || true
