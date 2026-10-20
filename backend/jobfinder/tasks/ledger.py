@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 
 from sqlalchemy import event, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -27,10 +28,11 @@ ACTIVE = ("queued", "running")
 PENDING = "ledger_publish"  # session.info key: [(queue, kind, task_id)] to publish after commit
 RELAY_GRACE = timedelta(seconds=15)  # the after-commit publish gets this long before the relay re-sends
 RELAY_RESEND = timedelta(minutes=10)  # a relayed row still queued after this is sent again
+DEDUPE_INDEX = "uq_tasks_dedupe_active"  # at most one queued/running task per dedupe_key
 
 
 def dedupe_key(kind: str, user_id: int | None, payload: dict) -> str:
-    """Same key as scheduling.queue.dedupe_key, so legacy and ledger rows dedupe against each other."""
+    """The one dedupe key: scheduling.queue uses it too, so legacy and ledger rows dedupe against each other."""
     return hashlib.sha256(f"{kind}|{user_id}|{json.dumps(payload, sort_keys=True, default=str)}".encode()).hexdigest()
 
 
@@ -116,14 +118,21 @@ async def requeue(db: AsyncSession, task_id: int) -> Task:
         raise NotFound(f"No task {task_id}")
     if task.status in ACTIVE:
         raise Conflict(f"task {task_id} is already {task.status}")
-    if task.dedupe_key and await db.scalar(
+    twin = Conflict(f"an identical {task.kind} task is already queued or running")
+    if task.dedupe_key and await db.scalar(  # the common case, without a savepoint
         select(Task.id).where(Task.dedupe_key == task.dedupe_key, Task.status.in_(ACTIVE))
     ):
-        raise Conflict(f"an identical {task.kind} task is already queued or running")
+        raise twin
     now = utcnow()
-    task.status, task.attempts, task.error, task.result = "queued", 0, None, None
-    task.run_after, task.finished_at, task.locked_at, task.sent_at = now, None, None, None
-    await db.flush()
+    await db.flush()  # the caller's own pending writes, outside the savepoint below
+    try:
+        async with db.begin_nested():  # a twin added since the check rolls back only this
+            task.status, task.attempts, task.error, task.result = "queued", 0, None, None
+            task.run_after, task.finished_at, task.locked_at, task.sent_at = now, None, None, None
+    except IntegrityError as e:
+        if getattr(e.orig.__cause__, "constraint_name", None) == DEDUPE_INDEX:  # asyncpg's error
+            raise twin from None
+        raise
     _note(db, task, now)
     return task
 
@@ -156,9 +165,14 @@ async def due_for_relay(db: AsyncSession, now: datetime, *, limit: int = 500) ->
     return [tuple(r) for r in rows]
 
 
-async def mark_sent(db: AsyncSession, ids: list[int], now: datetime) -> None:
+async def mark_sent(db: AsyncSession, ids: list[int], now: datetime, *, unclaimed_only: bool = False) -> None:
+    """Stamp sent_at on published rows. unclaimed_only (the after-commit publish) only stamps rows still
+    queued, unsent and never claimed, so a fast failure's retry (sent_at reset) isn't hidden from the relay."""
     if ids:
-        await db.execute(update(Task).where(Task.id.in_(ids)).values(sent_at=now))
+        where = [Task.id.in_(ids)]
+        if unclaimed_only:
+            where += [Task.status == "queued", Task.sent_at.is_(None), Task.attempts == 0]
+        await db.execute(update(Task).where(*where).values(sent_at=now))
 
 
 # ---------------------------------------------------------------- publish after commit
@@ -173,6 +187,8 @@ def _note(db: AsyncSession, task: Task, now: datetime) -> None:
 
 @event.listens_for(Session, "after_commit")
 def _after_commit(session: Session) -> None:
+    if session.in_nested_transaction():  # a savepoint released: the rows aren't committed yet
+        return
     pending = session.info.pop(PENDING, None)
     if not pending or settings.tasks_backend != "ledger":
         return
@@ -192,10 +208,34 @@ def _after_rollback(session: Session, previous_transaction) -> None:
 
 
 async def _publish(pending: list[tuple[str, str, int]]) -> None:
+    """Publish the committed rows, then mark them sent so the relay leaves them alone. A row whose
+    publish failed keeps sent_at NULL, and the relay sends it once RELAY_GRACE has passed."""
     from jobfinder.tasks import brokers
 
+    sent: list[int] = []
+    failed: set[str] = set()  # a queue that failed once: its other rows wait for the relay too
     for queue, kind, task_id in pending:
+        if queue in failed:
+            continue
         try:
             await brokers.publish(queue, kind, task_id)
         except Exception as e:  # valkey down: the row stays queued and the relay re-sends it
-            log.warning("publishing task %s (%s) failed, the relay will retry: %s", task_id, kind, e)
+            failed.add(queue)
+            log.warning("publishing task %s (%s) failed, the relay will retry: %s: %s",
+                        task_id, kind, type(e).__name__, e)
+            continue
+        sent.append(task_id)
+    if sent:
+        await _mark_published(sent)
+
+
+async def _mark_published(ids: list[int]) -> None:
+    """One UPDATE in its own short session. Failing only costs a duplicate delivery from the relay."""
+    from jobfinder import db as dbmod
+
+    try:
+        async with dbmod.SessionLocal() as db:
+            await mark_sent(db, ids, utcnow(), unclaimed_only=True)
+            await db.commit()
+    except Exception as e:
+        log.warning("marking %d published task(s) sent failed: %s: %s", len(ids), type(e).__name__, e)
