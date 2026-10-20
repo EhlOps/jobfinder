@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -45,33 +45,37 @@ def user_zone(user: User) -> ZoneInfo:
         return ZoneInfo("UTC")
 
 
+def _at_hour(local: datetime, hour: int, *, days: int = 0) -> datetime:
+    """`hour` o'clock local time, `days` after local's date (wall-clock arithmetic, same zone)."""
+    day = local.replace(tzinfo=None) + timedelta(days=days)
+    return day.replace(hour=hour, minute=0, second=0, microsecond=0, tzinfo=local.tzinfo)
+
+
 def is_due(user: User, now: datetime) -> bool:
     """True from the user's chosen local hour for a few hours, once per local day."""
     if user.digest_hour is None:
         return False
     local = now.astimezone(user_zone(user))
     # The most recent local digest_hour o'clock; before today's, that was yesterday's (so the window can cross midnight).
-    scheduled = local.replace(hour=user.digest_hour, minute=0, second=0, microsecond=0)
+    scheduled = _at_hour(local, user.digest_hour)
     if local < scheduled:
-        scheduled = (scheduled.replace(tzinfo=None) - timedelta(days=1)).replace(tzinfo=local.tzinfo)
+        scheduled = _at_hour(local, user.digest_hour, days=-1)
     if not timedelta(0) <= local - scheduled < timedelta(hours=settings.digest_send_window_hours):
         return False
     return not (user.last_digest_at and user.last_digest_at >= scheduled)
 
 
-def questions_due(user: User, now: datetime) -> date | None:
-    """The local date of the user's next digest when it is at most QUESTIONS_LEAD_HOURS away, else None:
-    question collection runs in that window so the digest can send what it collected (#50)."""
+def questions_due(user: User, now: datetime) -> datetime | None:
+    """The user's next digest time (UTC) when it is at most QUESTIONS_LEAD_HOURS away, else None: question
+    collection runs in that window so the digest can send what it collected (#50). A lead of 0 never is."""
     if user.digest_hour is None:
         return None
     local = now.astimezone(user_zone(user))
-    upcoming = local.replace(hour=user.digest_hour, minute=0, second=0, microsecond=0)
+    upcoming = _at_hour(local, user.digest_hour)
     if upcoming <= local:
-        upcoming = (upcoming.replace(tzinfo=None) + timedelta(days=1)).replace(tzinfo=local.tzinfo)
-    # Compared in UTC, so a DST change in between counts real hours.
-    if upcoming.astimezone(UTC) - now > timedelta(hours=settings.questions_lead_hours):
-        return None
-    return upcoming.date()
+        upcoming = _at_hour(local, user.digest_hour, days=1)
+    upcoming = upcoming.astimezone(UTC)  # so a DST change in between counts real hours
+    return upcoming if upcoming - now <= timedelta(hours=settings.questions_lead_hours) else None
 
 
 async def build_content(db: AsyncSession, user: User, *, preview: bool = False) -> Content:
@@ -210,21 +214,24 @@ async def send_daily(db: AsyncSession, user: User, *, now: datetime | None = Non
     return {"matches": len(content.matches), "questions": len(content.questions), "subject": subject}
 
 
+async def _email_users(db: AsyncSession, *where) -> list[User]:
+    """Active users with a chosen hour, narrowed by `where`."""
+    return list((await db.scalars(sa.select(User).where(
+        User.password_hash.is_not(None), User.digest_hour.is_not(None), *where,
+    ))).all())
+
+
 async def due_users(db: AsyncSession, now: datetime) -> list[User]:
-    users = (
-        await db.scalars(sa.select(User).where(
-            User.password_hash.is_not(None), User.digest_hour.is_not(None),
-            sa.or_(User.digest_enabled.is_(True), User.question_emails_enabled.is_(True)),
-        ))
-    ).all()
+    users = await _email_users(db, sa.or_(User.digest_enabled.is_(True), User.question_emails_enabled.is_(True)))
     return [u for u in users if is_due(u, now)]
 
 
-async def question_users(db: AsyncSession, now: datetime) -> list[tuple[User, date]]:
-    """Users with question emails on whose digest is coming up, each with that digest's local date."""
-    users = (
-        await db.scalars(sa.select(User).where(
-            User.password_hash.is_not(None), User.digest_hour.is_not(None), User.question_emails_enabled.is_(True),
-        ))
-    ).all()
-    return [(u, d) for u in users if (d := questions_due(u, now))]
+async def question_users(db: AsyncSession, now: datetime) -> list[tuple[User, datetime]]:
+    """Users with question emails on, matches still to review and a digest coming up, each with that
+    digest's time (questions_due)."""
+    unreviewed = sa.exists().where(
+        JobMatch.user_id == User.id, JobMatch.questions_collected.is_(False),
+        JobMatch.status.in_(("new", "saved")), JobMatch.job_id == Job.id, Job.is_active.is_(True),
+    )
+    users = await _email_users(db, User.question_emails_enabled.is_(True), unreviewed)
+    return [(u, at) for u in users if (at := questions_due(u, now))]

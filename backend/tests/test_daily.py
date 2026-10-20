@@ -1,5 +1,5 @@
 import asyncio
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 
 import pytest
 import sqlalchemy as sa
@@ -296,17 +296,19 @@ async def test_tick_sends_the_collected_questions_without_calling_claude(maker, 
 def test_questions_are_due_in_the_hour_before_the_digest(monkeypatch):
     monkeypatch.setattr(get_settings(), "questions_lead_hours", 1)
     u = user_obj(hour=8)
-    assert daily.questions_due(u, at(7)) == date(2026, 10, 3)
-    assert daily.questions_due(u, at(7, minute=0)) == date(2026, 10, 3)
+    assert daily.questions_due(u, at(7)) == at(8, minute=0)
+    assert daily.questions_due(u, at(7, minute=0)) == at(8, minute=0)
     assert daily.questions_due(u, at(6)) is None and daily.questions_due(u, at(8)) is None
     midnight = user_obj(hour=0)                                                # ahead of tomorrow's 00:00
-    assert daily.questions_due(midnight, at(23)) == date(2026, 10, 4)
+    assert daily.questions_due(midnight, at(23)) == at(0, day=4, minute=0)
     tokyo = user_obj("Asia/Tokyo", 8)                                          # 08:00 JST == 23:00 UTC the day before
-    assert daily.questions_due(tokyo, at(22, day=2)) == date(2026, 10, 3)
+    assert daily.questions_due(tokyo, at(22, day=2)) == at(23, day=2, minute=0)
     assert daily.questions_due(tokyo, at(23, day=2)) is None
     monkeypatch.setattr(get_settings(), "questions_lead_hours", 3)
-    assert daily.questions_due(u, at(5)) == daily.questions_due(u, at(7)) == date(2026, 10, 3)
+    assert daily.questions_due(u, at(5)) == daily.questions_due(u, at(7)) == at(8, minute=0)
     assert daily.questions_due(user_obj(hour=None), at(7)) is None
+    monkeypatch.setattr(get_settings(), "questions_lead_hours", 0)             # 0 turns it off
+    assert daily.questions_due(u, at(7, minute=59)) is None
 
 
 async def test_question_collection_is_queued_once_per_digest_for_opted_in_users(maker, monkeypatch, published):
@@ -315,17 +317,35 @@ async def test_question_collection_is_queued_once_per_digest_for_opted_in_users(
     monkeypatch.setattr(get_settings(), "questions_lead_hours", 1)
     async with maker() as db:
         on = await make_user(db, "on@x.com", hour=8)
-        await make_user(db, "off@x.com", hour=8, question_emails=False)
-        await make_user(db, "later@x.com", hour=12)
+        off = await make_user(db, "off@x.com", hour=8, question_emails=False)
+        later = await make_user(db, "later@x.com", hour=12)
+        await make_user(db, "nothing-to-review@x.com", hour=8)
+        for u in (on, off, later):
+            await make_match(db, u.id, confidence=0.4, unknowns=[unknown("Kafka?")])
         assert await digest.schedule_questions(db, at(7)) == 1
         await db.commit()
         assert await digest.schedule_questions(db, at(7, minute=30)) == 0       # still queued
         rows = (await db.scalars(sa.select(Task).where(Task.kind == "collect_questions"))).all()
-        assert [(t.user_id, t.payload, t.queue) for t in rows] == [(on.id, {"for_digest": "2026-10-03"}, "ai")]
+        assert [(t.user_id, t.payload, t.queue) for t in rows] == [(on.id, {}, "ai")]
+        # One dedupe key with the planner's and match_user's rows, so it never runs beside one of them.
+        assert (await ledger.add(db, "collect_questions", user_id=on.id, dedupe=True)).id == rows[0].id
         rows[0].status = "done"
         await db.commit()
         assert await digest.schedule_questions(db, at(7, minute=55)) == 0       # done counts too: once per digest
         assert await digest.schedule_questions(db, at(7, day=4)) == 1           # tomorrow's digest gets its own
+
+
+async def test_a_collection_already_due_in_the_window_counts(maker, monkeypatch, published):
+    from jobfinder.services import digest
+
+    monkeypatch.setattr(get_settings(), "questions_lead_hours", 2)
+    async with maker() as db:
+        u = await make_user(db, hour=8)
+        await make_match(db, u.id, confidence=0.4, unknowns=[unknown("Kafka?")])
+        planned = await ledger.add(db, "collect_questions", user_id=u.id, run_after=at(6, minute=30), dedupe=True)
+        planned.status = "done"
+        await db.commit()
+        assert await digest.schedule_questions(db, at(7)) == 0                  # the planner's 06:30 run did it
 
 
 async def test_questions_collected_ahead_go_out_in_the_digest(maker, monkeypatch, published, outbox):

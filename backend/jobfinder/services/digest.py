@@ -2,11 +2,12 @@
 were collected for them. Collection runs on the `ai` queue ahead of the send hour (`schedule_questions`),
 so sending never calls Claude (#50). The `daily_emails` task and `jobfinder digest send` both call this."""
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy import exists, inspect, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from jobfinder.core.config import settings
 from jobfinder.integrations.smtp import EmailError
 from jobfinder.models import Task
 from jobfinder.notify import daily
@@ -17,16 +18,16 @@ log = logging.getLogger("jobfinder.digest")
 
 async def schedule_questions(db: AsyncSession, now: datetime) -> int:
     """Queue `collect_questions` for each user whose digest is QUESTIONS_LEAD_HOURS or less away, once per
-    digest: the payload names the digest's local date, and a row for that date in any state stops a second.
-    Flushes only. Returns how many were queued."""
-    queued = 0
-    for user, day in await daily.question_users(db, now):
-        payload = {"for_digest": day.isoformat()}
-        key = ledger.dedupe_key("collect_questions", user.id, payload)
-        # Filtered by user_id too: that column is indexed, dedupe_key only for queued rows.
-        if await db.scalar(select(exists().where(Task.user_id == user.id, Task.dedupe_key == key))):
+    digest: any collection (this one, the planner's, match_user's) due since the window opened stops a
+    second. The row shares their dedupe key, so it never runs beside one of them. Flushes only. Returns
+    how many were queued."""
+    lead, queued = timedelta(hours=settings.questions_lead_hours), 0
+    for user, digest_at in await daily.question_users(db, now):
+        if await db.scalar(select(exists().where(
+            Task.user_id == user.id, Task.kind == "collect_questions", Task.run_after >= digest_at - lead,
+        ))):
             continue
-        await ledger.add(db, "collect_questions", payload, user_id=user.id, dedupe=True)
+        await ledger.add(db, "collect_questions", user_id=user.id, run_after=now, dedupe=True)
         queued += 1
     return queued
 
