@@ -40,6 +40,19 @@ async def plan_work(db: AsyncSession, ai, task: Task, _: None) -> dict:
     return await planner.plan(db)
 
 
+@ledger_task(io_broker, "daily_emails", ai=False)
+async def daily_emails(db: AsyncSession, ai, task: Task, _: None) -> dict:
+    """Hourly tick: queue question collection on `ai` for users whose digest is coming up, then send the
+    daily email to every user whose chosen hour has come, with the questions collected so far (#50)."""
+    from jobfinder.core.clock import utcnow
+    from jobfinder.services import digest
+
+    now = utcnow()
+    queued = await digest.schedule_questions(db, now)
+    await db.commit()  # the boundary: the collection rows, before the per-user sends commit their own
+    return {**await digest.send_due(db, now), "questions_queued": queued}
+
+
 @ledger_task(io_broker, "discover_boards", ai=False)
 async def discover_boards(db: AsyncSession, ai, task: Task, _: None) -> dict:
     from jobfinder.ingest import discovery

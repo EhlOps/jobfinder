@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -57,6 +57,21 @@ def is_due(user: User, now: datetime) -> bool:
     if not timedelta(0) <= local - scheduled < timedelta(hours=settings.digest_send_window_hours):
         return False
     return not (user.last_digest_at and user.last_digest_at >= scheduled)
+
+
+def questions_due(user: User, now: datetime) -> date | None:
+    """The local date of the user's next digest when it is at most QUESTIONS_LEAD_HOURS away, else None:
+    question collection runs in that window so the digest can send what it collected (#50)."""
+    if user.digest_hour is None:
+        return None
+    local = now.astimezone(user_zone(user))
+    upcoming = local.replace(hour=user.digest_hour, minute=0, second=0, microsecond=0)
+    if upcoming <= local:
+        upcoming = (upcoming.replace(tzinfo=None) + timedelta(days=1)).replace(tzinfo=local.tzinfo)
+    # Compared in UTC, so a DST change in between counts real hours.
+    if upcoming.astimezone(UTC) - now > timedelta(hours=settings.questions_lead_hours):
+        return None
+    return upcoming.date()
 
 
 async def build_content(db: AsyncSession, user: User, *, preview: bool = False) -> Content:
@@ -203,3 +218,13 @@ async def due_users(db: AsyncSession, now: datetime) -> list[User]:
         ))
     ).all()
     return [u for u in users if is_due(u, now)]
+
+
+async def question_users(db: AsyncSession, now: datetime) -> list[tuple[User, date]]:
+    """Users with question emails on whose digest is coming up, each with that digest's local date."""
+    users = (
+        await db.scalars(sa.select(User).where(
+            User.password_hash.is_not(None), User.digest_hour.is_not(None), User.question_emails_enabled.is_(True),
+        ))
+    ).all()
+    return [(u, d) for u in users if (d := questions_due(u, now))]

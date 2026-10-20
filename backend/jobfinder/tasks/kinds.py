@@ -13,12 +13,12 @@ QUEUES: dict[str, Queue] = {
     "cover_letter": "ai",
     "resume_tailor": "ai",
     "ai_check": "ai",
-    "daily_emails": "ai",  # collects questions with Claude before sending
     "resolve_job_link": "ai",  # the resolver may ask Claude
     "audit_coverage": "ai",  # ditto
     "reinduce_recipe": "ai",
     "ingest_jobs": "io",
     "plan_work": "io",
+    "daily_emails": "io",  # sends only: questions are collected on ai ahead of the hour (#50)
     "discover_boards": "io",
     "score_coveted": "io",
     "render_capture": "render",

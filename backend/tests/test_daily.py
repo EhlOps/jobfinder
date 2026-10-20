@@ -1,17 +1,17 @@
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import pytest
 import sqlalchemy as sa
 from factories import make_match, make_question, make_user, unknown
 
-from jobfinder.ai.claude_code import AIError
 from jobfinder.config import get_settings
 from jobfinder.models import ClarifyingQuestion, JobMatch, Task, User
 from jobfinder.notify import daily
 from jobfinder.notify import email as mail
 from jobfinder.notify.email import EmailError
 from jobfinder.notify.tokens import read_token
+from jobfinder.tasks import ledger
 from jobfinder.worker import run_task
 from tests.fakes import FakeQuestionsAI
 
@@ -272,24 +272,100 @@ async def test_tick_sends_only_to_due_users_and_isolates_failures(maker, monkeyp
     assert set(out["errors"]) == {str(bad.id)}
 
 
-async def test_tick_collects_questions_first_and_survives_ai_errors(maker, outbox):
+class NoClaude:
+    """Any attribute access is a call to Claude, which daily_emails must never make (#50)."""
+
+    def __getattr__(self, name):
+        raise AssertionError(f"daily_emails called Claude ({name})")
+
+
+async def test_tick_sends_the_collected_questions_without_calling_claude(maker, outbox):
     now = datetime.now(UTC)
     async with maker() as db:
         ok = await make_user(db, "ok@x.com", hour=now.hour)
-        await make_match(db, ok.id, score=70, confidence=0.4, unknowns=[unknown("Kafka?")])
-    out = await run_tick(maker)
-    assert out["sent"] == 1 and "1 quick question" in outbox[0]["subject"]       # collected, then emailed in one go
+        await make_question(db, ok.id, "Kafka?")
+        await make_match(db, ok.id, score=70, confidence=0.4, unknowns=[unknown("Not yet collected?")])
+    out = await run_tick(maker, NoClaude())
+    assert out["sent"] == 1 and out["errors"] == {} and "1 quick question" in outbox[0]["subject"]
+    assert "Kafka?" in outbox[0]["text"] and "Not yet collected?" not in outbox[0]["text"]
     async with maker() as db:
         assert (await db.scalars(sa.select(ClarifyingQuestion.status))).one() == "emailed"
 
-    outbox.clear()
+
+# ── collecting questions ahead of the send hour (#50) ────────────────────
+def test_questions_are_due_in_the_hour_before_the_digest(monkeypatch):
+    monkeypatch.setattr(get_settings(), "questions_lead_hours", 1)
+    u = user_obj(hour=8)
+    assert daily.questions_due(u, at(7)) == date(2026, 10, 3)
+    assert daily.questions_due(u, at(7, minute=0)) == date(2026, 10, 3)
+    assert daily.questions_due(u, at(6)) is None and daily.questions_due(u, at(8)) is None
+    midnight = user_obj(hour=0)                                                # ahead of tomorrow's 00:00
+    assert daily.questions_due(midnight, at(23)) == date(2026, 10, 4)
+    tokyo = user_obj("Asia/Tokyo", 8)                                          # 08:00 JST == 23:00 UTC the day before
+    assert daily.questions_due(tokyo, at(22, day=2)) == date(2026, 10, 3)
+    assert daily.questions_due(tokyo, at(23, day=2)) is None
+    monkeypatch.setattr(get_settings(), "questions_lead_hours", 3)
+    assert daily.questions_due(u, at(5)) == daily.questions_due(u, at(7)) == date(2026, 10, 3)
+    assert daily.questions_due(user_obj(hour=None), at(7)) is None
+
+
+async def test_question_collection_is_queued_once_per_digest_for_opted_in_users(maker, monkeypatch, published):
+    from jobfinder.services import digest
+
+    monkeypatch.setattr(get_settings(), "questions_lead_hours", 1)
     async with maker() as db:
-        await db.execute(sa.update(User).values(last_digest_at=None))
-        await make_match(db, ok.id, score=70, confidence=0.4, unknowns=[unknown("Another?")])   # a match that also has good news
-        await db.execute(sa.update(JobMatch).values(confidence=0.4))
+        on = await make_user(db, "on@x.com", hour=8)
+        await make_user(db, "off@x.com", hour=8, question_emails=False)
+        await make_user(db, "later@x.com", hour=12)
+        assert await digest.schedule_questions(db, at(7)) == 1
         await db.commit()
-    out = await run_tick(maker, FakeQuestionsAI(error=AIError("rate_limited", "limit")))
-    assert out["sent"] == 1 and out["errors"] == {}                              # matches still go out when collection fails
+        assert await digest.schedule_questions(db, at(7, minute=30)) == 0       # still queued
+        rows = (await db.scalars(sa.select(Task).where(Task.kind == "collect_questions"))).all()
+        assert [(t.user_id, t.payload, t.queue) for t in rows] == [(on.id, {"for_digest": "2026-10-03"}, "ai")]
+        rows[0].status = "done"
+        await db.commit()
+        assert await digest.schedule_questions(db, at(7, minute=55)) == 0       # done counts too: once per digest
+        assert await digest.schedule_questions(db, at(7, day=4)) == 1           # tomorrow's digest gets its own
+
+
+async def test_questions_collected_ahead_go_out_in_the_digest(maker, monkeypatch, published, outbox):
+    """The whole flow on the ledger runtime: at H-1 the hourly tick queues collect_questions (once), the ai
+    handler collects them, and at H the tick sends them without Claude."""
+    from jobfinder.core import clock
+    from jobfinder.tasks import io, runtime
+    from tests.fakes import FakeClock
+
+    monkeypatch.setattr(get_settings(), "questions_lead_hours", 1)
+    fake_now = FakeClock(at(7))
+    monkeypatch.setattr(clock, "utcnow", fake_now)
+    async with maker() as db:
+        u = await make_user(db, "q@x.com", hour=8, digest=False)
+        await make_match(db, u.id, score=70, confidence=0.4, unknowns=[unknown("Used Kafka?")])
+
+    async def tick():
+        async with maker() as db:
+            t = await ledger.add(db, "daily_emails", dedupe=True)
+            await db.commit()
+        await runtime.execute("daily_emails", io.daily_emails, t.id, wants_ai=True, ai=NoClaude())
+        async with maker() as db:
+            return (await db.get(Task, t.id)).result
+
+    first = await tick()
+    assert first["questions_queued"] == 1 and first["due"] == 0 and not outbox
+    assert (await tick())["questions_queued"] == 0                              # a second run that hour doesn't double
+    async with maker() as db:
+        (cq,) = (await db.scalars(sa.select(Task).where(Task.kind == "collect_questions"))).all()
+    ai = FakeQuestionsAI()
+    await runtime.execute("collect_questions", runtime.REGISTRY["collect_questions"], cq.id, ai=ai)
+    assert len(ai.calls) == 1
+
+    fake_now.now = at(8)
+    out = await tick()
+    assert out["sent"] == 1 and out["questions_queued"] == 0
+    (msg,) = outbox
+    assert "Used Kafka?" in msg["text"] and "1 quick question" in msg["subject"]
+    async with maker() as db:
+        assert (await db.scalars(sa.select(ClarifyingQuestion.status))).one() == "emailed"
 
 
 async def test_email_has_no_apply_link_for_unsafe_job_urls(maker, outbox):
