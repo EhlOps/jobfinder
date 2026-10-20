@@ -22,10 +22,11 @@ class Task(Base):
 
     __tablename__ = "tasks"
     __table_args__ = (
-        # At most one queued/running task per dedupe_key (NULL keys never conflict).
-        Index("uq_tasks_dedupe_active", "dedupe_key", unique=True, postgresql_where=text("status IN ('queued','running')")),
-        # The scheduler's relay: due queued rows per stream (tasks.ledger.due_for_relay).
-        Index("ix_tasks_due", "queue", "run_after", postgresql_where=text("status = 'queued'")),
+        # At most one queued task per dedupe_key (NULL keys never conflict); a running twin may coexist,
+        # so a rerun asked for mid-run waits behind it (tasks.ledger.add/claim).
+        Index("uq_tasks_dedupe_queued", "dedupe_key", unique=True, postgresql_where=text("status = 'queued'")),
+        # The scheduler's relay: due queued rows in (run_after, id) order (tasks.ledger.due_for_relay).
+        Index("ix_tasks_due", "run_after", "id", postgresql_where=text("status = 'queued'")),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
