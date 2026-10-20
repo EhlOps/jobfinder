@@ -142,6 +142,7 @@ class LlmRung:
                 note=lambda m: ctx.note(f"llm: {m}"),
             )
         except AIError as e:
+            ctx.ai_error = e
             ctx.note(f"llm: AI unavailable ({e.kind})")
             return None
         if recipe is None:
