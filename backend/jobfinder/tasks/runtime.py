@@ -74,6 +74,7 @@ async def _execute(kind, handler, task_id, payload_model, wants_ai, sessions, ai
     async with sessions() as db:
         task = await ledger.claim(db, task_id)
         if task is None:
+            await db.commit()  # keeps claim's deferral of a rerun behind a running twin
             log.debug("task %s (%s) not claimable; duplicate delivery dropped", task_id, kind)
             return
         await db.commit()

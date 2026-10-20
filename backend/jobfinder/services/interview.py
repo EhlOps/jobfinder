@@ -46,7 +46,7 @@ async def request_audit(db: AsyncSession, user_id: int) -> Task:
     """The 'refresh' button: queue an audit (one at a time per user)."""
     if not _set_up(await profiles.get(db, user_id)):
         raise profile_service.ProfileIncomplete("Set up your profile first")
-    return await ledger.add(db, "audit_profile", user_id=user_id, dedupe=True)
+    return await ledger.add(db, "audit_profile", user_id=user_id, rerun=True)  # a running audit has old facts
 
 
 async def run_audit(db: AsyncSession, ai: AITasks, user_id: int) -> dict:
@@ -149,5 +149,5 @@ async def answer(db: AsyncSession, user_id: int, answers: list[dict]) -> dict:
     profiles.add_facts(db, facts)
     if answered:
         profile_service.bump_version(profile)
-        await ledger.add(db, "audit_profile", user_id=user_id, dedupe=True)
+        await ledger.add(db, "audit_profile", user_id=user_id, rerun=True)  # a running audit has old facts
     return {"answered": answered, "skipped": skipped}

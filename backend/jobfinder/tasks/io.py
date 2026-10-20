@@ -29,7 +29,7 @@ async def ingest_jobs(db: AsyncSession, ai, task: Task, _: None) -> dict:
     # Matching is planned, not fanned out: the planner picks who needs it most and staggers the runs.
     # Adaptive ticks come every few minutes and often fetch nothing: plan only when jobs changed.
     if not settings.adaptive_schedule_enabled or summary.get("new") or summary.get("deactivated"):
-        await ledger.add(db, "plan_work", dedupe=True)
+        await ledger.add(db, "plan_work", rerun=True)  # a running plan missed these jobs
     return summary
 
 
