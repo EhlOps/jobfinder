@@ -11,10 +11,11 @@ import json
 import logging
 from datetime import datetime, timedelta
 
-from sqlalchemy import event, or_, select, update
+from sqlalchemy import event, exists, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from jobfinder.core.clock import utcnow
 from jobfinder.core.config import settings
@@ -27,6 +28,7 @@ ACTIVE = ("queued", "running")
 PENDING = "ledger_publish"  # session.info key: [(queue, kind, task_id)] to publish after commit
 RELAY_GRACE = timedelta(seconds=15)  # the after-commit publish gets this long before the relay re-sends
 RELAY_RESEND = timedelta(minutes=10)  # a relayed row still queued after this is sent again
+TWIN_WAIT = timedelta(seconds=30)  # how long `claim` defers a rerun whose twin is still running
 
 
 def dedupe_key(kind: str, user_id: int | None, payload: dict) -> str:
@@ -42,65 +44,112 @@ async def add(
     user_id: int | None = None,
     run_after: datetime | None = None,
     dedupe: bool = False,
+    rerun: bool = False,
 ) -> Task:
     """Queue a task in the caller's transaction (flushes, never commits). With dedupe=True, return the
-    queued/running task of the same kind, user and payload instead of adding another; concurrent callers
-    converge on one row through the partial unique index."""
+    queued/running task of the same kind, user and payload instead of adding another. With rerun=True,
+    dedupe only against a queued one: asked while the task runs (on older inputs), this queues exactly
+    one follow-up, which `claim` holds back until the run ends. Concurrent callers converge on one
+    queued row through the partial unique index."""
     payload, now = payload or {}, utcnow()
     values = {"kind": kind, "queue": queue_for(kind), "payload": payload, "user_id": user_id,
               "run_after": run_after or now, "status": "queued", "attempts": 0}
-    if not dedupe:
+    if not (dedupe or rerun):
         task = Task(**values)
         db.add(task)
         await db.flush()
         _note(db, task, now)
         return task
     key = dedupe_key(kind, user_id, payload)
-    for _ in range(2):  # the second pass covers the active task finishing between our insert and select
+    twin = select(Task).where(Task.dedupe_key == key).order_by(Task.id.desc()).limit(1)
+    insert = (
+        pg_insert(Task).values(**values, dedupe_key=key)
+        .on_conflict_do_nothing(index_elements=["dedupe_key"], index_where=Task.status == "queued")
+        .returning(Task)
+    )
+    for _ in range(2):  # the second pass covers the queued twin being claimed between our insert and select
         # A conflicting insert by an open transaction makes this wait for it, so the select below sees it.
-        inserted = await db.scalar(
-            pg_insert(Task).values(**values, dedupe_key=key)
-            .on_conflict_do_nothing(index_elements=["dedupe_key"], index_where=Task.status.in_(ACTIVE))
-            .returning(Task.id)
-        )
-        if inserted:
-            task = await db.get(Task, inserted)
+        task = await db.scalar(select(Task).from_statement(insert))
+        if task:
+            # Checked after the insert, so a queued twin claimed meanwhile is seen running here.
+            if not rerun and (running := await db.scalar(twin.where(Task.status == "running"))):
+                await db.delete(task)
+                await db.flush()
+                return running
             _note(db, task, now)
             return task
-        existing = await db.scalar(
-            select(Task).where(Task.dedupe_key == key, Task.status.in_(ACTIVE)).order_by(Task.id.desc()).limit(1)
-        )
-        if existing:
-            return existing
+        if queued := await db.scalar(twin.where(Task.status == "queued")):
+            return queued
     raise RuntimeError("ledger dedupe could not settle")
 
 
 async def claim(db: AsyncSession, task_id: int) -> Task | None:
     """queued -> running, atomically. None when the row isn't queued and due: another delivery already
-    took it, it finished, or it was rescheduled (duplicates are normal; drop them)."""
+    took it, it finished, or it was rescheduled (duplicates are normal; drop them).
+
+    A rerun queued behind a running twin isn't claimed: its run_after moves TWIN_WAIT out for the relay
+    to deliver it again (the caller commits that), unless the twin's finish wakes it first. Race-safe
+    because the unique index allows one queued twin per key: the only race is this claim against the
+    twin finishing, which at worst defers the rerun by one TWIN_WAIT."""
     now = utcnow()
+    due = (Task.id == task_id, Task.status == "queued", Task.run_after <= now)
     claimed = await db.scalar(
-        update(Task).where(Task.id == task_id, Task.status == "queued", Task.run_after <= now)
+        update(Task).where(*due, ~has_twin("running"))
         .values(status="running", locked_at=now, attempts=Task.attempts + 1).returning(Task.id)
     )
-    return await db.get(Task, claimed, populate_existing=True) if claimed else None
+    if claimed:
+        return await db.get(Task, claimed, populate_existing=True)
+    # Still queued and due here means a running twin (or one that just finished): try again later.
+    await db.execute(update(Task).where(*due).values(run_after=now + TWIN_WAIT, sent_at=None))
+    return None
+
+
+def has_twin(status: str):
+    """EXISTS another `status` row with the same dedupe_key as the Task row in the statement."""
+    other = aliased(Task)
+    return exists().where(other.dedupe_key == Task.dedupe_key, other.id != Task.id, other.status == status)
 
 
 async def finish(db: AsyncSession, task: Task, result: dict) -> None:
     task.status, task.result, task.error, task.finished_at = "done", result, None, utcnow()
     await db.flush()
+    await _wake_rerun(db, task.dedupe_key)
 
 
 async def fail(db: AsyncSession, task: Task, error: str, *, retry: bool) -> None:
     """Record a failure; with retry, queue it again after a backoff (TASK_BACKOFF_SECONDS x4 per attempt:
-    30s, 2m, 8m) until TASK_MAX_ATTEMPTS. The relay delivers the retry once it's due."""
+    30s, 2m, 8m) until TASK_MAX_ATTEMPTS. The relay delivers the retry once it's due. A queued twin (a
+    rerun) does the same work again, so it replaces the retry."""
+    key, attempts, now = task.dedupe_key, task.attempts, utcnow()
     task.error = error[:2000]
-    if retry and task.attempts < settings.task_max_attempts:
-        task.status, task.sent_at = "queued", None
-        task.run_after = utcnow() + timedelta(seconds=settings.task_backoff_seconds * 4 ** (task.attempts - 1))
-    else:
-        task.status, task.finished_at = "failed", utcnow()
+    if retry and attempts < settings.task_max_attempts and not await db.scalar(
+        select(Task.id).where(Task.id == task.id, has_twin("queued"))
+    ):
+        try:
+            async with db.begin_nested():  # a rerun added meanwhile conflicts with this on the unique index
+                task.status, task.sent_at = "queued", None
+                task.run_after = now + timedelta(seconds=settings.task_backoff_seconds * 4 ** (attempts - 1))
+            return
+        except IntegrityError:
+            pass  # the savepoint's rollback expired `task`: only set attributes below, never read them
+    task.status, task.error, task.finished_at = "failed", error[:2000], now
     await db.flush()
+    await _wake_rerun(db, key)
+
+
+async def _wake_rerun(db: AsyncSession, key: str | None) -> None:
+    """A rerun that claim deferred behind the task that just ended is due now: publish it after commit."""
+    if key is None:
+        return
+    now = utcnow()
+    rerun = await db.scalar(
+        select(Task).from_statement(
+            update(Task).where(Task.dedupe_key == key, Task.status == "queued", Task.run_after <= now + TWIN_WAIT)
+            .values(run_after=now, sent_at=None).returning(Task)
+        ).execution_options(populate_existing=True)
+    )
+    if rerun:
+        _note(db, rerun, now)
 
 
 async def heartbeat(db: AsyncSession, task_id: int) -> None:
@@ -137,10 +186,24 @@ async def reap(db: AsyncSession) -> int:
         update(Task).where(*stale, Task.attempts >= attempts)
         .values(status="failed", finished_at=utcnow(), error=f"worker stopped responding during {attempts} attempts")
     )
-    requeued = await db.execute(update(Task).where(*stale).values(status="queued", sent_at=None))
+    # A stale row whose rerun is already queued leaves the work to it (the index allows one queued twin).
+    superseded = await db.execute(
+        update(Task).where(*stale, has_twin("queued"))
+        .values(status="failed", finished_at=utcnow(), error="worker stopped responding; a queued rerun replaces it")
+    )
+    try:
+        async with db.begin_nested():  # a rerun added meanwhile conflicts on the unique index: next reap
+            requeued = await db.execute(
+                update(Task).where(*stale, ~has_twin("queued")).values(status="queued", sent_at=None)
+            )
+    except IntegrityError:
+        log.info("a rerun was queued while reaping; the next reap recovers the rest")
+        requeued = None
+    if superseded.rowcount:
+        log.info("failed %d stale task(s) that a queued rerun replaces", superseded.rowcount)
     if failed.rowcount:
         log.warning("failed %d task(s) that kept timing out", failed.rowcount)
-    return requeued.rowcount or 0
+    return requeued.rowcount if requeued else 0
 
 
 async def due_for_relay(db: AsyncSession, now: datetime, *, limit: int = 500) -> list[tuple[int, str, str]]:
