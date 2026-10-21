@@ -13,9 +13,6 @@ The browser side is jobfinder/renderer/; guard.py here holds the sandbox rules b
 """
 import asyncio
 import time
-from datetime import UTC, datetime
-
-from sqlalchemy import update
 
 from jobfinder.core.context import default_context
 from jobfinder.models import Task
@@ -25,6 +22,7 @@ CAPTURE = "render_capture"
 LIST = "render_list"
 KINDS = (CAPTURE, LIST)
 POLL_S = 1.0
+UNANSWERED = "no renderer picked this up in time"  # the error of a task that expired unclaimed
 
 
 class RenderError(Exception):
@@ -56,14 +54,12 @@ async def request_render(kind: str, payload: dict, *, timeout_s: float, session_
             if task.status == "done":
                 return task.result or {}
             if task.status == "failed":
+                if task.error == UNANSWERED:  # another waiter on this deduped task timed out first
+                    raise RenderUnavailable(UNANSWERED)
                 raise RenderError(task.error or "render failed")
             if time.monotonic() >= deadline:
                 # Nobody picked it up (renderer not running?): don't leave a backlog behind.
-                await db.execute(
-                    update(Task).where(Task.id == task_id, Task.status == "queued")
-                    .values(status="failed", error="no renderer picked this up in time",
-                            finished_at=datetime.now(UTC))
-                )
+                await ledger.expire_queued(db, task_id, UNANSWERED)
                 await db.commit()
                 raise RenderUnavailable(f"the renderer did not answer within {timeout_s:.0f}s")
         await asyncio.sleep(POLL_S)
