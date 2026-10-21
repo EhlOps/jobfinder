@@ -204,7 +204,7 @@ browser → host Caddy (TLS) → Traefik 127.0.0.1:8280 → web (Caddy :8080) �
 
 `jobfinder` runs the prod overlay (`deploy/k8s/overlays/prod`) at **https://jobs.ehlops.com**, with
 
-- **Secrets** (SealedSecrets for `jobfinder`): `postgres-credentials` (random, prod only); `jobfinder-env` with `SECRET_KEY` (kept from before the move to k3s, so sessions and emailed links stayed valid) and an empty `CLAUDE_CODE_OAUTH_TOKEN` (the token saved on "AI setup" lives in the `claude-auth` PVC and wins over the env); `smtp-relay` with `RELAYHOST_USERNAME`/`RELAYHOST_PASSWORD`.
+- **Secrets** (SealedSecrets for `jobfinder`): `postgres-credentials` (random, prod only); `jobfinder-env` with `SECRET_KEY` (random, prod only; the pre-k3s key was rotated out on 2026-10-21) and an empty `CLAUDE_CODE_OAUTH_TOKEN` (the token saved on "AI setup" lives in the `claude-auth` PVC and wins over the env); `smtp-relay` with `RELAYHOST_USERNAME`/`RELAYHOST_PASSWORD`.
 - **Config:** where prod differs from `.env.defaults`: `PUBLIC_BASE_URL=https://jobs.ehlops.com`, `EMAIL_FROM`, `INGEST_MAX_DISCOVERED_BOARDS_PER_RUN=100`, `DISCOVERY_ENABLED=false`, `DISCOVERY_MAX_CANDIDATES=50`. None of staging's "background Claude work off" switches.
 - **Mail:** postfix relays to `[smtp.gmail.com]:587` (`ALLOWED_SENDER_DOMAINS=gmail.com`). No mailpit and no smtp egress policy.
 
