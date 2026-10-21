@@ -6,7 +6,7 @@ import httpx
 import pytest
 import sqlalchemy as sa
 
-from jobfinder.config import get_settings
+from jobfinder.core.config import get_settings
 from jobfinder.ingest import http_safety
 from jobfinder.ingest.recipes import health
 from jobfinder.ingest.resolve.rungs.llm import reinduce_company

@@ -6,8 +6,8 @@ from urllib.parse import urljoin, urlsplit
 import httpx
 import sqlalchemy as sa
 
-from jobfinder import db as app_db  # the module: tests swap db.SessionLocal for the test database
 from jobfinder.core.config import settings
+from jobfinder.core.context import default_context
 from jobfinder.ingest.base import JobPosting
 from jobfinder.integrations.recipes import (
     MAX_ITEMS,
@@ -70,7 +70,7 @@ async def run_rendered(client: httpx.AsyncClient, recipe: Recipe, slug: str, com
 async def count_rendered_boards(session_factory=None) -> int:
     """Recipe boards that need the browser on every fetch (for the cap)."""
     if session_factory is None:
-        session_factory = app_db.SessionLocal
+        session_factory = default_context().sessions
     async with session_factory() as db:
         return await db.scalar(
             sa.select(sa.func.count()).select_from(Company)

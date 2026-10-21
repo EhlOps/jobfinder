@@ -5,7 +5,7 @@ import pytest
 import sqlalchemy as sa
 
 from jobfinder import worker
-from jobfinder.config import get_settings
+from jobfinder.core.config import get_settings
 from jobfinder.ingest import discovery, http_safety
 from jobfinder.ingest.discovery import board_from_url, boards_from_text, github_lists, hn_hiring, yc
 from jobfinder.ingest.discovery.robots import USER_AGENT, PoliteFetcher, RobotsDisallowed

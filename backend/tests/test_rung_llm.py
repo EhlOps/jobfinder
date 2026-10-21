@@ -7,7 +7,7 @@ import sqlalchemy as sa
 from security_payloads import SQLI, XSS_TEXT
 
 from jobfinder.ai.schemas import InducedRecipe
-from jobfinder.config import get_settings
+from jobfinder.core.config import get_settings
 from jobfinder.ingest import http_safety
 from jobfinder.ingest.recipes import Recipe, RecipeError
 from jobfinder.ingest.resolve import induce_link, resolve_link

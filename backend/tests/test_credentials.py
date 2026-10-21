@@ -5,7 +5,7 @@ import stat
 import pytest
 from stub_claude import StubClaude, envelope
 
-from jobfinder.config import get_settings
+from jobfinder.core.config import get_settings
 from jobfinder.integrations.claude import credentials
 from jobfinder.integrations.claude.claude_code import ClaudeCode
 

@@ -78,16 +78,14 @@ known-first-party = ["jobfinder"]
 root_package = "jobfinder"
 
 [[tool.importlinter.contracts]]
-name = "Only the app factory (api.app, and the jobfinder.main shim) imports the HTTP routers"
+name = "Only the app factory (api.app) imports the HTTP routers"
 type = "forbidden"
 source_modules = [
   "jobfinder.ai",
   "jobfinder.auth",
   "jobfinder.cli",
-  "jobfinder.config",
   "jobfinder.context",
   "jobfinder.core",
-  "jobfinder.db",
   "jobfinder.ingest",
   "jobfinder.integrations",
   "jobfinder.matching",
@@ -129,12 +127,9 @@ forbidden_modules = [
   "jobfinder.api",
   "jobfinder.auth",
   "jobfinder.cli",
-  "jobfinder.config",
   "jobfinder.context",
-  "jobfinder.db",
   "jobfinder.ingest",
   "jobfinder.integrations",
-  "jobfinder.main",
   "jobfinder.matching",
   "jobfinder.models",
   "jobfinder.profile",

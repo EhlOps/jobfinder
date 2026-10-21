@@ -1,7 +1,7 @@
 import aiosmtplib
 import pytest
 
-from jobfinder.config import get_settings
+from jobfinder.core.config import get_settings
 from jobfinder.integrations import smtp as mail
 from jobfinder.services import tokens
 

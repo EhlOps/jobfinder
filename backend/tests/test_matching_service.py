@@ -4,7 +4,7 @@ import pytest
 import sqlalchemy as sa
 
 from jobfinder.ai.schemas import MatchScore
-from jobfinder.config import get_settings
+from jobfinder.core.config import get_settings
 from jobfinder.ingest.base import dedupe_hash
 from jobfinder.integrations.claude.claude_code import AIError
 from jobfinder.matching import service

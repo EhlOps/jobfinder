@@ -2,7 +2,7 @@ import httpx
 import pytest
 import sqlalchemy as sa
 
-from jobfinder.config import get_settings
+from jobfinder.core.config import get_settings
 from jobfinder.ingest import service
 from jobfinder.models import Company, Job
 from tests.test_ingest_service import fake_fetcher, make_company, posting, status_error
