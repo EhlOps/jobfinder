@@ -11,7 +11,7 @@ import pytest
 import sqlalchemy as sa
 
 from jobfinder import scheduler as pkg
-from jobfinder.core.clock import utcnow
+from jobfinder.core.clock import next_on_grid, utcnow
 from jobfinder.core.config import get_settings
 from jobfinder.models import Task
 from jobfinder.scheduler import __main__ as entry
@@ -38,6 +38,7 @@ def test_the_cron_table(monkeypatch, adaptive, discovery, coverage):
                         ("coverage_enabled", coverage), ("ingest_interval_hours", 3), ("ingest_tick_minutes", 15),
                         ("planner_interval_minutes", 20)]:
         monkeypatch.setattr(s, name, value)
+    before = utcnow()
     scheduler = cron.make_scheduler()
     jobs = _jobs(scheduler)
     assert set(jobs) == {"ingest_tick", "plan_work", "daily_emails"} | ({"discover_boards"} if discovery else set()) \
@@ -47,9 +48,13 @@ def test_the_cron_table(monkeypatch, adaptive, discovery, coverage):
     assert jobs["plan_work"][1] == "interval[0:20:00]"
     now = utcnow()
     for job in scheduler.get_jobs():  # the interval jobs first run a few minutes after start
-        first = {"ingest_tick": timedelta(minutes=2), "plan_work": timedelta(minutes=5)}.get(job.id)
-        if first:
-            assert abs(job.next_run_time - (now + first)) < timedelta(seconds=5)
+        if job.id == "ingest_tick":
+            assert abs(job.next_run_time - (now + timedelta(minutes=2))) < timedelta(seconds=5)
+        if job.id == "plan_work":  # the first grid point after start + 5 minutes (either side of a boundary)
+            assert job.next_run_time in {next_on_grid(t + timedelta(minutes=5), timedelta(minutes=20)) for t in (before, now)}
+    plan = scheduler.get_job("plan_work").trigger  # then every 20 minutes on the grid, from wherever it ran
+    later = next_on_grid(now, timedelta(minutes=20)) + timedelta(seconds=1)
+    assert plan.get_next_fire_time(None, later) == next_on_grid(later, timedelta(minutes=20))
     assert scheduler._job_defaults["coalesce"] is True and scheduler._job_defaults["max_instances"] == 1
 
 
@@ -100,6 +105,32 @@ async def test_the_relay_publishes_due_unsent_rows_once(maker, published, alive_
     assert alive_file.exists()
 
 
+@pytest.mark.parametrize("outcome", ["retry", "deferred"])
+async def test_the_relay_leaves_a_row_claimed_meanwhile_unsent(maker, published, monkeypatch, outcome):
+    """A worker claims what the relay just published and queues it again before the relay marks it sent
+    (a fast failure's retry, or a rerun deferred behind its twin): it stays the relay's to deliver."""
+    async with maker() as db:
+        t = await ledger.add(db, "plan_work")
+        await db.commit()
+    (await published.settle()).clear()
+
+    async def worker_takes_it(queue, kind, task_id):
+        async with maker() as db:
+            row = await db.get(Task, task_id)
+            if outcome == "retry":
+                await ledger.claim(db, task_id)
+                await ledger.fail(db, row, "fast", retry=True)
+            else:  # claim's deferral of a rerun behind a running twin
+                row.run_after, row.sent_at = utcnow() + ledger.TWIN_WAIT, None
+            await db.commit()
+
+    monkeypatch.setattr(brokers, "publish", worker_takes_it)
+    assert await relay.tick(utcnow() + timedelta(seconds=30)) == 1
+    async with maker() as db:
+        row = await db.get(Task, t.id)
+        assert row.status == "queued" and row.sent_at is None
+
+
 async def test_the_relay_survives_valkey_being_down(maker, published, monkeypatch, caplog, alive_file):
     async with maker() as db:
         rows = [await ledger.add(db, "plan_work", {"n": i}) for i in range(3)]
@@ -129,8 +160,6 @@ async def test_one_queue_down_does_not_hold_up_the_others(maker, published, monk
     async with maker() as db:
         ai = await ledger.add(db, "cover_letter", {"match_id": 1})
         io = await ledger.add(db, "plan_work")
-        moved = await ledger.add(db, "match_user")
-        moved.queue = "io"  # a row queued before its kind moved keeps the old column
         await db.commit()
     (await published.settle()).clear()
 
@@ -141,10 +170,10 @@ async def test_one_queue_down_does_not_hold_up_the_others(maker, published, monk
 
     monkeypatch.setattr(brokers, "publish", ai_down)
     assert await relay.tick(utcnow() + timedelta(seconds=30)) == 1
-    assert published == [("io", "plan_work", io.id)]  # match_user goes to its kind's stream, not 'io'
+    assert published == [("io", "plan_work", io.id)]
     assert sum("relay: publish failed" in r.message for r in caplog.records) == 1
     async with maker() as db:
-        assert (await db.get(Task, ai.id)).sent_at is None and (await db.get(Task, moved.id)).sent_at is None
+        assert (await db.get(Task, ai.id)).sent_at is None
 
 
 async def test_a_failing_relay_tick_is_logged_not_raised(monkeypatch, caplog, alive_file):

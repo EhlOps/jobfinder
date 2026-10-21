@@ -142,3 +142,12 @@ def _untitled(schema):
 def test_tailored_resume_out_matches_the_ai_schema():
     """The resume endpoints read files the AI wrote as TailoredResume, so the two must stay field-for-field equal."""
     assert _untitled(TailoredResumeOut.model_json_schema()) == _untitled(TailoredResume.model_json_schema())
+
+
+
+def test_services_build_http_clients_only_through_core_http():
+    """core.http.new_client sends the User-Agent every fetch must carry; an inline AsyncClient forgets it."""
+    inline = [f"{rel(p)}:{n.lineno}" for p in FILES if rel(p).startswith("services/")
+              for n in ast.walk(ast.parse(p.read_text()))
+              if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == "AsyncClient"]
+    assert inline == []

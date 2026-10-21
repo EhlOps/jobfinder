@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any
 import httpx
 
 from jobfinder.core.db import AsyncSession, IntegrityError
-from jobfinder.core.http import USER_AGENT
+from jobfinder.core.http import new_client
 from jobfinder.core.urls import (  # noqa: F401  (re-exported: the API and tests import them from here)
     MAX_URL_CHARS,
     BadLink,
@@ -56,7 +56,7 @@ UNSUPPORTED = (
     f"{SUPPORTED} work best; we also try the company's own careers pages."
 )
 SINGLE_ONLY = "We saved this job, but couldn't find the rest of the company's job board yet."
-_HEADERS = {"User-Agent": USER_AGENT}
+GAVE_UP = "Something went wrong while reading that board; remove the link and paste it again to retry."
 LINK_SOURCE = "link"  # Job.source for a pasted posting kept on its own (no board)
 MAX_TRIED_HINTS = 50  # URLs the deterministic rungs tried as JSON, carried over to induce_link
 
@@ -100,7 +100,7 @@ async def _guarded(db: AsyncSession, link_id: int, client: httpx.AsyncClient | N
     if link is None:
         return {"skipped": "link deleted"}
     own = client is None
-    client = client or httpx.AsyncClient(timeout=30, follow_redirects=True, headers=_HEADERS)
+    client = client or new_client(timeout_s=30, follow_redirects=True)
     try:
         async with db.begin_nested():  # a failure undoes this resolve's writes, not the caller's
             return await run(link, client)
@@ -113,6 +113,14 @@ async def _guarded(db: AsyncSession, link_id: int, client: httpx.AsyncClient | N
     finally:
         if own:
             await client.aclose()
+
+
+async def give_up(db: AsyncSession, link_id: int) -> None:
+    """A link's resolve_job_link or induce_recipe failed for good (tasks.failures): finish it unresolved, so
+    the SPA stops polling a link that would stay 'resolving' forever."""
+    link = await db.get(JobLink, link_id)
+    if link is not None and link.status == "resolving":
+        _finish(link, "unresolved", error=GAVE_UP)
 
 
 def _finish(link: JobLink, status: str, *, company: Company | None = None, error: str | None = None,

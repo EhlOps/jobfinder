@@ -185,3 +185,29 @@ async def test_a_board_removed_since_the_tick_is_skipped(maker, published):
 def test_board_payloads_validate():
     assert io_tasks.IngestBoardArgs.model_validate({"company_id": "4", "old": 1}).model_dump() == {"company_id": 4}
     assert io_tasks.IngestSourceArgs.model_validate({"source": "jobspy"}).source == "jobspy"
+
+
+
+async def test_board_fetches_share_one_pool_but_not_cookies(maker, settings, boards, monkeypatch):
+    """ingest_board reuses worker-io's transport (tasks.io.shared_http) instead of opening connections per
+    task, each on its own client so one board's cookies never reach another; the worker's shutdown
+    closes the pool."""
+    ids = await _seed(maker, ("alpha", "beta"))
+    seen = []
+    real = ingestion.ingest_board
+
+    async def spy(sessions, client, company_id):
+        seen.append(client)
+        client.cookies.set("session", str(company_id))
+        return await real(sessions, client, company_id)
+
+    monkeypatch.setattr(ingestion, "ingest_board", spy)
+    for slug in ("alpha", "beta"):
+        await _run("ingest_board", await _queued(maker, "ingest_board", {"company_id": ids[slug]}))
+    pool = io_tasks.shared_http()
+    assert len(seen) == 2 and seen[0] is not seen[1]
+    assert seen[0]._transport is seen[1]._transport is pool
+    assert seen[1].cookies.get("session") == str(ids["beta"]) and len(seen[1].cookies) == 1
+    assert seen[0].headers["User-Agent"].startswith("JobFinder/")
+    await io_tasks.close_http()
+    assert io_tasks.shared_http() is not pool

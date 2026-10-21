@@ -6,8 +6,10 @@ routers always answered with.
 """
 import logging
 from collections.abc import Awaitable, Callable
+from datetime import timedelta
 from pathlib import Path
 
+from jobfinder.core.clock import utcnow
 from jobfinder.core.config import settings
 from jobfinder.core.db import AsyncSession
 from jobfinder.core.errors import Invalid, NotFound, TooLarge, Unsupported
@@ -35,7 +37,9 @@ def get(store: DocumentStore, user_id: int, doc_id: str) -> DocumentMeta:
         raise NotFound("Not found") from None
 
 
-def list_documents(store: DocumentStore, user_id: int, kind: str | None, tags: list[str]) -> list[DocumentMeta]:
+async def list_documents(
+    db: AsyncSession, store: DocumentStore, user_id: int, kind: str | None, tags: list[str],
+) -> list[DocumentMeta]:
     """`tags` are "key:value" filters. Tailored resumes and links only show up when asked for."""
     wanted = {}
     for t in tags:
@@ -48,7 +52,58 @@ def list_documents(store: DocumentStore, user_id: int, kind: str | None, tags: l
         docs = [d for d in docs if not is_tailored(d)]
     if kind is None:
         docs = [d for d in docs if d.kind != "link"]  # links have their own endpoint
-    return docs
+    return await settle(db, store, user_id, docs)
+
+
+# ---------------------------------------------------------------- reads and fetches that never finish
+# A document or link is "processing" until its task (parse_document, fetch_link) records the outcome. When
+# that task fails for good instead (out of attempts, or an unexpected error), tasks.failures calls
+# `unfinished`. When there is no task at all (the upload's request failed to commit after the store
+# wrote the file, or the row was lost), `settle` notices on the next listing.
+
+TASKS = {"link": "fetch_link"}  # the task that reads each kind of item; every other kind is parse_document
+UNFINISHED = {
+    "parse_document": "We couldn't finish reading this file; upload it again",
+    "fetch_link": "We couldn't finish fetching this link; refresh it to try again",
+}
+# Longer than a request takes from storing an item to committing its task, so `settle` never races one.
+NO_TASK_GRACE = timedelta(minutes=2)
+
+
+def task_for(meta: DocumentMeta) -> str:
+    return TASKS.get(meta.kind, "parse_document")
+
+
+def unfinished(store: DocumentStore, user_id: int, doc_id: str) -> DocumentMeta | None:
+    """Mark an item still processing as error (its text is kept), so nothing waits on it any longer."""
+    try:
+        meta = store.get(user_id, doc_id)
+        if meta.status != "processing":
+            return meta
+        return store.mark_error(user_id, doc_id, UNFINISHED[task_for(meta)])
+    except (storage.NotFound, FileNotFoundError):  # deleted meanwhile
+        return None
+
+
+async def settle(db: AsyncSession, store: DocumentStore, user_id: int, docs: list[DocumentMeta]) -> list[DocumentMeta]:
+    """`docs`, with any item processing for NO_TASK_GRACE with no queued or running task marked error."""
+    waiting = {d.id: ledger.dedupe_key(task_for(d), user_id, {"doc_id": d.id}) for d in docs if d.status == "processing"}
+    if not waiting:
+        return docs
+    active, cutoff = await ledger.active_keys(db, list(waiting.values())), utcnow() - NO_TASK_GRACE
+    out = []
+    for d in docs:
+        if d.id in waiting and waiting[d.id] not in active:
+            try:
+                stale = store.changed_at(user_id, d.id) < cutoff
+            except storage.NotFound:
+                continue  # deleted meanwhile
+            if stale:
+                log.warning("%s %s of user %s was left processing with no task", d.kind, d.id, user_id)
+                if (d := unfinished(store, user_id, d.id)) is None:
+                    continue  # deleted meanwhile
+        out.append(d)
+    return out
 
 
 async def upload(
@@ -88,7 +143,8 @@ async def parse(store: DocumentStore, user_id: int, doc_id: str) -> dict:
         path = store.original_path(user_id, doc_id)
     except storage.NotFound:
         return {"doc_id": doc_id, "skipped": "deleted"}
-    if meta.status != "processing":
+    # An error `unfinished` recorded is read again: the task retried by an admin, or after a lost commit.
+    if meta.status != "processing" and not (meta.status == "error" and meta.fetch_error == UNFINISHED["parse_document"]):
         return {"doc_id": doc_id, "skipped": meta.status}
     text, error = "", None
     try:

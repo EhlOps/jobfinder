@@ -14,11 +14,12 @@ router = APIRouter(prefix="/api/documents", tags=["documents"])
 @router.get("", response_model=list[DocumentOut])
 async def list_documents(
     user: CurrentUser,
+    db: DbSession,
     store: Store,
     kind: str | None = None,
     tag: Annotated[list[str], Query(description="key:value, repeatable")] = [],  # noqa: B006
 ):
-    return [DocumentOut.of(d) for d in service.list_documents(store, user.id, kind, tag)]
+    return [DocumentOut.of(d) for d in await service.list_documents(db, store, user.id, kind, tag)]
 
 
 @router.post("", response_model=DocumentUpload, status_code=202)

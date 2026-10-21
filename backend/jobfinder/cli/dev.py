@@ -124,7 +124,10 @@ def mapped_ports() -> dict[int, int]:
 
 def port_free(port: int) -> bool:
     with socket.socket() as s:
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # TIME_WAIT leftovers don't hold a port (#53)
+        # TIME_WAIT leftovers don't hold a port (#53). Linux only: on macOS and the BSDs SO_REUSEADDR also
+        # lets this bind beside a listener on *:port, which would report a busy port free.
+        if sys.platform.startswith("linux"):
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             s.bind(("127.0.0.1", port))
         except OSError:

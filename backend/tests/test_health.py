@@ -2,8 +2,8 @@ import asyncio
 
 import sqlalchemy as sa
 
-from jobfinder.api import health
-from jobfinder.api.health import Revisions, alembic_revisions
+from jobfinder.services import health
+from jobfinder.services.health import Revisions, alembic_revisions
 
 
 async def test_healthz(client):
@@ -81,7 +81,7 @@ async def test_readyz_503_when_the_database_is_down(client, monkeypatch):
 
 
 async def test_readyz_503_when_the_database_hangs(client, monkeypatch):
-    async def hang(request):
+    async def hang(sessions):
         await asyncio.sleep(60)
 
     monkeypatch.setattr(health, "CHECK_TIMEOUT_SECONDS", 0.05)
@@ -95,3 +95,13 @@ async def test_readyz_503_without_alembic_scripts(client, monkeypatch):
     monkeypatch.setattr(_app(client).state, "alembic", Revisions(frozenset(), frozenset()))
     r = await client.get("/readyz")
     assert r.status_code == 503 and r.json()["reason"] == "no alembic scripts in this image"
+
+
+async def test_readiness_decides_from_the_revisions(maker, db):
+    revs = Revisions(heads=frozenset({"b"}), known=frozenset({"a", "b"}))
+    await _stamp(db, "a")
+    assert await health.readiness(maker, revs) == health.Readiness(False, reason="schema at a, image expects b")
+    await _stamp(db, "b")
+    assert await health.readiness(maker, revs) == health.Readiness(True, revision="b")
+    await _stamp(db, "c")
+    assert await health.readiness(maker, revs) == health.Readiness(True, revision="c", note="schema newer than b")

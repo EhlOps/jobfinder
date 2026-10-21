@@ -10,7 +10,7 @@ import re
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 
-from jobfinder.core.text import refuses_sponsorship, tokens
+from jobfinder.core.text import early_career_pattern, refuses_sponsorship, tokens
 
 # ── seniority ────────────────────────────────────────────────────────────
 # Levels (as inferred from titles) acceptable for each level the candidate selects. Jobs whose
@@ -277,12 +277,7 @@ def outside_grad_window(description: str, status: dict) -> bool:
     return (lo is not None and grad < lo - GRAD_WINDOW_SLACK) or (hi is not None and grad > hi + GRAD_WINDOW_SLACK)
 
 
-EARLY_CAREER_TITLE = re.compile(
-    r"\b(new grad(?:uate)?|recent graduate|graduate (?:engineer|developer|program(?:me)?|scheme)s?"
-    r"|university (?:grad(?:uate)?|hire|program(?:me)?|recruit(?:ing)?)s?|campus (?:hire|recruit(?:ing)?)s?|early career|entry[- ]level)\b",
-    re.IGNORECASE,
-)
-# repositories/matches.py EARLY_CAREER_SQL has the same words for Postgres: keep the two in step.
+EARLY_CAREER_TITLE = re.compile(early_career_pattern("python"), re.IGNORECASE)  # the feed filter uses the same words
 _INTERN_TITLE = re.compile(r"\b(intern|internship|co-?op)\b", re.IGNORECASE)
 STAGE_BOOST = 10
 

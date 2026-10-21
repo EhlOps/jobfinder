@@ -9,8 +9,8 @@ router = APIRouter(prefix="/api/links", tags=["links"])
 
 
 @router.get("", response_model=list[ProfileLinkOut])
-async def list_links(user: CurrentUser, store: Store):
-    return [ProfileLinkOut.of(m) for m in service.list_links(store, user.id)]
+async def list_links(user: CurrentUser, db: DbSession, store: Store):
+    return [ProfileLinkOut.of(m) for m in await service.list_links(db, store, user.id)]
 
 
 @router.post("", response_model=LinkUpload, status_code=202)

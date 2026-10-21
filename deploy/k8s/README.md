@@ -15,7 +15,7 @@ deploy/k8s/
     postgres/           # #40: Postgres 16 StatefulSet, Service, NetworkPolicy
     valkey/             # #40: valkey StatefulSet (AOF), Service, NetworkPolicy; the task streams (#48)
     storage/            # #40: PVCs store, claude-auth
-    data/               # #47: backup CronJob and PVC backups
+    data/               # #47: backup CronJob and PVC backups; #118: pre-deploy runs (BACKUP_PREFIX=pre-)
     app/                # #43: web, api, renderer, smtp, migrate Job, Ingress, config overrides;
                         # #48: scheduler, worker-ai, worker-io (the task platform);
                         # #52: worker-io's KEDA ScaledObject (1-4 replicas on the io backlog)
@@ -24,7 +24,8 @@ deploy/k8s/
     prod/               # namespace `jobfinder` (the base default); sealed secrets, Gmail relay, prod config
   hello/                # #38 smoke test: whoami behind Traefik at /healthz
   deploy.sh             # #43: pin images, migrate, roll out (deploy.sh <overlay> sha-<commit>)
-  deploy-staging-ssh.sh # #43: SSH forced command GitHub Actions deploys staging through
+  deploy-ssh.sh         # #43, #118: SSH forced command GitHub Actions deploys through (deploy-ssh.sh staging|prod):
+                        # checks, staging gate, pre-deploy backup, smoke checks, auto image rollback (prod)
   staging-restore.sh    # #43: copy prod's database (namespace jobfinder) into staging
   backup-restore.sh     # #47: restore drill of the newest backup into a scratch database
   pg-lib.sh             # #47: row-count, stream and KEDA-pause helpers the scripts above share
@@ -54,7 +55,9 @@ tag (`dev`/`main`); `deploy.sh` layers a pin per image on top at deploy time:
 Deployment already runs, otherwise the current digest of `dev`/`main`. Deploy
 with `deploy.sh`, not a bare `kubectl apply -k`, which would deploy the moving
 default tag and skip the migrate-before-rollout ordering. Runbook:
-`docs/k3s.md`, "Deploying prod" and "Staging".
+`docs/k3s.md`, "Releasing" and "Staging". GitHub Actions deploys through
+`deploy-ssh.sh` (staging on dev pushes, prod on main pushes, #118), which
+calls `deploy.sh`.
 
 **Data services.** Postgres and valkey only accept pods in the same namespace
 labelled `jobfinder.io/postgres-client: "true"` / `jobfinder.io/valkey-client:
@@ -88,8 +91,10 @@ kubectl diff  -k deploy/k8s/overlays/prod                       # before touchin
 ```
 
 That is fine for the data services and for checking a change. To ship the app,
-use `deploy/k8s/deploy.sh staging sha-<commit>`: it pins the images and runs
-the migrate Job before any Deployment rolls (`docs/k3s.md`, "Staging").
+merge to dev (staging) or release to main (prod); by hand,
+`deploy/k8s/deploy.sh <staging|prod> sha-<commit>` from a checkout of that
+commit pins the images and runs the migrate Job before any Deployment rolls
+(`docs/k3s.md`, "Deploying by hand").
 
 ### Smoke test
 

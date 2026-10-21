@@ -204,37 +204,169 @@ browser → host Caddy (TLS) → Traefik 127.0.0.1:8280 → web (Caddy :8080) �
 
 `jobfinder` runs the prod overlay (`deploy/k8s/overlays/prod`) at **https://jobs.ehlops.com**, with
 
-- **Secrets** (SealedSecrets for `jobfinder`): `postgres-credentials` (random, prod only); `jobfinder-env` with `SECRET_KEY` (kept from before the move to k3s, so sessions and emailed links stayed valid) and an empty `CLAUDE_CODE_OAUTH_TOKEN` (the token saved on "AI setup" lives in the `claude-auth` PVC and wins over the env); `smtp-relay` with `RELAYHOST_USERNAME`/`RELAYHOST_PASSWORD`.
+- **Secrets** (SealedSecrets for `jobfinder`): `postgres-credentials` (random, prod only); `jobfinder-env` with `SECRET_KEY` (random, prod only; the pre-k3s key was rotated out on 2026-10-21) and an empty `CLAUDE_CODE_OAUTH_TOKEN` (the token saved on "AI setup" lives in the `claude-auth` PVC and wins over the env); `smtp-relay` with `RELAYHOST_USERNAME`/`RELAYHOST_PASSWORD`.
 - **Config:** where prod differs from `.env.defaults`: `PUBLIC_BASE_URL=https://jobs.ehlops.com`, `EMAIL_FROM`, `INGEST_MAX_DISCOVERED_BOARDS_PER_RUN=100`, `DISCOVERY_ENABLED=false`, `DISCOVERY_MAX_CANDIDATES=50`. None of staging's "background Claude work off" switches.
 - **Mail:** postfix relays to `[smtp.gmail.com]:587` (`ALLOWED_SENDER_DOMAINS=gmail.com`). No mailpit and no smtp egress policy.
 
-### Deploying prod
+### Releasing (#118)
 
-By hand on the host, from a checkout of the commit to deploy (prod isn't wired to GitHub Actions; staging keeps auto-deploying every dev push). First note what runs now (you need it to roll back) and take a backup, because migrations run before the rollout:
+**A release is a dev → main PR, merged with "Create a merge commit".** Every push to main deploys prod; there is no approval step, so the merge is the decision. The main ruleset allows only merge commits, which matters for two reasons. A squash would fork main away from dev, and every later release PR would then conflict. A merge commit's second parent (`<commit>^2`) is exactly the dev commit that staging ran, and the staging gate checks that commit.
+
+Before merging, read the release PR's migrations with "Rollback" in mind: the automatic rollback only reverts images, never the schema.
+
+What the merge sets off, in order:
+
+1. **`images.yml`** builds the images the push changed and tags them `sha-<7>`. Its `deploy-prod` job runs only on a push to `refs/heads/main`, and only once every build has succeeded.
+2. **`deploy-prod.yml`** runs in environment `production`, whose deployment-branch policy allows only `main`, so only main runs can read the prod key. It SSHes to the host and sends only `sha-<7>`.
+3. **On the host, the key's forced command** is the root-owned `/usr/local/lib/jobfinder/deploy-ssh.sh prod`. The env comes from `authorized_keys`, never from the client. The wrapper then works through these steps:
+   1. **Checks.** It accepts exactly `sha-<7-40 lowercase hex>`; anything else is refused with exit 2. The commit must be on `origin/main`. Prod never moves backwards: a commit that prod's `jobfinder.io/deployed-commit` already contains is skipped with exit 0, which covers late runs and re-runs. The wrapper holds a per-env lock, so prod and staging deploys can run at the same time, but never two of the same env.
+   2. **Staging gate.** The release's dev side (`<commit>^2`, or the commit itself when it has no second parent) must equal, or be an ancestor of, staging's `jobfinder.io/deployed-commit` (on namespace `jobfinder-staging`). If it isn't, the release is refused.
+   3. **Prior state.** It records the image of every app Deployment (`jobfinder.io/rollout=app`), plus the namespace's `jobfinder.io/deployed-tag` and `jobfinder.io/deployed-commit`, before anything changes.
+   4. **Pre-deploy backup.** It creates Job `backup-pre-<sha7>` from `cronjob/backup` with `BACKUP_PREFIX=pre-`, which writes `pre-db-<ts>.dump` and `pre-files-<ts>.tar.gz` ("Backups"), and waits for it. **A failed backup stops the deploy** before anything changes.
+   5. **`deploy.sh prod`** pins the images, runs the migrate Job and rolls out the Deployments (see "Deploying by hand" for how it pins). Its candidate tags are the dev side's first-parent history, then main's. An image the merge didn't rebuild therefore comes from the newest dev build of the same tree.
+   6. **HTTP smoke checks.** They go through Traefik on `127.0.0.1:8280` with `Host: jobs.ehlops.com`, the same path users take, and retry for about 2 minutes. They pass when all of these hold:
+      - `/readyz` returns 200
+      - `/` returns 200 (the SPA)
+      - `/api/auth/me` returns 401
+      - every app pod is Ready (`pods-ready`)
+      - no app pod has restarted since the rollout (`no-restarts`)
+   7. **Automatic image rollback.** If the rollout or a smoke check fails, the wrapper sets every Deployment back to its recorded image, waits for the rollouts, restores the two namespace annotations and runs the smoke checks again. It **exits 1 either way**, so the run is red and GitHub emails you even when the rollback worked. Migrations are never rolled back (see "Rollback").
+   8. **Summary line.** The last line of every run, refused and skipped runs included, is `deploy-summary: <JSON>`. It carries `env`, `outcome`, `tag`, `commit`, `dev_commit`, `previous_tag`/`previous_commit` (or `unknown`), the pinned `images`, the `smoke` results, the `backup` file, `started_at`/`finished_at` and a one-line `message`.
+4. **The report.** `.github/scripts/deploy-report.sh` runs after the SSH step even when that step failed, and reads the summary line:
+   - **Step summary.** It writes a table to the run's step summary.
+   - **Shipped PRs.** It finds them from the `(#N)` subjects in `git log --first-parent <previous dev side>..<dev_commit>`. On `deployed`, it comments on each one with `Released to **prod** in #<release PR> · <tag> · <UTC time> · [run](…)`.
+   - **Release PR.** It always posts one summary comment on the release PR, whatever the outcome. The comment gives the outcome, the tag, the pinned images, the smoke table, the backup file, the previous tag, the shipped PRs with their titles, the time and a link to the run.
+
+   With `DRY_RUN=1`, the script prints the comments instead of posting them.
+
+Exit status: 0 for `deployed` and `skipped`, 2 for a malformed request, 1 for everything else.
+
+**Run log:** every run also writes its whole output to `~/.local/state/jobfinder/deploy-<env>-<UTC start>-<pid>.log` on the host (mode 0600, newest 50 kept; the last line is the summary). A run ignores SIGHUP/SIGPIPE, so a cancelled or disconnected Actions run still finishes its deploy, checks or rollback: read the outcome there. After a rollback the summary also carries `rollback_smoke`, the re-check's results.
+
+**Outcomes** (`outcome` in the summary line, shown in the run summary and the release PR comment):
+
+| Outcome | What happened | What to do |
+|---|---|---|
+| `deployed` | Backup, migration, rollout and smoke checks all passed; the namespace records the new tag and commit. | Nothing. |
+| `skipped` | Prod already runs this commit or one that contains it (a late run or a re-run). | Nothing. |
+| `refused` | Bad tag, a commit not on `origin/main`, or **the staging gate**: the dev side isn't on staging yet. Nothing changed. | Gate: let staging's deploy of that dev commit finish (or fix it), then **Actions → deploy-prod → Run workflow** on main. A squash or a commit made straight on main can never pass the gate (see "Hotfixes"). |
+| `backup_failed` | The pre-deploy backup Job failed or timed out. Nothing was deployed. | `kubectl -n jobfinder logs job/backup-pre-<sha7>`; the usual causes are postgres being unreachable or the `backups` PVC being full ("Backups"). Fix it, `kubectl -n jobfinder delete job backup-pre-<sha7>`, then **Run workflow** on main. |
+| `migrate_failed` | The migrate Job failed. `deploy.sh` stops before any Deployment changes, so the old pods keep serving and there is nothing to roll back. | `kubectl -n jobfinder logs job/migrate`. Fix forward on dev, let staging take it, and release again. |
+| `failed` | Any other error, such as git, the registry, the lock or kubectl. | Read the run log; `message` says where it stopped. Fix the cause and **Run workflow** on main. |
+| `rolled_back` | The rollout or a smoke check failed. The images went back to `previous_tag`, and the re-check passed. Prod is healthy, but it runs the old images on the **new** schema if the release migrated. | Find the cause in the smoke table and the run log, fix it on dev, and release again. |
+| `rollback_failed` | The rollback's re-check failed too. **Prod may be down: act now.** | The run log prints the recorded prior images. Follow "Rollback" by hand. If the old code can't run on the new schema, restore from the run's `pre-db-<ts>.dump`. |
+
+**Hotfixes** go through dev like everything else: land the fix on dev, let staging deploy it, then open and merge a dev → main release PR. A commit pushed straight to main is refused by the ruleset. A squash-merged release has no second parent and was never on staging, so the gate refuses it.
+
+**Manifest-only changes** build no images, so no deploy runs. Use **Actions → deploy-prod → Run workflow** on main.
+
+### One-time setup for prod autodeploy (owner, #118)
+
+On the host, as opc, from a checkout of dev that has #118:
+
+1. **Install both scripts**, root-owned, outside the repo, so a push can't change what the keys run:
+
+   ```sh
+   sudo install -o root -g root -m 0755 -D deploy/k8s/deploy-ssh.sh /usr/local/lib/jobfinder/deploy-ssh.sh
+   sudo install -o root -g root -m 0755 -D deploy/k8s/deploy.sh     /usr/local/lib/jobfinder/deploy.sh
+   ```
+
+   Re-install both whenever `deploy-ssh.sh` or `deploy.sh` changes. The repo copies are never run by a key.
+2. **Switch the staging key** to the new wrapper. In `~/.ssh/authorized_keys`, change the staging key's `command=` to `restrict,command="/usr/local/lib/jobfinder/deploy-ssh.sh staging"`. The wrapper was renamed from `deploy-staging-ssh.sh` (#118), so remove the old installed copy: `sudo rm /usr/local/lib/jobfinder/deploy-staging-ssh.sh`.
+3. **Prod deploy key** (ed25519, no passphrase) and its forced command:
+
+   ```sh
+   ssh-keygen -t ed25519 -N '' -C jobfinder-prod-deploy -f /tmp/prod_deploy
+   echo "restrict,command=\"/usr/local/lib/jobfinder/deploy-ssh.sh prod\" $(cat /tmp/prod_deploy.pub)" >> ~/.ssh/authorized_keys
+   ssh -i /tmp/prod_deploy opc@<public IP or hostname> 'rm -rf /'      # must answer "refused"
+   ```
+
+4. **Environment `production`**, limited to the `main` branch, with no reviewers:
+
+   ```sh
+   gh api -X PUT repos/EhlOps/jobfinder/environments/production --input - <<'EOF'
+   {"deployment_branch_policy": {"protected_branches": false, "custom_branch_policies": true}}
+   EOF
+   gh api -X POST repos/EhlOps/jobfinder/environments/production/deployment-branch-policies -f name=main -f type=branch
+   ```
+
+5. **Its secrets** (environment secrets, so only main runs can read them):
+
+   ```sh
+   gh secret set PROD_SSH_KEY  --env production -R EhlOps/jobfinder < /tmp/prod_deploy
+   gh secret set PROD_SSH_HOST --env production -R EhlOps/jobfinder --body '<public IP or hostname>'
+   gh secret set PROD_SSH_USER --env production -R EhlOps/jobfinder --body opc
+   ssh-keyscan -t ed25519 <public IP or hostname> | gh secret set PROD_SSH_KNOWN_HOSTS --env production -R EhlOps/jobfinder
+   shred -u /tmp/prod_deploy /tmp/prod_deploy.pub
+   ```
+
+6. **Bootstrap main** before the rulesets exist, because afterwards nobody can push to main directly. Fast-forward main to the commit prod runs now, so that main matches prod:
+
+   ```sh
+   kubectl get ns jobfinder -o jsonpath='{.metadata.annotations.jobfinder\.io/deployed-commit}{"\n"}'
+   git push origin <that commit>:main      # must be a fast-forward of main
+   ```
+
+7. **The two main rulesets.** "main: owner only" lets only repository admins (the owner) update or delete main, and forbids force pushes. "main: merge commits" requires a PR merged with a merge commit, needs 0 approvals and has no bypass:
+
+   ```sh
+   gh api -X POST repos/EhlOps/jobfinder/rulesets --input - <<'EOF'
+   {"name": "main: owner only", "target": "branch", "enforcement": "active",
+    "conditions": {"ref_name": {"include": ["refs/heads/main"], "exclude": []}},
+    "rules": [{"type": "update"}, {"type": "deletion"}, {"type": "non_fast_forward"}],
+    "bypass_actors": [{"actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always"}]}
+   EOF
+   gh api -X POST repos/EhlOps/jobfinder/rulesets --input - <<'EOF'
+   {"name": "main: merge commits", "target": "branch", "enforcement": "active",
+    "conditions": {"ref_name": {"include": ["refs/heads/main"], "exclude": []}},
+    "rules": [{"type": "pull_request", "parameters": {
+      "required_approving_review_count": 0, "dismiss_stale_reviews_on_push": false,
+      "require_code_owner_review": false, "require_last_push_approval": false,
+      "required_review_thread_resolution": false, "allowed_merge_methods": ["merge"]}}],
+    "bypass_actors": []}
+   EOF
+   gh api repos/EhlOps/jobfinder/rulesets --jq '.[] | [.id, .name, .enforcement] | @tsv'
+   ```
+
+   In `bypass_actors`, `actor_id` 5 is the built-in admin role. The repo keeps squash merges allowed, because dev's PRs use them; the ruleset narrows only main.
+8. **First release:** open a dev → main PR, merge it with **Create a merge commit**, and watch **Actions → deploy-prod**.
+
+Until `PROD_SSH_KEY`, `PROD_SSH_HOST` and `PROD_SSH_USER` all exist, `deploy-prod` skips with a warning, as staging's does.
+
+### Deploying by hand (fallback)
+
+Use this when GitHub Actions is unavailable, or to deploy something a release can't, such as a rollback. Run it on the host, from a checkout of the commit to deploy. The checkout's `deploy/k8s/deploy.sh` applies the checkout's manifests. The installed copy in `/usr/local/lib/jobfinder/` has no overlays next to it, so it needs `DEPLOY_K8S_DIR=<checkout>/deploy/k8s`; the simplest way is to run it from the checkout.
+
+First note what runs now (you need it to roll back), then take a pre-deploy backup, because migrations run before the rollout:
 
 ```sh
 kubectl get ns jobfinder -o jsonpath='{.metadata.annotations.jobfinder\.io/deployed-tag}{"\n"}'   # the running tag
-kubectl -n jobfinder create job --from=cronjob/backup backup-pre-<tag>
-kubectl -n jobfinder wait --for=condition=complete job/backup-pre-<tag> --timeout=15m
+kubectl -n jobfinder create job --from=cronjob/backup backup-pre-<sha7> --dry-run=client -o yaml \
+  | kubectl set env --local -f - BACKUP_PREFIX=pre- -o yaml | kubectl apply -f -
+kubectl -n jobfinder wait --for=condition=complete job/backup-pre-<sha7> --timeout=15m
 
 git fetch && git checkout <commit>     # deploy.sh applies this checkout's manifests
+DEV=$(git rev-parse --verify --quiet 'HEAD^2' || git rev-parse HEAD)   # a release's dev side
 DEPLOY_COMMIT=$(git rev-parse HEAD) \
-DEPLOY_CANDIDATE_TAGS="$(git rev-list --first-parent --max-count=50 --skip=1 HEAD | cut -c1-7 | sed 's/^/sha-/' | tr '\n' ' ')" \
+DEPLOY_CANDIDATE_TAGS="$( { git rev-list --first-parent --max-count=50 "$DEV"; git rev-list --first-parent --max-count=50 --skip=1 HEAD; } | cut -c1-7 | sed 's/^/sha-/' | tr '\n' ' ')" \
   deploy/k8s/deploy.sh prod sha-$(git rev-parse --short=7 HEAD)
 ```
 
+Always pass `DEPLOY_COMMIT`. Without it, the namespace records `unknown`, and the wrapper's never-backwards check, the report's shipped-PR list and the next rollback all have nothing to compare against. A by-hand deploy doesn't run the smoke checks or the rollback, and doesn't post a report.
+
 `deploy.sh` pins every image by an immutable tag or digest, never a moving one:
 
-1. **Pins each image.** `images.yml` only rebuilds what a commit changed (a frontend-only commit builds only web; a backend-only one only api, worker and renderer). Per image, it takes the first that exists in GHCR of: `sha-<commit>`; the tags in `DEPLOY_CANDIDATE_TAGS`, newest first (the line above lists the commit's 50 first-parent ancestors); otherwise **the image the Deployment already runs is kept**; on a first deploy, the current digest of `main`. So without `DEPLOY_CANDIDATE_TAGS`, an image the commit didn't rebuild stays at whatever was deployed, even if a newer ancestor built one. A registry error stops the deploy instead of falling back.
+1. **Pins each image.** `images.yml` only rebuilds what a commit changed (a frontend-only commit builds only web; a backend-only one only api, worker and renderer). Per image, it takes the first that exists in GHCR of: `sha-<commit>`; the tags in `DEPLOY_CANDIDATE_TAGS`, newest first (the line above lists the dev side's first-parent ancestors, then main's); otherwise **the image the Deployment already runs is kept**; on a first deploy, the current digest of `main`. So without `DEPLOY_CANDIDATE_TAGS`, an image the commit didn't rebuild stays at whatever was deployed, even if a newer ancestor built one. A registry error stops the deploy instead of falling back. With `DEPLOY_PINS_OUT=<file>` it also writes one `<image> <tag-or-digest>` line per image (the wrapper uses this for the summary's `images`).
 2. **Migrates.** Applies everything except the Deployments, replaces Job `migrate`, waits for it. A failed migration prints the Job's log and stops; no pod has rolled.
 3. **Rolls out.** Applies the Deployments and worker-io's ScaledObject (label `jobfinder.io/rollout=app`), waits for each rollout, and lifts a KEDA pause a script left marked ("KEDA").
 4. **Records** the tag and `DEPLOY_COMMIT` as namespace annotations `jobfinder.io/deployed-tag` and `jobfinder.io/deployed-commit`.
 
-Check it:
+Check it (these are the wrapper's smoke checks):
 
 ```sh
 H='Host: jobs.ehlops.com'
 kubectl -n jobfinder get pods,job                                               # all Running, migrate Completed
+curl -s -o /dev/null -w '%{http_code}\n' -H "$H" http://127.0.0.1:8280/readyz        # 200
 curl -s -o /dev/null -w '%{http_code}\n' -H "$H" http://127.0.0.1:8280/              # 200, the SPA
 curl -s -o /dev/null -w '%{http_code}\n' -H "$H" http://127.0.0.1:8280/api/auth/me   # 401: the api answers
 kubectl -n jobfinder logs job/migrate
@@ -243,20 +375,23 @@ kubectl -n jobfinder logs deploy/scheduler --tail=50                            
 
 ### Rollback
 
-**Deploy the older tag.** Check out the commit that ran before (the tag you noted, or `git log` on main) and deploy it the same way, with its own candidate tags, so every image goes back, including the ones that commit didn't rebuild:
+**Automatic (prod, #118).** When a release's rollout or smoke check fails, the wrapper rolls the images back by itself ("Releasing", the automatic image rollback), and the outcome is `rolled_back` or `rollback_failed`. It doesn't touch the database. The old images keep running on the new schema, which is safe only under the backward-compatibility rule below. What follows is the by-hand path, for `rollback_failed` or for a release that passed its checks and turned out bad later.
+
+**Deploy the older tag.** Check out the commit that ran before (the previous tag in the release PR's comment, or `git log --first-parent main`), and deploy it by hand ("Deploying by hand") with its own candidate tags, so every image goes back, including the ones that commit didn't rebuild:
 
 ```sh
 git checkout <older commit>
+DEV=$(git rev-parse --verify --quiet 'HEAD^2' || git rev-parse HEAD)
 DEPLOY_COMMIT=$(git rev-parse HEAD) \
-DEPLOY_CANDIDATE_TAGS="$(git rev-list --first-parent --max-count=50 --skip=1 HEAD | cut -c1-7 | sed 's/^/sha-/' | tr '\n' ' ')" \
+DEPLOY_CANDIDATE_TAGS="$( { git rev-list --first-parent --max-count=50 "$DEV"; git rev-list --first-parent --max-count=50 --skip=1 HEAD; } | cut -c1-7 | sed 's/^/sha-/' | tr '\n' ' ')" \
   deploy/k8s/deploy.sh prod sha-$(git rev-parse --short=7 HEAD)
 ```
 
-Without `DEPLOY_CANDIDATE_TAGS`, an image the older commit didn't build keeps running at the newer version.
+Without `DEPLOY_CANDIDATE_TAGS`, an image the older commit didn't build keeps running at the newer version. Re-running **Actions → deploy-prod** on an older commit doesn't work, because the wrapper skips a commit older than the one prod runs. After a by-hand rollback, the next release moves prod forward as usual.
 
 That works as long as no migration ran in between.
 
-**Across a migration.** Migrations are never rolled back, and the older image's migrate Job fails (`alembic upgrade head` can't locate the newer revision in the database), so `deploy.sh` stops before anything rolls: nothing breaks, but nothing rolls back either. The older code can still run on the newer schema, because every migration stays backward compatible for one release (add columns and tables; drop or rename only in a later release, once no deployed code reads them) and `/readyz` accepts a revision the image doesn't know. So roll the images back by hand, to the tags the older commit ran (`deploy.sh`'s log of that deploy, or `kubectl -n jobfinder rollout history deploy/api`):
+**Across a migration.** Migrations are never rolled back, and the older image's migrate Job fails (`alembic upgrade head` can't locate the newer revision in the database), so `deploy.sh` stops before anything rolls: nothing breaks, but nothing rolls back either. The older code can still run on the newer schema, because every migration stays backward compatible for one release (add columns and tables; drop or rename only in a later release, once no deployed code reads them) and `/readyz` accepts a revision the image doesn't know. So roll the images back by hand, to the tags the older commit ran (`images` in the release PR's comment for that deploy, `deploy.sh`'s log of it, or `kubectl -n jobfinder rollout history deploy/api`):
 
 ```sh
 OLD=sha-<older>      # per image: web is often an older tag than api/worker
@@ -268,11 +403,11 @@ kubectl -n jobfinder set image deploy/renderer renderer=ghcr.io/ehlops/jobfinder
 kubectl -n jobfinder rollout status deploy/api   # and the others
 ```
 
-(`kubectl -n jobfinder rollout undo deploy/<name>` does the same per Deployment when the previous ReplicaSet is the one you want.) The next `deploy.sh` brings everything back in line with git; fix forward from there. Review a release's migrations with this in mind before deploying it: a release that breaks the rule can't be rolled back without a restore.
+(`kubectl -n jobfinder rollout undo deploy/<name>` does the same per Deployment when the previous ReplicaSet is the one you want.) The next `deploy.sh` brings everything back in line with git; fix forward from there. Review a release's migrations with this in mind before merging it: a release that breaks the rule can't be rolled back without a restore.
 
-**Restore from a backup** only as a last resort (a destructive migration, or bad data written by the new release): "Restoring for real" under Backups, using the `backup-pre-<tag>` dump. Everything written since that dump is lost.
+**Restore from a backup** only as a last resort, for a destructive migration or bad data written by the new release. Follow "Restoring for real" under Backups, using the release's `pre-db-<ts>.dump` (the `backup` in its summary and in the release PR comment). Everything written since that dump is lost.
 
-Staging rolls back the same way, by hand on the host with the same `DEPLOY_COMMIT` and `DEPLOY_CANDIDATE_TAGS` lines (`deploy.sh staging ...`). Re-running **Actions → deploy-staging** on an older commit doesn't work: the SSH wrapper skips a commit older than the one staging runs. Pass `DEPLOY_COMMIT`, or the namespace records `unknown` and the wrapper's out-of-order check has nothing to compare the next push against.
+**Staging** isn't rolled back automatically. Roll it back by hand on the host the same way (`deploy.sh staging ...`), with the same `DEPLOY_COMMIT` and `DEPLOY_CANDIDATE_TAGS` lines, but with `DEV=$(git rev-parse HEAD)`. Re-running **Actions → deploy-staging** on an older commit doesn't work, because the SSH wrapper skips a commit older than the one staging runs. Pass `DEPLOY_COMMIT`, or the namespace records `unknown` and the wrapper's out-of-order check has nothing to compare the next push against.
 
 ## Staging (#43)
 
@@ -280,13 +415,13 @@ Staging rolls back the same way, by hand on the host with the same `DEPLOY_COMMI
 
 ### Deploy
 
-GitHub Actions deploys every push to dev once `images` has pushed that commit's images (`images.yml` → `deploy-staging.yml`). It SSHes to the host with a key whose forced command is the root-owned copy of `deploy/k8s/deploy-staging-ssh.sh` in `/usr/local/lib/jobfinder/`. It accepts exactly `sha-<7-40 hex>`, checks the commit is on `origin/dev` and not older than what staging runs (namespace annotation `jobfinder.io/deployed-commit`; late out-of-order runs are skipped), exports that commit's `deploy/k8s` as data, and runs the installed `deploy.sh` on it with the commit's ancestors as `DEPLOY_CANDIDATE_TAGS`, so code from a push never runs on the host. For a manifest-only change, use **Actions → deploy-staging → Run workflow** on dev. By hand, on the host:
+GitHub Actions deploys every push to dev once `images` has pushed that commit's images (`images.yml` → `deploy-staging.yml`). It SSHes to the host with a key whose forced command is the root-owned `/usr/local/lib/jobfinder/deploy-ssh.sh staging`, the same wrapper prod uses ("Releasing"). The wrapper accepts exactly `sha-<7-40 hex>`, checks that the commit is on `origin/dev` and not older than what staging runs (namespace annotation `jobfinder.io/deployed-commit`; late, out-of-order runs are skipped), exports that commit's `deploy/k8s` as data, and runs the installed `deploy.sh` on it with the commit's ancestors as `DEPLOY_CANDIDATE_TAGS`, so code from a push never runs on the host. It then runs the same HTTP smoke checks as prod, with `Host: staging.ehlops.com`. A failed check fails the run, but staging has **no pre-deploy backup and no automatic rollback**. The run prints the same `deploy-summary:` line, and `deploy-report.sh` writes the step summary. On `deployed`, it comments `Deployed to **staging** · <tag> · <UTC time> · [run](…)` on each PR that the push shipped. For a manifest-only change, use **Actions → deploy-staging → Run workflow** on dev. By hand, on the host:
 
 ```sh
 deploy/k8s/deploy.sh staging sha-1a2b3c4      # from a checkout of that commit
 ```
 
-`deploy.sh` works as described under "Deploying prod"; on a first deploy it falls back to the digest of `dev`. Check it:
+`deploy.sh` works as described under "Deploying by hand"; on a first deploy it falls back to the digest of `dev`. Check it:
 
 ```sh
 kubectl -n jobfinder-staging get pods,job
@@ -295,7 +430,7 @@ curl -s -o /dev/null -w '%{http_code}\n' -H 'Host: staging.ehlops.com' http://12
 kubectl -n jobfinder-staging logs job/migrate
 ```
 
-After a change to `deploy.sh` or `deploy-staging-ssh.sh`, reinstall the root-owned copies ("One-time setup", step 4), or staging deploys from GitHub Actions keep the old ones.
+After a change to `deploy.sh` or `deploy-ssh.sh`, reinstall the root-owned copies ("One-time setup for prod autodeploy", step 1), or deploys from GitHub Actions keep running the old ones.
 
 ### Copy prod's data
 
@@ -330,9 +465,9 @@ Never expose mailpit through an Ingress: it holds password-reset links for real 
 
    ```sh
    ssh-keygen -t ed25519 -N '' -C jobfinder-staging-deploy -f /tmp/staging_deploy
-   sudo install -o root -g root -m 0755 -D deploy/k8s/deploy-staging-ssh.sh /usr/local/lib/jobfinder/deploy-staging-ssh.sh
+   sudo install -o root -g root -m 0755 -D deploy/k8s/deploy-ssh.sh /usr/local/lib/jobfinder/deploy-ssh.sh
    sudo install -o root -g root -m 0755 -D deploy/k8s/deploy.sh /usr/local/lib/jobfinder/deploy.sh
-   echo "restrict,command=\"/usr/local/lib/jobfinder/deploy-staging-ssh.sh\" $(cat /tmp/staging_deploy.pub)" >> ~/.ssh/authorized_keys
+   echo "restrict,command=\"/usr/local/lib/jobfinder/deploy-ssh.sh staging\" $(cat /tmp/staging_deploy.pub)" >> ~/.ssh/authorized_keys
    gh secret set STAGING_SSH_KEY  -R EhlOps/jobfinder < /tmp/staging_deploy
    gh secret set STAGING_SSH_HOST -R EhlOps/jobfinder --body '<public IP or hostname>'
    gh secret set STAGING_SSH_USER -R EhlOps/jobfinder --body opc
@@ -340,7 +475,7 @@ Never expose mailpit through an Ingress: it holds password-reset links for real 
    shred -u /tmp/staging_deploy /tmp/staging_deploy.pub
    ```
 
-   `restrict` turns off forwarding, PTYs and agent use; the forced command runs no matter what the client asks for. Test it: `ssh -i <key> opc@<host> 'rm -rf /'` must answer `refused`. Re-install both (`sudo install …` above) whenever `deploy-staging-ssh.sh` or `deploy.sh` changes on dev; the repo copies are never run by the key. Residual trust: kubectl there is cluster-admin, so a manifest on dev could still create objects outside the namespace; a namespace-scoped kubeconfig for the forced command would close that (follow-up). Until the three required secrets exist, `deploy-staging` skips with a warning.
+   `restrict` turns off forwarding, PTYs and agent use, and the forced command runs no matter what the client asks for. The env (`staging`) is part of the forced command, so a client can't pick prod. Test it: `ssh -i <key> opc@<host> 'rm -rf /'` must answer `refused`. Re-install both (`sudo install …` above) whenever `deploy-ssh.sh` or `deploy.sh` changes; the repo copies are never run by the key. Residual trust: kubectl there is cluster-admin, so a manifest on dev could still create objects outside the namespace. A namespace-scoped kubeconfig for the forced command would close that (follow-up). Until the three required secrets exist, `deploy-staging` skips with a warning. Prod's key, environment and rulesets are under "One-time setup for prod autodeploy".
 5. **Data and first deploy:** `deploy/k8s/staging-restore.sh`, then **Run workflow** on dev (or `deploy.sh staging sha-<head of dev>`).
 
 ## Task platform (#48)
@@ -603,7 +738,15 @@ kubectl -n $NS exec deploy/api -- jobfinder tasks retry <id>      # a done or fa
 
 ## Backups (#47)
 
-CronJob `backup` (`deploy/k8s/base/data/`, in every namespace) runs at **03:15 UTC**. It waits for postgres, writes `pg_dump -Fc` to `db-<UTC timestamp>.dump` and a tar of the `store` and `claude-auth` PVCs to `files-<UTC timestamp>.tar.gz` (directories `store/` and `claude/`) on PVC **`backups`** (`local-path-retain`, 20Gi). Each file is written as `.part` and renamed when complete; the newest 14 of each are kept. It runs as uid 10001 (the app's, which owns the files) with a read-only root, carries `jobfinder.io/postgres-client` for the NetworkPolicy, and has `concurrencyPolicy: Forbid`; a run missed while the node was down starts within the hour.
+CronJob `backup` (`deploy/k8s/base/data/`, in every namespace) runs at **03:15 UTC**. It waits for postgres, writes `pg_dump -Fc` to `db-<UTC timestamp>.dump` and a tar of the `store` and `claude-auth` PVCs to `files-<UTC timestamp>.tar.gz` (directories `store/` and `claude/`) on PVC **`backups`** (`local-path-retain`, 20Gi). Each file is written as `.part` and renamed when complete; the newest 14 of each are kept (`BACKUP_KEEP`). It runs as uid 10001 (the app's, which owns the files) with a read-only root, carries `jobfinder.io/postgres-client` for the NetworkPolicy, and has `concurrencyPolicy: Forbid`; a run missed while the node was down starts within the hour.
+
+**Pre-deploy backups (#118)** are a separate pool on the same PVC. Each prod release takes one before it touches anything ("Releasing"): a Job `backup-pre-<sha7>` from the same CronJob with `BACKUP_PREFIX=pre-`, which writes `pre-db-<ts>.dump` and `pre-files-<ts>.tar.gz`. `BACKUP_PREFIX` is empty for the nightly run; the CronJob accepts only empty or `pre-`. A second rotation keeps the newest `BACKUP_PRE_KEEP` (5) of each `pre-` kind. The nightly rotation only matches `db-*`/`files-*`, so several releases in a day never push out the nightlies. Take one by hand (the wrapper's command):
+
+```sh
+kubectl -n jobfinder create job --from=cronjob/backup backup-pre-<sha7> --dry-run=client -o yaml \
+  | kubectl set env --local -f - BACKUP_PREFIX=pre- -o yaml | kubectl apply -f -
+kubectl -n jobfinder wait --for=condition=complete job/backup-pre-<sha7> --timeout=15m
+```
 
 **The backups are node-local** (`/var/lib/rancher/k3s/storage/<pv>_<namespace>_backups`): they survive pod, PVC and namespace deletion (Retain), not the loss of the disk. Copy them off the box ("Off-box copy") until the bucket from #36 Q3 exists.
 
@@ -618,6 +761,7 @@ kubectl -n jobfinder create job --from=cronjob/backup backup-now      # one now;
 ```sh
 deploy/k8s/backup-restore.sh jobfinder                                # newest dump
 deploy/k8s/backup-restore.sh jobfinder db-20261018-031500.dump        # or a given one
+deploy/k8s/backup-restore.sh jobfinder pre-db-20261021-142000.dump    # or a pre-deploy one
 ```
 
 It restores the dump into a scratch database (`restore_drill_<ts>`) in that namespace's postgres from a helper pod that mounts `backups` read-only, compares every table's row count with the live database, checks that the matching files tar reads back, and drops the scratch database. The live database and the app are never touched. The live database moves on after the dump, so drill right after `create job --from=cronjob/backup`; tables written in between show as MISMATCH (exit 1). Rehearsed on staging (2026-10-17, worker paused for an exact comparison): 86 MB dump, restored in 15 s, 16 tables, 0 mismatched, 19 s in all.
@@ -650,8 +794,8 @@ This replaces the namespace's data:
 
 1. Stop the app: pause worker-io's ScaledObject, marked so the final deploy resumes it (`kubectl -n $NS annotate scaledobject worker-io autoscaling.keda.sh/paused-replicas=0 jobfinder.io/paused-by=restore --overwrite`), and `kubectl -n $NS scale deploy api renderer scheduler worker-ai --replicas=0`.
 2. In `postgres-0`: `dropdb -U jobfinder --force jobfinder && createdb -U jobfinder -O jobfinder jobfinder`.
-3. Run `pg_restore -h postgres -U jobfinder -d jobfinder --no-owner --no-privileges --exit-on-error --single-transaction /backups/db-<ts>.dump` from a pod like the drill's (`backup-restore.sh` shows the spec: uid 10001, `jobfinder.io/postgres-client`, `PGPASSWORD` from `postgres-credentials`, `backups` read-only). Don't stream a dump out through `kubectl exec` stdout: large outputs break off with a websocket EOF; stdin is fine.
-4. Untar `files-<ts>.tar.gz` into the PVCs (`store/` into `store`, `claude/` into `claude-auth`) from a root helper pod with `--numeric-owner`.
+3. Run `pg_restore -h postgres -U jobfinder -d jobfinder --no-owner --no-privileges --exit-on-error --single-transaction /backups/db-<ts>.dump` (or `pre-db-<ts>.dump`) from a pod like the drill's (`backup-restore.sh` shows the spec: uid 10001, `jobfinder.io/postgres-client`, `PGPASSWORD` from `postgres-credentials`, `backups` read-only). Don't stream a dump out through `kubectl exec` stdout: large outputs break off with a websocket EOF; stdin is fine.
+4. Untar the matching `files-<ts>.tar.gz` (or `pre-files-<ts>.tar.gz`) into the PVCs (`store/` into `store`, `claude/` into `claude-auth`) from a root helper pod with `--numeric-owner`.
 5. Empty the task streams: `for q in ai io render; do kubectl -n $NS exec valkey-0 -- valkey-cli XTRIM jobfinder:$q MAXLEN 0; done`.
 6. `deploy.sh <overlay> <running tag>` (it migrates if the dump is older than the image, restores the replicas and lifts the pause).
 

@@ -21,10 +21,13 @@ class FetchError(Exception):
     """A fetch was refused or failed. The message is short and safe to record or show."""
 
 
-def new_client(*, timeout_s: float = TIMEOUT_S, follow_redirects: bool = False) -> httpx.AsyncClient:
-    """A client that sends USER_AGENT. Redirects are off by default: callers check each hop."""
+def new_client(*, timeout_s: float = TIMEOUT_S, follow_redirects: bool = False,
+               transport: httpx.AsyncBaseTransport | None = None) -> httpx.AsyncClient:
+    """A client that sends USER_AGENT. Redirects are off by default: callers check each hop. A shared
+    `transport` shares its connection pool (closing the client closes it too)."""
     return httpx.AsyncClient(
-        timeout=timeout_s, follow_redirects=follow_redirects, headers={"User-Agent": USER_AGENT}
+        timeout=timeout_s, follow_redirects=follow_redirects, headers={"User-Agent": USER_AGENT},
+        transport=transport,
     )
 
 

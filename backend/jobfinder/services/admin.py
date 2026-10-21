@@ -2,8 +2,9 @@
 
 `enable_source` is the one re-enable rule, shared by Admin › Sources and `cli set-board --enabled yes`.
 """
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
+from jobfinder.core.clock import next_on_grid, planner_interval
 from jobfinder.core.config import settings
 from jobfinder.core.db import AsyncSession
 from jobfinder.core.errors import Invalid, NotFound
@@ -273,8 +274,10 @@ async def schedule(db: AsyncSession) -> Schedule:
             last_planned_at=_iso(st.last_planned_at if st else None), next_due_at=_iso(st.next_due_at if st else None),
             reason=st.last_reason if st else "", skip=st.last_skip if st else "", active=by_user.get(u.id, []),
         ))
-    last_tick = await repo.last_task_created(db, "plan_work")
-    next_tick = last_tick + timedelta(minutes=settings.planner_interval_minutes) if last_tick else None
+    # The plan_work cron fires on the clock's grid (scheduler/cron.py); other plan_work rows are follow-ups.
+    # Unknown until a planner has ever been queued (no scheduler running yet).
+    ever = await repo.last_task_created(db, "plan_work") is not None
+    next_tick = next_on_grid(now, planner_interval(settings)) if ever else None
     return Schedule(
         backoff_until=_iso(await planner.backoff_until(db, now)), in_flight=len(await planner.in_flight_users(db)),
         max_per_tick=settings.planner_max_per_tick, next_tick=_iso(next_tick), users=users,
