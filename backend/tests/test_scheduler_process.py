@@ -11,7 +11,7 @@ import pytest
 import sqlalchemy as sa
 
 from jobfinder import scheduler as pkg
-from jobfinder.core.clock import utcnow
+from jobfinder.core.clock import next_on_grid, utcnow
 from jobfinder.core.config import get_settings
 from jobfinder.models import Task
 from jobfinder.scheduler import __main__ as entry
@@ -47,9 +47,13 @@ def test_the_cron_table(monkeypatch, adaptive, discovery, coverage):
     assert jobs["plan_work"][1] == "interval[0:20:00]"
     now = utcnow()
     for job in scheduler.get_jobs():  # the interval jobs first run a few minutes after start
-        first = {"ingest_tick": timedelta(minutes=2), "plan_work": timedelta(minutes=5)}.get(job.id)
+        first = {"ingest_tick": now + timedelta(minutes=2),
+                 "plan_work": next_on_grid(now + timedelta(minutes=5), timedelta(minutes=20))}.get(job.id)
         if first:
-            assert abs(job.next_run_time - (now + first)) < timedelta(seconds=5)
+            assert abs(job.next_run_time - first) < timedelta(seconds=5)
+    plan = scheduler.get_job("plan_work").trigger  # then every 20 minutes on the grid, from wherever it ran
+    later = next_on_grid(now, timedelta(minutes=20)) + timedelta(seconds=1)
+    assert plan.get_next_fire_time(None, later) == next_on_grid(later, timedelta(minutes=20))
     assert scheduler._job_defaults["coalesce"] is True and scheduler._job_defaults["max_instances"] == 1
 
 

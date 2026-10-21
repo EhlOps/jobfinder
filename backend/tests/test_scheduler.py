@@ -2,7 +2,9 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 import sqlalchemy as sa
+from apscheduler.triggers.interval import IntervalTrigger
 
+from jobfinder.core.clock import GRID_ANCHOR, next_on_grid
 from jobfinder.core.config import get_settings
 from jobfinder.models import AICall, Company, Job, PlannerState, Profile, Task, User
 from jobfinder.scheduler import cron
@@ -228,6 +230,20 @@ async def test_admin_schedule_endpoint(authed, maker, monkeypatch):
     assert [u["email"] for u in body["users"]] == ["sam@example.com"]
     assert {"last_run_at", "next_due_at", "budget_left", "reason", "skip", "active"} <= set(body["users"][0])
     assert body["ingest"]["adaptive"] is True and body["ingest"]["tick_minutes"] == 15
+    # the planner cron's next fire on its grid, whatever queued plan_work last
+    every = timedelta(minutes=get_settings().planner_interval_minutes)
+    assert datetime.fromisoformat(body["next_tick"]) in {next_on_grid(datetime.now(UTC), every) - d for d in (timedelta(0), every)}
+
+
+def test_next_on_grid_rounds_up_like_the_interval_trigger():
+    every = timedelta(minutes=20)
+    assert next_on_grid(datetime(2026, 10, 21, 12, 0, tzinfo=UTC), every) == datetime(2026, 10, 21, 12, 0, tzinfo=UTC)
+    assert next_on_grid(datetime(2026, 10, 21, 12, 0, 1, tzinfo=UTC), every) == datetime(2026, 10, 21, 12, 20, tzinfo=UTC)
+    assert next_on_grid(datetime(2026, 10, 21, 12, 39, tzinfo=UTC), every) == datetime(2026, 10, 21, 12, 40, tzinfo=UTC)
+    trigger = IntervalTrigger(minutes=20, start_date=GRID_ANCHOR, timezone=UTC)
+    for minute in (0, 1, 19, 20, 59):
+        at = datetime(2026, 10, 21, 12, minute, 30, tzinfo=UTC)
+        assert trigger.get_next_fire_time(None, at) == next_on_grid(at, every)
 
 
 async def test_admin_schedule_counts_boards_per_tier(authed, maker):
