@@ -7,10 +7,10 @@ import sys
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from jobfinder import db as dbmod
 from jobfinder.core import logging as core_logging
 from jobfinder.core.clock import utcnow
 from jobfinder.core.config import settings
+from jobfinder.core.context import default_context
 from jobfinder.scheduler import cron, maintenance, relay
 
 log = logging.getLogger("jobfinder.scheduler")
@@ -48,7 +48,7 @@ async def serve() -> None:
     if running:
         await asyncio.wait(running, timeout=SHUTDOWN_GRACE)
     scheduler.shutdown(wait=False)
-    await dbmod.engine.dispose()
+    await default_context().engine.dispose()
     log.info("scheduler stopped")
 
 

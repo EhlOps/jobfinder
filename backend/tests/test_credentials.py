@@ -7,7 +7,7 @@ from stub_claude import StubClaude, envelope
 
 from jobfinder.ai import credentials
 from jobfinder.ai.claude_code import ClaudeCode
-from jobfinder.config import get_settings
+from jobfinder.core.config import get_settings
 
 TOKEN = "sk-ant-oat01-" + "x" * 40
 

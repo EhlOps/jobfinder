@@ -5,7 +5,7 @@ import pytest
 import sqlalchemy as sa
 from factories import make_match, make_question, make_user, unknown
 
-from jobfinder.config import get_settings
+from jobfinder.core.config import get_settings
 from jobfinder.models import ClarifyingQuestion, JobMatch, Task, User
 from jobfinder.notify import daily
 from jobfinder.notify import email as mail

@@ -5,7 +5,7 @@ import sqlalchemy as sa
 
 from jobfinder.ai.claude_code import AIError
 from jobfinder.ai.schemas import MatchScore
-from jobfinder.config import get_settings
+from jobfinder.core.config import get_settings
 from jobfinder.ingest.base import dedupe_hash
 from jobfinder.matching import service
 from jobfinder.models import Company, Job, JobMatch, Profile, User

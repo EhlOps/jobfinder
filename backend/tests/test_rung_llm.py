@@ -9,7 +9,7 @@ from security_payloads import SQLI, XSS_TEXT
 from jobfinder.ai.claude_code import AIError
 from jobfinder.ai.schemas import InducedRecipe
 from jobfinder.ai.tasks import MAX_PAGE_CHARS, MAX_SAMPLE_CHARS, AITasks, page_excerpt
-from jobfinder.config import get_settings
+from jobfinder.core.config import get_settings
 from jobfinder.ingest import http_safety
 from jobfinder.ingest.recipes import Recipe, RecipeError
 from jobfinder.ingest.resolve import induce_link, resolve_link
