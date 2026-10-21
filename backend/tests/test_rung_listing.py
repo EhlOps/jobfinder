@@ -7,7 +7,6 @@ import sqlalchemy as sa
 from factories import make_user
 from security_payloads import PRIVATE_URLS
 
-from jobfinder.ingest import http_safety
 from jobfinder.ingest.recipes import Recipe, run_recipe
 from jobfinder.ingest.recipes.sniff import json_recipe_from_sample, pagination_for
 from jobfinder.ingest.resolve import resolve_link
@@ -15,6 +14,7 @@ from jobfinder.ingest.resolve.ladder import RecipeHit, ResolveContext
 from jobfinder.ingest.resolve.rungs import RUNGS
 from jobfinder.ingest.resolve.rungs.listing import MAX_FETCHES, ListingRung, job_pattern
 from jobfinder.ingest.service import ingest_company
+from jobfinder.integrations import http_safety
 from jobfinder.models import Company, Job, JobLink
 from tests.fakes import fake_resolve_public, handle
 

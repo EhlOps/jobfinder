@@ -7,7 +7,6 @@ import httpx
 import pytest
 from security_payloads import PRIVATE_URLS, SCRIPT_URLS, SQLI, XSS_TEXT
 
-from jobfinder.ingest import http_safety
 from jobfinder.ingest.discovery import board_from_url
 from jobfinder.ingest.sources import ATS_FETCHERS, PROBE_FETCHERS, taleo
 from jobfinder.ingest.sources.taleo import (
@@ -20,6 +19,7 @@ from jobfinder.ingest.sources.taleo import (
     parse_taleo,
 )
 from jobfinder.ingest.validate import SLUG_RE, validate_board
+from jobfinder.integrations import http_safety
 from tests.fakes import fake_resolve_public, handle
 
 FIX = Path(__file__).parent / "fixtures"

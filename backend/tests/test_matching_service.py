@@ -6,9 +6,9 @@ import sqlalchemy as sa
 from jobfinder.ai.claude_code import AIError
 from jobfinder.ai.schemas import MatchScore
 from jobfinder.config import get_settings
-from jobfinder.ingest.base import dedupe_hash
 from jobfinder.matching import service
 from jobfinder.models import Company, Job, JobMatch, Profile, User
+from jobfinder.models.posting import dedupe_hash
 from tests.fakes import FakeScoringAI
 
 STATUS = {"target_roles": ["Backend Engineer"], "target_locations": ["Boston"], "is_new_grad": True,

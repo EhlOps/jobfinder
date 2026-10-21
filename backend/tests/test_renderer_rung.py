@@ -7,7 +7,6 @@ import pytest
 
 from jobfinder import renderer
 from jobfinder.config import get_settings
-from jobfinder.ingest import http_safety
 from jobfinder.ingest.recipes import RecipeError, run_recipe, validate_recipe
 from jobfinder.ingest.recipes.rendered import item_id
 from jobfinder.ingest.recipes.sniff import explain_json_sample, pagination_for
@@ -19,6 +18,7 @@ from jobfinder.ingest.resolve.rungs.rendered import (
     listing_url,
     rendered_html_recipe,
 )
+from jobfinder.integrations import http_safety
 from jobfinder.models import Company, Task
 from tests.fakes import FakeRenderer, fake_resolve_public, handle
 

@@ -18,7 +18,6 @@ MODULES = sorted(m.name for m in pkgutil.walk_packages(jobfinder.__path__, "jobf
 # Old paths the #42 shims keep working. walk_packages cannot list them: they are aliases, not files.
 OLD_PATHS = [
     "jobfinder.ingest.sources.greenhouse",
-    "jobfinder.ingest.sources.custom",
     "jobfinder.ingest.sources.usajobs",
     "jobfinder.ingest.sources.jobspy_source",
     "jobfinder.ingest.recipes.html",

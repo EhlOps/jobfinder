@@ -13,7 +13,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jobfinder.core.config import settings
-from jobfinder.ingest.base import safe_http_url
+from jobfinder.core.urls import safe_http_url
 from jobfinder.integrations import smtp as mail
 from jobfinder.models import ClarifyingQuestion, Job, JobMatch, Profile, User
 from jobfinder.notify.tokens import make_token

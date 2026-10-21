@@ -8,7 +8,6 @@ import sqlalchemy as sa
 
 from jobfinder import db as app_db  # the module: tests swap db.SessionLocal for the test database
 from jobfinder.core.config import settings
-from jobfinder.ingest.base import JobPosting
 from jobfinder.integrations.recipes import (
     MAX_ITEMS,
     RECIPE_RUNNERS,
@@ -19,6 +18,7 @@ from jobfinder.integrations.recipes import (
 )
 from jobfinder.integrations.recipes.json_api import make_posting, parse_date
 from jobfinder.models import Company
+from jobfinder.models.posting import JobPosting
 from jobfinder.renderer import LIST, RenderError, RenderUnavailable, request_render
 
 LIST_WAIT_S = 150.0  # ingest runs boards concurrently and the renderer takes two at a time, 30 s each

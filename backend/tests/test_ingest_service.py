@@ -6,10 +6,10 @@ import pytest
 import sqlalchemy as sa
 
 from jobfinder.ingest import runner, service
-from jobfinder.ingest.base import JobPosting
 from jobfinder.ingest.sources import ATS_FETCHERS
 from jobfinder.ingest.sources.ashby import parse_ashby
 from jobfinder.models import Company, Job, Profile, User
+from jobfinder.models.posting import JobPosting
 
 FIX = Path(__file__).parent / "fixtures"
 
@@ -334,7 +334,7 @@ async def test_fetch_jobspy_survives_a_failing_query(monkeypatch):
 
 
 def test_safe_http_url():
-    from jobfinder.ingest.base import safe_http_url
+    from jobfinder.core.urls import safe_http_url
 
     assert safe_http_url(" https://boards.example/j/1 ") == "https://boards.example/j/1"
     assert safe_http_url("http://x.io/a?b=1") == "http://x.io/a?b=1"

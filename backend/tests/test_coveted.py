@@ -5,7 +5,7 @@ import pytest
 import sqlalchemy as sa
 from factories import make_match, make_user
 
-from jobfinder.ingest import coveted, http_safety
+from jobfinder.ingest import coveted
 from jobfinder.ingest.coveted import (
     Signals,
     board_status,
@@ -15,6 +15,7 @@ from jobfinder.ingest.coveted import (
     tier_for,
 )
 from jobfinder.ingest.discovery import DiscoveryResult, Source, discover_boards
+from jobfinder.integrations import http_safety
 from jobfinder.models import Company, CovetedTarget, Job, JobLink, Task
 from jobfinder.scheduling import handlers
 from tests.fakes import fake_resolve_public, handle

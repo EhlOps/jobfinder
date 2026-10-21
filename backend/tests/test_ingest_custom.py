@@ -1,4 +1,4 @@
-"""U7: big-tech custom careers sites are gated on a terms/robots review (sources/custom/TERMS.md)."""
+"""U7: big-tech custom careers sites are gated on a terms/robots review (site_terms/TERMS.md)."""
 from pathlib import Path
 
 import httpx
@@ -7,24 +7,25 @@ import sqlalchemy as sa
 from factories import make_user
 from security_payloads import PRIVATE_URLS, SCRIPT_URLS, SQLI
 
-from jobfinder.ingest import http_safety, resolve
+from jobfinder.ingest import resolve
 from jobfinder.ingest.discovery import board_from_url, boards_from_text
-from jobfinder.ingest.http_safety import FetchError, safe_fetch
 from jobfinder.ingest.resolve import resolve_link
 from jobfinder.ingest.resolve.ladder import BoardHit, ResolveContext
 from jobfinder.ingest.resolve.rungs.url_pattern import UrlPatternRung
 from jobfinder.ingest.sources import ATS_FETCHERS, PROBE_FETCHERS
-from jobfinder.ingest.sources.custom import (
+from jobfinder.ingest.validate import SLUG_RE
+from jobfinder.integrations import http_safety
+from jobfinder.integrations.http_safety import FetchError, safe_fetch
+from jobfinder.integrations.site_terms import (
     CUSTOM_SITES,
     board_for_url,
     refusal_for_url,
     site_for_url,
 )
-from jobfinder.ingest.validate import SLUG_RE
 from jobfinder.models import JobLink, Task
 from tests.fakes import fake_resolve_public, handle, serve
 
-TERMS = Path(__file__).parents[1] / "jobfinder/integrations/ats/custom/TERMS.md"
+TERMS = Path(__file__).parents[1] / "jobfinder/integrations/site_terms/TERMS.md"
 
 REFUSED_URLS = {
     "Google": [
