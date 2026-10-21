@@ -5,11 +5,11 @@ import pytest
 import sqlalchemy as sa
 from security_payloads import PRIVATE_URLS, SCRIPT_URLS, SQLI
 
-from jobfinder.ingest import http_safety
 from jobfinder.ingest.resolve import resolve_link
 from jobfinder.ingest.resolve.ladder import BoardHit, ResolveContext
 from jobfinder.ingest.resolve.rungs import RUNGS
 from jobfinder.ingest.resolve.rungs.embedded import EmbeddedRung, page_boards, pick_board
+from jobfinder.integrations import http_safety
 from jobfinder.models import Company, Job, JobLink, Task
 from tests.fakes import fake_resolve_public, handle
 

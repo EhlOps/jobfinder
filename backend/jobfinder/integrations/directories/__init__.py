@@ -14,12 +14,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from jobfinder.core.config import settings
 from jobfinder.ingest.validate import ValidationResult, add_board, validate_board
 from jobfinder.integrations.ats import SLUG_RE
-from jobfinder.integrations.ats.custom import board_for_url as custom_board_for_url
 from jobfinder.integrations.ats.eightfold import board_from_url as eightfold_board
 from jobfinder.integrations.ats.icims import slug_from_host as icims_slug_from_host
 from jobfinder.integrations.ats.oracle_hcm import board_from_ce_url
 from jobfinder.integrations.ats.taleo import taleo_board
 from jobfinder.integrations.robots import PoliteFetcher, RobotsDisallowed, make_client
+from jobfinder.integrations.site_terms import board_for_url as custom_board_for_url
 from jobfinder.models import Company
 
 log = logging.getLogger("jobfinder.discovery")

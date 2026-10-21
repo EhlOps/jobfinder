@@ -20,12 +20,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from jobfinder.core.config import settings
 from jobfinder.core.http import USER_AGENT
 from jobfinder.ingest import schedule
-from jobfinder.ingest.base import JobPosting
 from jobfinder.ingest.selection import Target, select_boards
 from jobfinder.integrations.ats.registry import ATS_FETCHERS, Fetcher
 from jobfinder.integrations.recipes import RecipeUnavailable, run_recipe
 from jobfinder.integrations.recipes.health import needs_reinduce, record_run
 from jobfinder.models import Company
+from jobfinder.models.posting import JobPosting
 from jobfinder.repositories import boards as boards_repo
 from jobfinder.repositories import postings as postings_repo
 from jobfinder.tasks import ledger

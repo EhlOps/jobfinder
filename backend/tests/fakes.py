@@ -32,7 +32,7 @@ from jobfinder.ai.schemas import (
     ProfileAudit,
     Unknown,
 )
-from jobfinder.ingest.http_safety import FetchError
+from jobfinder.integrations.http_safety import FetchError
 from jobfinder.scheduling import queue
 
 _UNSET = object()

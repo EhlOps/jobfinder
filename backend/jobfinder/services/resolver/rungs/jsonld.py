@@ -10,15 +10,14 @@ import json
 import re
 from datetime import UTC, datetime, timedelta
 
-from jobfinder.core.urls import registrable_domain
-from jobfinder.ingest.base import (
+from jobfinder.core.urls import registrable_domain, safe_http_url
+from jobfinder.models.posting import (
     JobPosting,
     clip,
     html_to_text,
     infer_seniority,
     infer_workplace,
     parse_salary_range,
-    safe_http_url,
 )
 from jobfinder.services.resolver.ladder import ResolveContext, SingleJob
 from jobfinder.services.resolver.names import name_from_domain

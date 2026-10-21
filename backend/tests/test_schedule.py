@@ -8,9 +8,9 @@ import sqlalchemy as sa
 
 from jobfinder.core.config import get_settings
 from jobfinder.ingest import runner, schedule, service
-from jobfinder.ingest.base import JobPosting
 from jobfinder.ingest.sources import ATS_FETCHERS
 from jobfinder.models import Company, Job
+from jobfinder.models.posting import JobPosting
 from tests.fakes import FakeClock
 
 LIMITS = {"base": 360, "min_minutes": 60, "max_minutes": 10080}

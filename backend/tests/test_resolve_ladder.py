@@ -3,15 +3,16 @@ import pytest
 import sqlalchemy as sa
 from factories import make_user
 
-from jobfinder.ingest import http_safety, resolve
-from jobfinder.ingest.base import JobPosting
+from jobfinder.ingest import resolve
 from jobfinder.ingest.recipes import Recipe
 from jobfinder.ingest.resolve import registrable_domain, resolve_link
 from jobfinder.ingest.resolve.ladder import BoardHit, RecipeHit, ResolveContext, SingleJob
 from jobfinder.ingest.resolve.rungs import RUNGS
 from jobfinder.ingest.service import ingest_company
 from jobfinder.ingest.sources.detect import HTML_DETECTORS, detect_board
+from jobfinder.integrations import http_safety
 from jobfinder.models import Company, Job, JobLink
+from jobfinder.models.posting import JobPosting
 from tests.fakes import fake_resolve_public, handle, serve
 
 URL = "https://careers.acme.com/jobs/4021"

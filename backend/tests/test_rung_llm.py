@@ -8,12 +8,12 @@ from security_payloads import SQLI, XSS_TEXT
 
 from jobfinder.ai.schemas import InducedRecipe
 from jobfinder.core.config import get_settings
-from jobfinder.ingest import http_safety
 from jobfinder.ingest.recipes import Recipe, RecipeError
 from jobfinder.ingest.resolve import induce_link, resolve_link
 from jobfinder.ingest.resolve.ladder import RecipeHit, ResolveContext
 from jobfinder.ingest.resolve.rungs import RUNGS
 from jobfinder.ingest.resolve.rungs.llm import LlmRung, endpoint_candidates
+from jobfinder.integrations import http_safety
 from jobfinder.integrations.claude.claude_code import AIError
 from jobfinder.integrations.claude.tasks import (
     MAX_PAGE_CHARS,

@@ -1,8 +1,6 @@
 import httpx
 import pytest
 
-from jobfinder.ingest import http_safety
-from jobfinder.ingest.base import JobPosting
 from jobfinder.ingest.recipes import (
     Recipe,
     RecipeError,
@@ -12,6 +10,8 @@ from jobfinder.ingest.recipes import (
     validate_recipe,
 )
 from jobfinder.ingest.recipes.json_api import compile_path, get_all, parse_date
+from jobfinder.integrations import http_safety
+from jobfinder.models.posting import JobPosting
 from tests.fakes import fake_resolve_public, handle, serve
 
 PAGES = {

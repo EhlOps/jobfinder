@@ -6,9 +6,7 @@ import httpx
 import pytest
 from security_payloads import SCRIPT_URLS, SQLI
 
-from jobfinder.ingest import http_safety
 from jobfinder.ingest.discovery import board_from_url, boards_from_text
-from jobfinder.ingest.http_safety import FetchError
 from jobfinder.ingest.resolve import name_from_slug
 from jobfinder.ingest.sources import ATS_FETCHERS, PROBE_FETCHERS
 from jobfinder.ingest.sources.detect import detect_board
@@ -24,6 +22,8 @@ from jobfinder.ingest.sources.icims import (
     title_from_path,
 )
 from jobfinder.ingest.validate import validate_board
+from jobfinder.integrations import http_safety
+from jobfinder.integrations.http_safety import FetchError
 from tests.fakes import fake_resolve_public, handle
 
 FIX = Path(__file__).parent / "fixtures"

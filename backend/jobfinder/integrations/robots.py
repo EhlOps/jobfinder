@@ -7,7 +7,7 @@ from urllib.robotparser import RobotFileParser
 
 import httpx
 
-from jobfinder.ingest.http_safety import TEXT_TYPES, FetchError, safe_fetch
+from jobfinder.integrations.http_safety import TEXT_TYPES, FetchError, safe_fetch
 
 log = logging.getLogger("jobfinder.discovery")
 USER_AGENT = "JobFinderDiscovery/1.0 (+personal job search tool; polite, low volume)"

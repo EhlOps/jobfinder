@@ -8,9 +8,9 @@ import sqlalchemy as sa
 
 from jobfinder.core.config import get_settings
 from jobfinder.ingest import runner, service
-from jobfinder.ingest.base import JobPosting
 from jobfinder.ingest.sources import usajobs
 from jobfinder.models import Job, Profile, User
+from jobfinder.models.posting import JobPosting
 from tests.fakes import handle, serve
 
 FIX = json.loads((Path(__file__).parent / "fixtures" / "usajobs_search.json").read_text())
