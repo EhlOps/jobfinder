@@ -1,6 +1,6 @@
 import pytest
 
-from jobfinder.ai.claude_code import AIError
+from jobfinder.integrations.claude.claude_code import AIError
 from jobfinder.worker import run_task
 from tests.fakes import FakeOnboardingAI
 
@@ -33,7 +33,7 @@ async def test_extract_flow(authed, maker):
 
 
 async def test_extract_ignores_tailored_resumes(authed, maker):
-    from jobfinder.resumes.service import match_tags
+    from jobfinder.services.resumes import match_tags
     from jobfinder.storage.documents import get_store
 
     await upload(authed, maker, "resume.txt", b"Intern at Acme")

@@ -2,8 +2,8 @@ import aiosmtplib
 import pytest
 
 from jobfinder.config import get_settings
-from jobfinder.notify import email as mail
-from jobfinder.notify import tokens
+from jobfinder.integrations import smtp as mail
+from jobfinder.services import tokens
 
 
 def test_token_round_trip_and_purpose_isolation():

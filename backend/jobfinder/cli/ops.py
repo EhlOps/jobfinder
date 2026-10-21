@@ -11,8 +11,7 @@ from jobfinder.core.clock import utcnow
 from jobfinder.ingest.runner import run_ingest
 from jobfinder.integrations.claude.claude_code import AIError
 from jobfinder.integrations.smtp import EmailError, send_email
-from jobfinder.notify import daily
-from jobfinder.services import accounts, digest, questions, task_admin
+from jobfinder.services import accounts, daily, digest, questions, task_admin
 
 ingest = typer.Typer(help="Fetch jobs from the boards.", no_args_is_help=True)
 digest_app = typer.Typer(help="The daily email.", no_args_is_help=True)

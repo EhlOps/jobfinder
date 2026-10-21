@@ -4,14 +4,14 @@ import pytest
 import sqlalchemy as sa
 from factories import make_match, make_question, make_user, unknown
 
+from jobfinder.integrations import smtp as mail
 from jobfinder.models import ClarifyingQuestion, Profile, ProfileFact, Task, User
-from jobfinder.notify import daily
-from jobfinder.notify import email as mail
-from jobfinder.notify.tokens import make_token
 from jobfinder.repositories import profiles as profiles_repo
 from jobfinder.repositories import questions as questions_repo
+from jobfinder.services import daily
 from jobfinder.services import profile as profile_service
 from jobfinder.services import questions as questions_service
+from jobfinder.services.tokens import make_token
 from jobfinder.worker import run_task
 from tests.fakes import FakeQuestionsAI
 from tests.rollback import Boom, count, raise_after

@@ -6,13 +6,13 @@ import httpx
 import pytest
 import sqlalchemy as sa
 
-from jobfinder.ai.claude_code import AIError
-from jobfinder.ai.tasks import AITasks
 from jobfinder.config import get_settings
 from jobfinder.ingest import http_safety
 from jobfinder.ingest.recipes import health
 from jobfinder.ingest.resolve.rungs.llm import reinduce_company
 from jobfinder.ingest.service import ingest_company
+from jobfinder.integrations.claude.claude_code import AIError
+from jobfinder.integrations.claude.tasks import AITasks
 from jobfinder.models import AICall, Company, Job, Task
 from jobfinder.scheduling import handlers
 from tests.fakes import FakeClaude, fake_resolve_public, handle

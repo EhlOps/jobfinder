@@ -1,12 +1,12 @@
 """Cover letters: one current draft per match, drafted by the worker, edited and downloaded by the user.
 
-Moved from letters/service.py (#45), which stays importable as this same module until #53.
+Moved from letters/service.py (#45).
 """
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jobfinder.core.errors import Conflict, NotFound
 from jobfinder.integrations.claude.tasks import TONES, AITasks
-from jobfinder.letters.docx_export import build_docx, filename
+from jobfinder.integrations.docx_export import build_docx, filename
 from jobfinder.matching.service import job_payload
 from jobfinder.models import CoverLetter, Job, Profile
 from jobfinder.repositories import letters as repo
