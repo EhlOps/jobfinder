@@ -1,8 +1,7 @@
 """The cron table: which kinds run on a clock, when, and behind which setting.
 
 Each run adds one deduped ledger row and commits, so a scheduled run shows up and retries like any
-other task and never piles up behind a slow previous one. The table matches the legacy worker's
-(worker.make_scheduler), which keeps its own copy until #53 removes it.
+other task and never piles up behind a slow previous one. This is the only copy of the table (#53).
 """
 import logging
 from collections.abc import Callable

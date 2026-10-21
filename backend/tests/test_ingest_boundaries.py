@@ -12,8 +12,8 @@ import sqlalchemy as sa
 from jobfinder.ingest import validate
 from jobfinder.ingest.validate import ValidationResult, add_board
 from jobfinder.models import Company, CovetedTarget, Job, JobLink, Task
-from jobfinder.scheduling import handlers
 from jobfinder.services import coverage, ingestion, resolver
+from jobfinder.tasks import io
 from tests.rollback import Boom, count, raise_after
 from tests.test_ingest_service import fake_fetcher, posting
 from tests.test_job_links import GOOD, _link, board_json
@@ -63,7 +63,7 @@ async def test_failed_resolve_keeps_only_the_link_outcome(maker, monkeypatch, we
         link = await _link(db)
         task = Task(kind="resolve_job_link", payload={"link_id": link.id})
         monkeypatch.setattr(resolver, "httpx", _ClientFor(board_json(web, GOOD)))
-        out = await handlers.resolve_job_link(db, None, task)
+        out = await io.resolve_job_link(db, None, task, io.ResolveLinkArgs(link_id=link.id))
     assert out == {"error": "Boom"}
     assert await count(maker, Company, slug="acme") == 0
     async with maker() as db:
@@ -91,7 +91,7 @@ async def test_audit_keeps_targets_up_to_the_last_checkpoint(maker, monkeypatch)
         db.add_all([CovetedTarget(name="A", domain="a.com"), CovetedTarget(name="B", domain="b.com")])
         await db.commit()
         with pytest.raises(asyncio.CancelledError):
-            await handlers.audit_coverage(db, None, Task(kind="audit_coverage", payload={}))
+            await io.audit_coverage(db, None, Task(kind="audit_coverage"), io.AuditCoverageArgs())
         await db.rollback()  # what the worker does with a task that blew up
     async with maker() as db:
         errors = dict((await db.execute(sa.select(CovetedTarget.domain, CovetedTarget.last_error))).all())
@@ -107,7 +107,7 @@ async def test_audit_marks_a_failing_target_without_its_partial_writes(maker, mo
     async with maker() as db:
         db.add(CovetedTarget(name="X", domain="x.com"))
         await db.commit()
-        out = await handlers.audit_coverage(db, None, Task(kind="audit_coverage", payload={}))
+        out = await io.audit_coverage(db, None, Task(kind="audit_coverage"), io.AuditCoverageArgs())
     async with maker() as db:
         t = await db.scalar(sa.select(CovetedTarget))
     assert out["results"][0]["status"] == "error"
@@ -167,7 +167,7 @@ async def test_score_coveted_commits_at_the_task(maker, monkeypatch):
         db.add(Company(name="A", ats="greenhouse", slug="a", coveted_score=42.0))
         await db.commit()
         with pytest.raises(Boom):
-            await handlers.score_coveted(db, None, Task(kind="score_coveted", payload={"no_audit": True}))
+            await io.score_coveted(db, None, Task(kind="score_coveted"), io.ScoreCovetedArgs(no_audit=True))
         await db.rollback()
     async with maker() as db:
         c = await db.scalar(sa.select(Company))

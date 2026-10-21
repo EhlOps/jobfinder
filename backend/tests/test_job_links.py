@@ -11,7 +11,7 @@ from jobfinder.ingest.resolve import BadLink, clean_url, name_from_slug, resolve
 from jobfinder.ingest.resolve.rungs.url_pattern import UrlPatternRung
 from jobfinder.ingest.selection import select_boards
 from jobfinder.models import Company, Job, JobLink, Task
-from jobfinder.scheduling import handlers
+from jobfinder.tasks import io
 from tests.fakes import serve
 
 GH = "https://boards.greenhouse.io/acme/jobs/123"
@@ -228,5 +228,5 @@ async def test_handler_queues_matching_when_new_jobs(maker, monkeypatch):
     monkeypatch.setattr(resolve, "resolve_link", fake)
     async with maker() as db:
         task = Task(kind="resolve_job_link", payload={"link_id": 1})
-        assert (await handlers.resolve_job_link(db, None, task))["new"] == 3
+        assert (await io.resolve_job_link(db, None, task, io.ResolveLinkArgs(link_id=1)))["new"] == 3
         assert len(await tasks(db, "plan_work")) == 1

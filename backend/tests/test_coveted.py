@@ -16,7 +16,7 @@ from jobfinder.ingest.coveted import (
 )
 from jobfinder.ingest.discovery import DiscoveryResult, Source, discover_boards
 from jobfinder.models import Company, CovetedTarget, Job, JobLink, Task
-from jobfinder.scheduling import handlers
+from jobfinder.tasks import io
 from tests.fakes import fake_resolve_public, handle
 
 GOOD = {"jobs": [
@@ -256,15 +256,14 @@ async def test_handlers_chain_score_into_audit(maker):
         task = Task(kind="score_coveted", payload={})
         db.add(task)
         await db.commit()
-        out = await handlers.score_coveted(db, None, task)
+        out = await io.score_coveted(db, None, task, io.ScoreCovetedArgs())
         kinds = (await db.scalars(sa.select(Task.kind).where(Task.status == "queued"))).all()
         quiet = Task(kind="score_coveted", payload={"no_audit": True})
         db.add(quiet)
         await db.commit()
-        await handlers.score_coveted(db, None, quiet)
+        await io.score_coveted(db, None, quiet, io.ScoreCovetedArgs(no_audit=True))
         n = await db.scalar(sa.select(sa.func.count()).select_from(Task).where(Task.kind == "audit_coverage"))
     assert out["scored"] == 0 and "audit_coverage" in kinds and n == 1
-    assert {"score_coveted", "audit_coverage"} <= set(handlers.HANDLERS)
 
 
 async def test_target_resolves_from_a_link_on_its_careers_page(maker, web):

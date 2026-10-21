@@ -1,41 +1,16 @@
-"""The render worker's share of the task queue: render_* tasks go to the renderer only, and callers wait a
-bounded time for them."""
+"""The render worker's share of the ledger: render_* tasks go to the render stream only, and callers wait
+a bounded time for them."""
 import pytest
 
 from jobfinder import renderer
 from jobfinder.models import Task
 from jobfinder.renderer import RenderError, request_render
-from jobfinder.scheduling import queue
+from jobfinder.tasks.kinds import QUEUES
 from tests.fakes import FakeRenderer
 
 
-async def test_main_worker_never_claims_render_tasks(maker):
-    async with maker() as db:
-        await queue.enqueue(db, "render_capture", {"url": "https://a.example/"})
-        await queue.enqueue(db, "render_list", {"recipe": {}})
-        plain = await queue.enqueue(db, "ingest_jobs")
-        got = await queue.claim(db, exclude_prefix=queue.RENDER_PREFIX)
-        assert got.id == plain.id
-        assert await queue.claim(db, exclude_prefix=queue.RENDER_PREFIX) is None
-
-
-async def test_renderer_claims_only_render_tasks(maker):
-    async with maker() as db:
-        await queue.enqueue(db, "ingest_jobs")
-        await queue.enqueue(db, "renderXcapture")  # '_' must not act as a LIKE wildcard
-        r = await queue.enqueue(db, "render_capture", {"url": "https://a.example/"})
-        got = await queue.claim(db, kind_prefix=queue.RENDER_PREFIX)
-        assert (got.id, got.kind) == (r.id, "render_capture")
-        assert await queue.claim(db, kind_prefix=queue.RENDER_PREFIX) is None
-        assert (await queue.claim(db)).kind in ("ingest_jobs", "renderXcapture")  # unfiltered: unchanged
-
-
-async def test_worker_loop_passes_the_exclude_filter():
-    import inspect
-
-    from jobfinder import worker
-
-    assert "exclude_prefix=queue.RENDER_PREFIX" in inspect.getsource(worker.main)
+def test_only_the_render_stream_delivers_render_tasks():
+    assert {k for k, q in QUEUES.items() if q == "render"} == set(renderer.KINDS)
 
 
 @pytest.mark.real_commit
@@ -68,7 +43,7 @@ async def test_request_render_times_out_and_withdraws_the_task(maker, monkeypatc
 
 async def test_request_render_rejects_unknown_kinds(maker):
     with pytest.raises(ValueError):
-        await request_render("ingest_jobs", {}, timeout_s=1, session_factory=maker)
+        await request_render("ingest_tick", {}, timeout_s=1, session_factory=maker)
 
 
 @pytest.mark.real_commit

@@ -4,9 +4,8 @@ import docx
 
 from jobfinder.letters.docx_export import build_docx, filename
 from jobfinder.models import Job, JobMatch
-from jobfinder.scheduling import queue
-from jobfinder.worker import run_task
-from tests.fakes import FakeLetterAI
+from jobfinder.tasks import ledger
+from tests.fakes import FakeLetterAI, run_task
 
 LETTER = "Dear Acme hiring team,\n\nI built things.\n\nSincerely,\nJane Doe"
 N = 0
@@ -163,9 +162,10 @@ async def test_stale_flag_when_profile_changes_after_draft(authed, maker):
     assert (await authed.get(f"/api/matches/{mid}/cover-letter")).json()["letter"]["stale"] is True
 
 
-async def test_queue_dedupe_considers_payload(maker):
+async def test_ledger_dedupe_considers_payload(maker):
     async with maker() as db:
-        a = await queue.enqueue(db, "k", {"m": 1}, user_id=None, dedupe=True)
-        assert (await queue.enqueue(db, "k", {"m": 1}, user_id=None, dedupe=True)).id == a.id
-        assert (await queue.enqueue(db, "k", {"m": 2}, user_id=None, dedupe=True)).id != a.id
-        assert (await queue.enqueue(db, "k", None, user_id=None, dedupe=True)).id not in (a.id,)
+        a = await ledger.add(db, "cover_letter", {"m": 1}, dedupe=True)
+        assert (await ledger.add(db, "cover_letter", {"m": 1}, dedupe=True)).id == a.id
+        assert (await ledger.add(db, "cover_letter", {"m": 2}, dedupe=True)).id != a.id
+        assert (await ledger.add(db, "cover_letter", None, dedupe=True)).id != a.id
+        await db.commit()

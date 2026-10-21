@@ -1,6 +1,6 @@
-"""jobfinder.scheduler (#48): the cron table matches the legacy worker's and writes deduped ledger rows,
-the relay re-sends what the after-commit publish missed (and survives valkey being down), maintenance
-reaps, and the process only starts under TASKS_BACKEND=ledger."""
+"""jobfinder.scheduler (#48): the cron table follows its settings and writes deduped ledger rows, the
+relay re-sends what the after-commit publish missed (and survives valkey being down), and maintenance
+reaps."""
 import asyncio
 import logging
 import os
@@ -11,7 +11,6 @@ import pytest
 import sqlalchemy as sa
 
 from jobfinder import scheduler as pkg
-from jobfinder import worker
 from jobfinder.core.clock import utcnow
 from jobfinder.core.config import get_settings
 from jobfinder.models import Task
@@ -33,32 +32,36 @@ def _jobs(scheduler) -> dict:
 
 @pytest.mark.parametrize("adaptive", [True, False])
 @pytest.mark.parametrize("discovery,coverage", [(False, False), (True, False), (True, True)])
-def test_the_cron_table_matches_the_legacy_worker(monkeypatch, adaptive, discovery, coverage):
+def test_the_cron_table(monkeypatch, adaptive, discovery, coverage):
     s = get_settings()
     for name, value in [("adaptive_schedule_enabled", adaptive), ("discovery_enabled", discovery),
                         ("coverage_enabled", coverage), ("ingest_interval_hours", 3), ("ingest_tick_minutes", 15),
                         ("planner_interval_minutes", 20)]:
         monkeypatch.setattr(s, name, value)
-    new, legacy = cron.make_scheduler(), worker.make_scheduler()
-    assert _jobs(new) == _jobs(legacy)
-    assert ("discover_boards" in _jobs(new)) == discovery and ("score_coveted" in _jobs(new)) == coverage
-    for a, b in zip(sorted(new.get_jobs(), key=lambda j: j.id), sorted(legacy.get_jobs(), key=lambda j: j.id)):
-        first_a, first_b = getattr(a, "next_run_time", None), getattr(b, "next_run_time", None)
-        assert (first_a is None) == (first_b is None)  # the same first-run offsets for the interval jobs
-        if first_a:
-            assert abs(first_a - first_b) < timedelta(seconds=5)
-    assert new._job_defaults["coalesce"] is True and new._job_defaults["max_instances"] == 1
+    scheduler = cron.make_scheduler()
+    jobs = _jobs(scheduler)
+    assert set(jobs) == {"ingest_tick", "plan_work", "daily_emails"} | ({"discover_boards"} if discovery else set()) \
+        | ({"score_coveted"} if coverage else set())
+    assert all(args == (kind,) for kind, (args, _) in jobs.items())
+    assert jobs["ingest_tick"][1] == ("interval[0:15:00]" if adaptive else "interval[3:00:00]")
+    assert jobs["plan_work"][1] == "interval[0:20:00]"
+    now = utcnow()
+    for job in scheduler.get_jobs():  # the interval jobs first run a few minutes after start
+        first = {"ingest_tick": timedelta(minutes=2), "plan_work": timedelta(minutes=5)}.get(job.id)
+        if first:
+            assert abs(job.next_run_time - (now + first)) < timedelta(seconds=5)
+    assert scheduler._job_defaults["coalesce"] is True and scheduler._job_defaults["max_instances"] == 1
 
 
 @pytest.mark.real_commit
 async def test_a_cron_run_adds_one_deduped_row_and_commits(maker, published):
-    await cron.run("ingest_jobs")
-    await cron.run("ingest_jobs")  # the previous run is still queued: not duplicated
+    await cron.run("ingest_tick")
+    await cron.run("ingest_tick")  # the previous run is still queued: not duplicated
     await cron.run("daily_emails")
     async with maker() as db:  # a fresh connection: only committed rows are visible
         rows = (await db.execute(sa.select(Task.kind, Task.dedupe_key))).all()
-    assert sorted(k for k, _ in rows) == ["daily_emails", "ingest_jobs"] and all(key for _, key in rows)
-    assert sorted(k for _, k, _ in await published.settle()) == ["daily_emails", "ingest_jobs"]
+    assert sorted(k for k, _ in rows) == ["daily_emails", "ingest_tick"] and all(key for _, key in rows)
+    assert sorted(k for _, k, _ in await published.settle()) == ["daily_emails", "ingest_tick"]
 
 
 async def test_a_failing_cron_run_is_logged_not_raised(monkeypatch, caplog):
@@ -75,7 +78,7 @@ async def _relay_rows(maker, published):
     now = utcnow()
     async with maker() as db:
         due = await ledger.add(db, "plan_work")
-        later = await ledger.add(db, "ingest_jobs", run_after=now + timedelta(hours=1))
+        later = await ledger.add(db, "ingest_tick", run_after=now + timedelta(hours=1))
         sent = await ledger.add(db, "score_coveted")
         await ledger.mark_sent(db, [sent.id], now)
         await db.commit()
@@ -126,8 +129,8 @@ async def test_one_queue_down_does_not_hold_up_the_others(maker, published, monk
     async with maker() as db:
         ai = await ledger.add(db, "cover_letter", {"match_id": 1})
         io = await ledger.add(db, "plan_work")
-        legacy = await ledger.add(db, "match_user")
-        legacy.queue = "io"  # what the legacy enqueue leaves: the column's default
+        moved = await ledger.add(db, "match_user")
+        moved.queue = "io"  # a row queued before its kind moved keeps the old column
         await db.commit()
     (await published.settle()).clear()
 
@@ -141,7 +144,7 @@ async def test_one_queue_down_does_not_hold_up_the_others(maker, published, monk
     assert published == [("io", "plan_work", io.id)]  # match_user goes to its kind's stream, not 'io'
     assert sum("relay: publish failed" in r.message for r in caplog.records) == 1
     async with maker() as db:
-        assert (await db.get(Task, ai.id)).sent_at is None and (await db.get(Task, legacy.id)).sent_at is None
+        assert (await db.get(Task, ai.id)).sent_at is None and (await db.get(Task, moved.id)).sent_at is None
 
 
 async def test_a_failing_relay_tick_is_logged_not_raised(monkeypatch, caplog, alive_file):
@@ -188,10 +191,14 @@ async def test_a_failing_maintenance_tick_is_logged_not_raised(monkeypatch, capl
     assert "maintenance tick failed" in caplog.text
 
 
-def test_the_process_refuses_to_start_under_legacy(monkeypatch):
-    monkeypatch.setattr(get_settings(), "tasks_backend", "legacy")
-    monkeypatch.setattr(entry, "serve", lambda: pytest.fail("must not start"))
-    assert entry.main() == 2
+def test_the_process_starts_and_returns_on_stop(monkeypatch):
+    ran = []
+
+    async def serve():
+        ran.append(True)
+
+    monkeypatch.setattr(entry, "serve", serve)
+    assert entry.main() == 0 and ran == [True]
 
 
 @pytest.mark.parametrize("enabled", [True, False])

@@ -14,7 +14,6 @@ from jobfinder.matching.service import BUDGET_WINDOW, UNLIMITED
 from jobfinder.models import Company, CovetedTarget, User
 from jobfinder.repositories import admin as repo
 from jobfinder.repositories import companies, coverage
-from jobfinder.scheduling import planner
 from jobfinder.schemas.ai_admin import (
     ActiveTask,
     AiStatus,
@@ -26,6 +25,7 @@ from jobfinder.schemas.ai_admin import (
     TierCount,
 )
 from jobfinder.schemas.coverage import Coverage, CoverageRow, PinIn, PinOut, TargetRow, UnpinIn
+from jobfinder.services import planner
 from jobfinder.tasks import ledger
 
 BAD_DOMAIN = "Enter the employer's bare domain, like acme.com (no https://, path or port)."

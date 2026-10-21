@@ -41,7 +41,7 @@ log = logging.getLogger("jobfinder.tasks")
 # and the renderer); payload is the validated model, or None for kinds without one.
 LedgerHandler = Callable[[AsyncSession, Any, Task, Any], Awaitable[dict]]
 REGISTRY: dict[str, LedgerHandler] = {}
-PAYLOADS: dict[str, type[BaseModel] | None] = {}  # kind -> its payload model (scheduling.handlers reuses it)
+PAYLOADS: dict[str, type[BaseModel] | None] = {}  # kind -> its payload model
 
 
 def ledger_task(broker: AsyncBroker, kind: str, *, payload: type[BaseModel] | None = None, ai: bool = True):

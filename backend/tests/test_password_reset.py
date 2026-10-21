@@ -172,7 +172,7 @@ async def test_pending_user_cannot_hold_a_session(client, make_account, maker):
 
 async def test_pending_users_get_no_daily_email_or_matching(client, make_account, maker):
     from jobfinder.notify import daily
-    from jobfinder.scheduling import planner
+    from jobfinder.services import planner
     from tests.factories import make_user
 
     await make_account("pend@x.com", pending=True)

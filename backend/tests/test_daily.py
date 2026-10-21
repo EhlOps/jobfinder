@@ -12,8 +12,7 @@ from jobfinder.notify import email as mail
 from jobfinder.notify.email import EmailError
 from jobfinder.notify.tokens import read_token
 from jobfinder.tasks import ledger
-from jobfinder.worker import run_task
-from tests.fakes import FakeQuestionsAI
+from tests.fakes import FakeQuestionsAI, run_task
 
 
 @pytest.fixture

@@ -5,8 +5,7 @@ import sqlalchemy as sa
 from jobfinder.ai import credentials
 from jobfinder.ai.claude_code import AIError
 from jobfinder.models import AICall, User
-from jobfinder.worker import run_task
-from tests.fakes import FakePingAI
+from tests.fakes import FakePingAI, run_task
 
 TOKEN = "sk-ant-oat01-" + "z" * 40
 

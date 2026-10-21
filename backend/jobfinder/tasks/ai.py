@@ -3,8 +3,7 @@ module (`python -m jobfinder.tasks ai`); it is the only worker image with the Cl
 
 Each handler is `(db, ai, task, payload) -> dict`, registered with @ledger_task: the runtime commits its
 result (and any follow-up `ledger.add`, which is published once that commit lands). The commits a
-handler makes itself are its own boundaries, kept from the poll-loop worker. scheduling.handlers adapts
-these same functions for that worker while TASKS_BACKEND=legacy.
+handler makes itself are its own boundaries.
 """
 from datetime import UTC, datetime, timedelta
 

@@ -97,18 +97,6 @@ async def test_link_fetch_success_refresh_and_tags(authed, maker, monkeypatch):
     assert (await authed.get("/api/links")).json() == []
 
 
-async def test_the_legacy_worker_fetches_links(authed, maker, monkeypatch):
-    from jobfinder.worker import run_task
-
-    async def ok(url):
-        return "my portfolio"
-
-    monkeypatch.setattr(web_page, "fetch_page_text", ok)
-    r = await authed.post("/api/links", json={"kind": "portfolio", "url": "https://me.dev"})
-    await run_task(r.json()["task_id"], None, maker)
-    assert (await authed.get("/api/links")).json()[0]["fetched"] is True
-
-
 async def test_a_link_deleted_before_its_fetch_is_skipped(authed, maker):
     r = (await authed.post("/api/links", json={"kind": "portfolio", "url": "https://me.dev"})).json()
     assert (await authed.delete(f"/api/links/{r['link']['id']}")).status_code == 204

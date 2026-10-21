@@ -3,11 +3,12 @@ from datetime import UTC, datetime, timedelta
 import pytest
 import sqlalchemy as sa
 
-from jobfinder import worker
 from jobfinder.config import get_settings
 from jobfinder.models import AICall, Company, Job, PlannerState, Profile, Task, User
-from jobfinder.scheduling import planner, queue
-from jobfinder.scheduling.handlers import HANDLERS
+from jobfinder.scheduler import cron
+from jobfinder.services import planner
+from jobfinder.tasks import ledger
+from jobfinder.tasks.runtime import REGISTRY
 from tests.factories import make_match, make_user
 
 
@@ -16,7 +17,7 @@ def test_scheduler_has_ingest_and_daily_email_jobs(monkeypatch):
     monkeypatch.setattr(get_settings(), "ingest_interval_hours", 3)
     monkeypatch.setattr(get_settings(), "discovery_enabled", False)
     monkeypatch.setattr(get_settings(), "coverage_enabled", False)
-    sched = worker.make_scheduler()
+    sched = cron.make_scheduler()
     jobs = {j.id: j for j in sched.get_jobs()}
     assert set(jobs) == {"ingest_tick", "daily_emails", "plan_work"}
     assert jobs["ingest_tick"].args == ("ingest_tick",) and jobs["daily_emails"].args == ("daily_emails",)
@@ -27,7 +28,7 @@ def test_scheduler_has_ingest_and_daily_email_jobs(monkeypatch):
 def test_adaptive_schedule_ingests_on_a_short_tick(monkeypatch):
     monkeypatch.setattr(get_settings(), "adaptive_schedule_enabled", True)
     monkeypatch.setattr(get_settings(), "ingest_tick_minutes", 15)
-    jobs = {j.id: j for j in worker.make_scheduler().get_jobs()}
+    jobs = {j.id: j for j in cron.make_scheduler().get_jobs()}
     assert "interval[0:15:00]" in str(jobs["ingest_tick"].trigger)
     assert jobs["ingest_tick"].args == ("ingest_tick",)
 
@@ -35,7 +36,7 @@ def test_adaptive_schedule_ingests_on_a_short_tick(monkeypatch):
 def test_scheduler_adds_weekly_discovery_when_enabled(monkeypatch):
     monkeypatch.setattr(get_settings(), "discovery_enabled", True)
     monkeypatch.setattr(get_settings(), "coverage_enabled", False)
-    jobs = {j.id: j for j in worker.make_scheduler().get_jobs()}
+    jobs = {j.id: j for j in cron.make_scheduler().get_jobs()}
     assert set(jobs) == {"ingest_tick", "daily_emails", "plan_work", "discover_boards"}
     assert jobs["discover_boards"].args == ("discover_boards",)
     assert "day_of_week='sun'" in str(jobs["discover_boards"].trigger)
@@ -43,22 +44,16 @@ def test_scheduler_adds_weekly_discovery_when_enabled(monkeypatch):
 
 def test_scheduler_adds_weekly_coveted_score_when_enabled(monkeypatch):
     monkeypatch.setattr(get_settings(), "coverage_enabled", True)
-    jobs = {j.id: j for j in worker.make_scheduler().get_jobs()}
+    jobs = {j.id: j for j in cron.make_scheduler().get_jobs()}
     assert jobs["score_coveted"].args == ("score_coveted",)
     assert "day_of_week='sun'" in str(jobs["score_coveted"].trigger)
 
 
-async def test_scheduled_work_goes_through_the_queue_without_piling_up(maker):
-    await worker.enqueue_scheduled("ingest_jobs")
-    await worker.enqueue_scheduled("ingest_jobs")            # previous run still queued: not duplicated
-    await worker.enqueue_scheduled("daily_emails")
-    async with maker() as db:
-        kinds = sorted((await db.scalars(sa.select(Task.kind))).all())
-    assert kinds == ["daily_emails", "ingest_jobs"]
-
-
 def test_every_scheduled_kind_has_a_handler():
-    assert {"ingest_jobs", "daily_emails", "collect_questions", "match_user"} <= set(HANDLERS)
+    import jobfinder.tasks.ai
+    import jobfinder.tasks.io  # noqa: F401  (registers their handlers)
+
+    assert {c.kind for c in cron.TABLE} | {"collect_questions", "match_user"} <= set(REGISTRY)
 
 
 # ---- background planner ----------------------------------------------------------------------------
@@ -91,8 +86,7 @@ async def _tasks(db):
 
 
 def test_scheduler_has_planner_job():
-    assert "plan_work" in {j.id for j in worker.make_scheduler().get_jobs()}
-    assert "plan_work" in HANDLERS
+    assert "plan_work" in {j.id for j in cron.make_scheduler().get_jobs()}
 
 
 async def test_profile_change_first_then_longest_waiting(maker, monkeypatch):
@@ -124,8 +118,9 @@ async def test_cap_and_stagger(maker):
 async def test_work_already_in_flight_uses_up_slots(maker):
     async with maker() as db:
         users = [await _setup(db, f"u{i}@x.com", last_run_ago=timedelta(hours=30)) for i in range(4)]
-        await queue.enqueue(db, "match_user", user_id=users[0].id)
-        await queue.enqueue(db, "audit_profile", user_id=users[1].id)
+        await ledger.add(db, "match_user", user_id=users[0].id)
+        await ledger.add(db, "audit_profile", user_id=users[1].id)
+        await db.commit()
         await planner.plan(db, NOW)
         planned = {t.user_id for t in await _tasks(db)}
     assert planned == {users[0].id, users[1].id, users[2].id}  # one free slot, goes to the next user
@@ -165,7 +160,8 @@ async def test_recently_planned_users_wait_for_the_gap(maker):
         u = await _setup(db, "a@x.com", last_run_ago=timedelta(hours=30))
         await planner.plan(db, NOW)
         for t in await _tasks(db):
-            await queue.complete(db, t, {})
+            await ledger.finish(db, t, {})
+        await db.commit()
         await planner.plan(db, NOW + timedelta(minutes=15))  # still stale, but planned a moment ago
         assert len(await _tasks(db)) == 1
         await planner.plan(db, NOW + timedelta(hours=4))
@@ -205,36 +201,6 @@ async def test_pending_and_unfinished_users_are_never_planned(maker):
         await db.commit()
         result = await planner.plan(db, NOW)
     assert result["considered"] == 1
-
-
-async def test_ingest_queues_one_planner_run_instead_of_one_per_user(maker, monkeypatch):
-    from jobfinder.ingest import runner
-
-    async def fake_ingest(_):
-        return {"new": 2}
-
-    monkeypatch.setattr(runner, "run_ingest", fake_ingest)
-    async with maker() as db:
-        for i in range(3):
-            await make_user(db, f"u{i}@x.com")
-        task = await queue.enqueue(db, "ingest_jobs")
-        await HANDLERS["ingest_jobs"](db, None, task)
-        kinds = sorted(t.kind for t in await _tasks(db))
-    assert kinds == ["ingest_jobs", "plan_work"]
-
-
-async def test_adaptive_tick_that_changed_nothing_does_not_queue_the_planner(maker, monkeypatch):
-    from jobfinder.ingest import runner
-
-    async def fake_ingest(_):
-        return {"new": 0, "deactivated": 0}
-
-    monkeypatch.setattr(runner, "run_ingest", fake_ingest)
-    monkeypatch.setattr(get_settings(), "adaptive_schedule_enabled", True)
-    async with maker() as db:
-        task = await queue.enqueue(db, "ingest_jobs")
-        await HANDLERS["ingest_jobs"](db, None, task)
-        assert [t.kind for t in await _tasks(db)] == ["ingest_jobs"]
 
 
 async def test_last_seen_is_written_at_most_every_ten_minutes(authed, maker):

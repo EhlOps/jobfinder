@@ -1,4 +1,4 @@
-# The scheduler (#48; compose: scheduler, profile "ledger"): cron, the relay and maintenance.
+# The scheduler (#48): cron, the relay and maintenance.
 #   cron:        writes the scheduled ledger rows (ingest, daily emails, ...), deduped like user work;
 #   relay:       every RELAY_SECONDS, publishes due rows that are still queued and were never sent (or
 #                not for a while) to their valkey stream, so a publish lost after the api's commit is
@@ -7,8 +7,6 @@
 #   maintenance: prunes old tasks, rate events and sessions.
 # Exactly one: two would run cron twice, so the strategy is Recreate (the old pod stops before the new
 # one starts). Nothing is lost while it is down: rows stay queued in Postgres until the next relay tick.
-# It refuses to start unless TASKS_BACKEND=ledger, so the base keeps it at 0 replicas and an overlay
-# that flips to the ledger scales it to 1 (overlays/staging; docs/k3s.md, "Task platform").
 # The api image: it needs no claude CLI and no volumes, only Postgres and valkey.
 apiVersion: apps/v1
 kind: Deployment
@@ -17,7 +15,7 @@ metadata:
   labels:
     jobfinder.io/rollout: app
 spec:
-  replicas: 0
+  replicas: 1
   strategy:
     type: Recreate
   selector:
