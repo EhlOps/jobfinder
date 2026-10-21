@@ -3,6 +3,8 @@
 `tokens` splits text into lowercase word tokens that keep tech names whole ("c++", "c#", "node.js").
 `refuses_sponsorship` spots a posting that rules out visa sponsorship (matching filters on it; the
 USAJOBS source adds its citizenship note unless the text already says so).
+`EARLY_CAREER_WORDS` is the one list of early-career title phrases; `early_career_pattern` wraps it in
+word boundaries for Python (the prefilter) or Postgres (the feed filter).
 """
 import re
 
@@ -36,3 +38,17 @@ _NO_SPONSOR = re.compile(
 
 def refuses_sponsorship(description: str) -> bool:
     return bool(_NO_SPONSOR.search(description or ""))
+
+
+# Written in the syntax Python and Postgres regexes share: (?:...) groups, [- ], no \b or \y inside.
+EARLY_CAREER_WORDS = (
+    r"(?:new grad(?:uate)?|recent graduate|graduate (?:engineer|developer|program(?:me)?|scheme)s?"
+    r"|university (?:grad(?:uate)?|hire|program(?:me)?|recruit(?:ing)?)s?|campus (?:hire|recruit(?:ing)?)s?"
+    r"|early career|entry[- ]level)"
+)
+
+
+def early_career_pattern(dialect: str) -> str:
+    """The words between word boundaries: "python" (\\b) or "postgres" (\\y; \\b is a backspace there)."""
+    edge = {"python": r"\b", "postgres": r"\y"}[dialect]
+    return edge + EARLY_CAREER_WORDS + edge

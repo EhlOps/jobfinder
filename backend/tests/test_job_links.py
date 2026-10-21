@@ -60,7 +60,7 @@ def test_name_from_slug():
 async def test_unknown_link_goes_through_the_ladder(authed, maker, monkeypatch, web):
     r = await authed.post("/api/job-links", json={"url": "https://careers.example.com/jobs/42"})
     assert r.status_code == 202, r.text
-    assert r.json()["status"] == "resolving" and r.json()["company"] is None
+    assert r.json()["status"] == "resolving" and r.json()["company"] is None and r.json()["resolved_at"] is None
     monkeypatch.setattr(resolver, "RUNGS", [UrlPatternRung()])  # only rung 1: nothing can read this site
     async with maker() as db:
         [task] = await tasks(db, "resolve_job_link")
@@ -88,6 +88,7 @@ async def test_known_board_resolves_immediately(authed, maker):
     body = r.json()
     assert body["status"] == "resolved" and body["company"] == "Acme" and body["job_count"] == 1
     assert body["pasted_job_id"] is not None and body["rung"] == "url_pattern"
+    assert body["resolved_at"] == body["created_at"]  # the database's now(), the same moment
     detail = (await authed.get(f"/api/job-links/{body['id']}")).json()
     assert [j["title"] for j in detail["jobs"]] == ["Robotics Engineer"]
     async with maker() as db:

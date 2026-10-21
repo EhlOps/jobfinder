@@ -1,7 +1,7 @@
-import re
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
+import sqlalchemy as sa
 
 from jobfinder.repositories.matches import EARLY_CAREER_SQL
 from jobfinder.services.matching import prefilter as pf
@@ -368,7 +368,26 @@ def test_bare_university_campus_graduate_not_early_career(title):
 ])
 def test_early_career_compound_titles(title):
     assert pf.is_early_career(title, None)
-    assert re.search(EARLY_CAREER_SQL.replace(r"\y", r"\b"), title, re.IGNORECASE)
+
+
+AGREEMENT_TITLES = [
+    "New Grad Software Engineer", "NEW GRADUATE engineer", "Recent Graduate Analyst", "Graduate Engineers",
+    "Graduate Programme", "Graduate Scheme 2026", "University Grad SWE", "University Recruiting Lead",
+    "Campus Hires", "Early Career Engineer", "Entry-Level Engineer", "entry level analyst",
+    "Campus Network Engineer", "University Relations Manager", "Graduate-level ML Researcher", "Senior Engineer",
+    "Newgrad Engineer", "Postgraduate Engineer", "Entry-Levelled Role", "Early-career Engineer", "Ungraduate scheme",
+]
+
+
+async def test_the_python_and_postgres_early_career_regexes_agree(db):
+    # One word list (core/text.py), two dialects: the prefilter's regex and the feed's ~* filter.
+    rows = (await db.execute(
+        sa.select(sa.column("t"), sa.column("t").op("~*")(EARLY_CAREER_SQL))
+        .select_from(sa.values(sa.column("t", sa.Text), name="titles").data([(t,) for t in AGREEMENT_TITLES]))
+    )).all()
+    sql = dict(rows)
+    python = {t: bool(pf.EARLY_CAREER_TITLE.search(t)) for t in AGREEMENT_TITLES}
+    assert python == sql and any(python.values()) and not all(python.values())
 
 
 def test_unrelated_dates_do_not_drop_jobs():

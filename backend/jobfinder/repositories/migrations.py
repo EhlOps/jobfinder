@@ -1,4 +1,4 @@
-"""The database's alembic revisions, for the readiness probe (api/health.py)."""
+"""The database's alembic revisions, for the readiness probe (services/health.py)."""
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 

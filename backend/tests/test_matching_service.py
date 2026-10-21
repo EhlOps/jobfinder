@@ -8,7 +8,9 @@ from jobfinder.integrations.claude.claude_code import AIError
 from jobfinder.integrations.claude.schemas import MatchScore
 from jobfinder.models import Company, Job, JobMatch, Profile, User
 from jobfinder.models.posting import dedupe_hash
+from jobfinder.repositories import matches as matches_repo
 from jobfinder.services.matching import service
+from tests.factories import make_match
 from tests.fakes import FakeScoringAI
 
 STATUS = {"target_roles": ["Backend Engineer"], "target_locations": ["Boston"], "is_new_grad": True,
@@ -185,6 +187,19 @@ async def test_profile_change_rescoring_keeps_status_and_skips_dismissed(maker):
         assert rows[saved.id].llm_score == 95 and rows[saved.id].status == "saved" and rows[saved.id].profile_version == 2
         assert rows[dismissed.id].profile_version == 1 and rows[new_poor.id].profile_version == 2
         assert rows[new_good.id].profile_version == 2
+
+
+async def test_stale_puts_the_first_ids_first_and_takes_an_empty_set(maker):
+    async with maker() as db:
+        u = await make_user(db, version=1)
+        made = [await make_match(db, u.id, score=90 - i) for i in range(3)]
+        await db.commit()
+
+        async def order(first):
+            return [m.id for m, _, _ in await matches_repo.stale(db, u.id, 2, service.STALE_STATUSES, first)]
+
+        assert await order(set()) == [m.id for m, _ in made]
+        assert await order({made[2][0].id}) == [made[2][0].id, made[0][0].id, made[1][0].id]
 
 
 async def test_rate_limit_mid_run_keeps_progress_and_reraises(maker):

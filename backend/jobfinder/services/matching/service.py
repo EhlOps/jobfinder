@@ -129,7 +129,7 @@ async def find_stale(db: AsyncSession, user_id: int, version: int) -> list[tuple
     """Matches scored against an older profile version: ones the user answered questions about first,
     then saved ones, then the rest by score (a low score is often just a gap the answers fill). Closed jobs are skipped."""
     answered = await matches_repo.answered_match_ids(db, user_id)
-    return await matches_repo.stale(db, user_id, version, STALE_STATUSES, sorted(answered) or [-1])
+    return await matches_repo.stale(db, user_id, version, STALE_STATUSES, answered)
 
 
 def stage_info(status: dict, today=None) -> dict | None:

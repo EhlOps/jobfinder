@@ -80,7 +80,7 @@ async def add(db: AsyncSession, user: User, raw_url: str) -> tuple[JobLinkOut, i
     refused = refusal_for_url(url)
     if refused is not None:  # terms/robots review said no: answer now, nothing is fetched
         link = await repo.add(db, JobLink(user_id=user.id, url=url, status="unresolved", rung="terms_refused",
-                                          error=refusal_message(refused)[:500], resolved_at=repo.db_now()))
+                                          error=refusal_message(refused)[:500]), resolved=True)
         return await _one(db, link), 201
 
     link = JobLink(user_id=user.id, url=url, status="resolving")
@@ -90,8 +90,7 @@ async def add(db: AsyncSession, user: User, raw_url: str) -> tuple[JobLinkOut, i
         known = await existing_board(db, *board)
         if known is not None:  # already polled on schedule: nothing to fetch
             link.status, link.company_id, link.rung = "resolved", known.id, "url_pattern"
-            link.resolved_at = repo.db_now()
-    link = await repo.add(db, link)  # flushed: the task payload needs its id
+    link = await repo.add(db, link, resolved=link.status == "resolved")  # flushed: the task payload needs its id
     if link.status != "resolving":
         return await _one(db, link), 201
     await ledger.add(db, "resolve_job_link", {"link_id": link.id}, user_id=user.id)
