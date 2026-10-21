@@ -100,7 +100,8 @@ async def settle(db: AsyncSession, store: DocumentStore, user_id: int, docs: lis
                 continue  # deleted meanwhile
             if stale:
                 log.warning("%s %s of user %s was left processing with no task", d.kind, d.id, user_id)
-                d = unfinished(store, user_id, d.id) or d
+                if (d := unfinished(store, user_id, d.id)) is None:
+                    continue  # deleted meanwhile
         out.append(d)
     return out
 
@@ -142,7 +143,8 @@ async def parse(store: DocumentStore, user_id: int, doc_id: str) -> dict:
         path = store.original_path(user_id, doc_id)
     except storage.NotFound:
         return {"doc_id": doc_id, "skipped": "deleted"}
-    if meta.status != "processing":
+    # An error `unfinished` recorded is read again: the task retried by an admin, or after a lost commit.
+    if meta.status != "processing" and not (meta.status == "error" and meta.fetch_error == UNFINISHED["parse_document"]):
         return {"doc_id": doc_id, "skipped": meta.status}
     text, error = "", None
     try:

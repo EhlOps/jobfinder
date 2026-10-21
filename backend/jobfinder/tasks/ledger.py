@@ -166,11 +166,15 @@ async def heartbeat(db: AsyncSession, task_id: int) -> None:
     await db.execute(update(Task).where(Task.id == task_id, Task.status == "running").values(locked_at=utcnow()))
 
 
+UNCLAIMED = {"unclaimed": True}  # the result of a task expire_queued failed: no worker ever took it
+
+
 async def expire_queued(db: AsyncSession, task_id: int, reason: str) -> bool:
-    """Fail a task nobody claimed in time, so no backlog is left behind; True if it was still queued."""
+    """Fail a task nobody claimed in time, so no backlog is left behind; True if it was still queued.
+    Its result is UNCLAIMED, so whoever waits on it can tell that from the work failing."""
     result = await db.execute(
         update(Task).where(Task.id == task_id, Task.status == "queued")
-        .values(status="failed", error=reason, finished_at=utcnow())
+        .values(status="failed", error=reason, result=UNCLAIMED, finished_at=utcnow())
     )
     return bool(result.rowcount)
 

@@ -36,17 +36,16 @@ class AuditCoverageArgs(BaseModel):
 PLAN_COALESCE = timedelta(minutes=1)  # boards finishing within this of each other share one plan_work
 
 
-_http: httpx.AsyncClient | None = None  # worker-io's one client for board fetches; tests may set their own
+_http: httpx.AsyncBaseTransport | None = None  # worker-io's connection pool for board fetches
 
 
-def shared_http() -> httpx.AsyncClient:
-    """The process's board-fetch client, created on first use: the boards fetched in parallel share its
-    connection pool instead of opening a client (and new connections) per ingest_board."""
+def shared_http() -> httpx.AsyncBaseTransport:
+    """The process's board-fetch transport, created on first use: the boards fetched in parallel share its
+    connection pool instead of opening new connections per ingest_board. Each task still gets its own
+    client on it, so one board's cookies never reach another's."""
     global _http
     if _http is None:
-        from jobfinder.services import ingestion
-
-        _http = ingestion.http_client()
+        _http = httpx.AsyncHTTPTransport()
     return _http
 
 
@@ -54,8 +53,8 @@ def shared_http() -> httpx.AsyncClient:
 async def close_http(state: TaskiqState | None = None) -> None:
     global _http
     if _http is not None:
-        client, _http = _http, None
-        await client.aclose()
+        transport, _http = _http, None
+        await transport.aclose()
 
 
 class IngestBoardArgs(BaseModel):
@@ -93,7 +92,9 @@ async def ingest_board(db: AsyncSession, ai, task: Task, p: IngestBoardArgs) -> 
     only the follow-up."""
     from jobfinder.services import ingestion
 
-    stats = await ingestion.ingest_board(default_context().sessions, shared_http(), p.company_id)
+    # Not closed: that would close the shared transport. The client holds only this board's cookies.
+    client = ingestion.http_client(shared_http())
+    stats = await ingestion.ingest_board(default_context().sessions, client, p.company_id)
     return await _changed(db, stats)
 
 

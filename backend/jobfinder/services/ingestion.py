@@ -254,9 +254,9 @@ async def due_board_ids(
     return [b.id for b in boards]
 
 
-def http_client() -> httpx.AsyncClient:
-    """The client a board fetch uses (worker-io shares one per process, tasks.io)."""
-    return new_client(timeout_s=30, follow_redirects=True)
+def http_client(transport: httpx.AsyncBaseTransport | None = None) -> httpx.AsyncClient:
+    """The client a board fetch uses; worker-io passes its shared transport (tasks.io)."""
+    return new_client(timeout_s=30, follow_redirects=True, transport=transport)
 
 
 async def ingest_board(session_factory: SessionFactory, client: httpx.AsyncClient, company_id: int) -> IngestStats:

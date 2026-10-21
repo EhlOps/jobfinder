@@ -226,7 +226,7 @@ def isolated_store(tmp_path, monkeypatch):
 
 @pytest_asyncio.fixture(autouse=True)
 async def _close_shared_http():
-    """worker-io's shared board-fetch client (tasks.io.shared_http) belongs to one test's event loop."""
+    """worker-io's shared board-fetch transport (tasks.io.shared_http) belongs to one test's event loop."""
     yield
     io = sys.modules.get("jobfinder.tasks.io")
     if io is not None:

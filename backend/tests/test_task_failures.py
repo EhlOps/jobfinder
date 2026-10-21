@@ -63,25 +63,71 @@ async def test_a_retry_leaves_the_document_processing(authed, maker, monkeypatch
     assert (await _doc(authed, r["document"]["id"]))["status"] == "processing"
 
 
-async def test_the_reaper_giving_up_on_a_parse_ends_the_document_as_error(authed, maker):
+async def test_the_reaper_giving_up_on_a_parse_ends_the_document_as_error(authed, maker, isolated_store, monkeypatch):
+    """The scheduler mounts no document store, so the reaper leaves the file alone; with no task left for
+    it, the next listing settles it (a stuck task's item is older than NO_TASK_GRACE by then)."""
+    from jobfinder.context import default_context
+
+    me = (await authed.get("/api/auth/me")).json()["id"]
     r = (await _post(authed, "a.txt", b"worker died")).json()
     await _stale(maker, r["task_id"], attempts=get_settings().task_max_attempts)
+    monkeypatch.setattr(default_context(), "store", None)  # as in the scheduler pod
     await maintenance.tick()
+    monkeypatch.setattr(default_context(), "store", isolated_store)
     async with maker() as db:
         assert (await db.get(Task, r["task_id"])).status == "failed"
-    assert (await _doc(authed, r["document"]["id"]))["status"] == "error"
+    assert isolated_store.get(me, r["document"]["id"]).status == "processing"
+    _age(isolated_store, me, r["document"]["id"], timedelta(minutes=get_settings().task_stuck_after_minutes))
+    assert (await _doc(authed, r["document"]["id"]))["status"] == "processing"  # a single GET doesn't settle
+    assert [d["status"] for d in (await authed.get("/api/documents")).json()] == ["error"]
 
 
-async def test_the_reaper_requeueing_a_fetch_leaves_the_link_processing(authed, maker):
+async def test_the_reaper_requeueing_a_fetch_leaves_the_link_processing(authed, maker, isolated_store):
+    me = (await authed.get("/api/auth/me")).json()["id"]
     r = (await authed.post("/api/links", json={"kind": "other", "url": "https://example.com/me"})).json()
+    _age(isolated_store, me, r["link"]["id"], timedelta(hours=1))
     await _stale(maker, r["task_id"], attempts=1)
     await maintenance.tick()
     [link] = (await authed.get("/api/links")).json()
-    assert link["status"] == "processing"
+    assert link["status"] == "processing"  # requeued: the task is still there for it
     await _stale(maker, r["task_id"], attempts=get_settings().task_max_attempts)
     await maintenance.tick()
     [link] = (await authed.get("/api/links")).json()
     assert link["status"] == "error" and link["fetch_error"] == documents.UNFINISHED["fetch_link"]
+
+
+async def test_a_document_marked_unfinished_is_read_when_its_task_is_retried(authed, maker, monkeypatch):
+    """An admin's retry (ledger.requeue) of the failed parse reads the file after all."""
+    real = documents.parse
+
+    async def broken(*a, **kw):
+        raise RuntimeError("store unreachable")
+
+    monkeypatch.setattr(documents, "parse", broken)
+    r = (await _post(authed, "a.txt", b"read on retry")).json()
+    await _run(maker, r["task_id"])
+    assert (await _doc(authed, r["document"]["id"]))["status"] == "error"
+    monkeypatch.setattr(documents, "parse", real)
+    async with maker() as db:
+        await ledger.requeue(db, r["task_id"])
+        await db.commit()
+    assert (await _run(maker, r["task_id"])).status == "done"
+    doc = await _doc(authed, r["document"]["id"])
+    assert doc["status"] == "ready" and doc["chars"] == len("read on retry")
+
+
+async def test_settle_drops_a_document_deleted_while_listing(authed, isolated_store, monkeypatch):
+    me = (await authed.get("/api/auth/me")).json()["id"]
+    meta, _ = isolated_store.put(me, "resume", "a.txt", text="", data=b"gone", ext=".txt", status="processing")
+    _age(isolated_store, me, meta.id, timedelta(hours=1))
+    real = documents.unfinished
+
+    def deleted_first(store, user_id, doc_id):
+        store.delete(user_id, doc_id)
+        return real(store, user_id, doc_id)
+
+    monkeypatch.setattr(documents, "unfinished", deleted_first)
+    assert (await authed.get("/api/documents")).json() == []
 
 
 def _age(store, user_id, doc_id, by: timedelta):

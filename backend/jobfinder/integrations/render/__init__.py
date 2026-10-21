@@ -22,7 +22,7 @@ CAPTURE = "render_capture"
 LIST = "render_list"
 KINDS = (CAPTURE, LIST)
 POLL_S = 1.0
-UNANSWERED = "no renderer picked this up in time"  # the error of a task that expired unclaimed
+UNANSWERED = "no renderer picked this up in time"
 
 
 class RenderError(Exception):
@@ -45,7 +45,7 @@ async def request_render(kind: str, payload: dict, *, timeout_s: float, session_
     async with factory() as db:  # committed here: the polls below read it from other sessions
         task_id = (await ledger.add(db, kind, payload, dedupe=True)).id
         await db.commit()
-    deadline = time.monotonic() + timeout_s
+    deadline, grace_used = time.monotonic() + timeout_s, False
     while True:
         async with factory() as db:
             task = await db.get(Task, task_id)
@@ -54,12 +54,15 @@ async def request_render(kind: str, payload: dict, *, timeout_s: float, session_
             if task.status == "done":
                 return task.result or {}
             if task.status == "failed":
-                if task.error == UNANSWERED:  # another waiter on this deduped task timed out first
-                    raise RenderUnavailable(UNANSWERED)
+                if task.result == ledger.UNCLAIMED:  # another waiter on this deduped task timed out first
+                    raise RenderUnavailable(task.error or UNANSWERED)
                 raise RenderError(task.error or "render failed")
             if time.monotonic() >= deadline:
                 # Nobody picked it up (renderer not running?): don't leave a backlog behind.
-                await ledger.expire_queued(db, task_id, UNANSWERED)
+                expired = await ledger.expire_queued(db, task_id, UNANSWERED)
                 await db.commit()
-                raise RenderUnavailable(f"the renderer did not answer within {timeout_s:.0f}s")
+                if expired or grace_used:
+                    raise RenderUnavailable(f"the renderer did not answer within {timeout_s:.0f}s")
+                # Claimed just now: the renderer is on it, so give it one more timeout_s to finish.
+                deadline, grace_used = time.monotonic() + timeout_s, True
         await asyncio.sleep(POLL_S)

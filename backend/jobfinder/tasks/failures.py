@@ -4,8 +4,8 @@ A document or link read by parse_document / fetch_link stays "processing", and a
 "resolving", until its task records the outcome; the SPA polls until then. When the task fails instead
 (out of attempts, an unexpected error, or the reaper giving up on a dead worker) and no retry or rerun is
 left to do the work, `settle` finishes the item as an error, so nothing waits on it any longer. Called by
-the runtime (tasks.runtime._fail) and by the scheduler's maintenance (ledger.reap's on_failed), in their
-transaction; each hook runs in a savepoint, and one that fails is logged and skipped.
+the runtime (tasks.runtime._fail) and by the scheduler's maintenance (ledger.reap's on_failed, without
+the store hooks), in their transaction; each hook runs in a savepoint, and one that fails is logged and skipped.
 """
 import logging
 from collections.abc import Awaitable, Callable
@@ -38,12 +38,15 @@ HOOKS: dict[str, Callable[[AsyncSession, Task], Awaitable[None]]] = {
     "resolve_job_link": _job_link,
     "induce_recipe": _job_link,
 }
+STORE_KINDS = {"parse_document", "fetch_link"}  # their hooks write the document store
 
 
-async def settle(db: AsyncSession, tasks: list[Task]) -> None:
-    """Run each failed task's hook, if its kind has one. Never raises."""
+async def settle(db: AsyncSession, tasks: list[Task], *, store: bool = True) -> None:
+    """Run each failed task's hook, if its kind has one. Never raises. With store=False (the scheduler,
+    which mounts no document store) the store's hooks are skipped: services.documents.settle marks
+    those items error at their next listing, once no task is left for them."""
     for task in tasks:
-        if (hook := HOOKS.get(task.kind)) is None:
+        if (hook := HOOKS.get(task.kind)) is None or (not store and task.kind in STORE_KINDS):
             continue
         try:
             async with db.begin_nested():

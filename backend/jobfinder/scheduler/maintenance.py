@@ -3,6 +3,7 @@ good leaves behind, tasks.failures), prune finished tasks older than
 TASK_PRUNE_DAYS, old rate-limit events and expired sessions. One transaction per tick; a failure is logged
 and the next tick tries again."""
 import logging
+from functools import partial
 
 from jobfinder.core.config import settings
 from jobfinder.core.context import default_context
@@ -16,7 +17,7 @@ log = logging.getLogger("jobfinder.scheduler")
 async def tick() -> None:
     try:
         async with default_context().sessions() as db:
-            requeued = await ledger.reap(db, on_failed=failures.settle)
+            requeued = await ledger.reap(db, on_failed=partial(failures.settle, store=False))
             pruned = await ledger.prune(db)
             await ratelimit.prune(db)
             await prune_sessions(db)
