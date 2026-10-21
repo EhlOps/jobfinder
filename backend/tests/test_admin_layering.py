@@ -7,7 +7,7 @@ from contextlib import contextmanager
 import pytest
 import sqlalchemy as sa
 
-from jobfinder.config import get_settings
+from jobfinder.core.config import get_settings
 from jobfinder.models import Company, CovetedTarget, JobLink, JobMatch, RateEvent, User
 from jobfinder.repositories import coverage as coverage_repo
 from jobfinder.repositories import job_links as links_repo

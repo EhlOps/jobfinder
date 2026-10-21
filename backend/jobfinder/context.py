@@ -59,5 +59,5 @@ def build_context(
 
 @lru_cache
 def default_context() -> AppContext:
-    """This process's context: core's default one, so `jobfinder.db` shares its engine and sessions."""
+    """This process's context: core's default one, sharing its engine and sessions."""
     return with_integrations(core.default_context())

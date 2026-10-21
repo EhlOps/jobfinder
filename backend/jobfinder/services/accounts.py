@@ -14,12 +14,6 @@ from jobfinder.core.errors import BadRequest, Invalid, NotFound, RateLimited, Un
 from jobfinder.core.urls import public_link
 from jobfinder.integrations import smtp as mail
 from jobfinder.models import User
-from jobfinder.notify.tokens import (
-    InvalidToken,
-    make_password_token,
-    password_fingerprint,
-    read_password_token,
-)
 from jobfinder.repositories import users
 from jobfinder.services import ratelimit
 from jobfinder.services.auth import (
@@ -27,6 +21,12 @@ from jobfinder.services.auth import (
     hash_password_async,
     hash_session_token,
     verify_or_dummy,
+)
+from jobfinder.services.tokens import (
+    InvalidToken,
+    make_password_token,
+    password_fingerprint,
+    read_password_token,
 )
 
 log = logging.getLogger("jobfinder.auth")

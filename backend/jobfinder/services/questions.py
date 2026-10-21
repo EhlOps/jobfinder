@@ -12,11 +12,11 @@ from jobfinder.core.db import AsyncSession
 from jobfinder.core.errors import BadRequest, Gone
 from jobfinder.integrations.claude.tasks import AITasks
 from jobfinder.models import ClarifyingQuestion, ProfileFact
-from jobfinder.notify.tokens import InvalidToken, read_token
 from jobfinder.repositories import profiles
 from jobfinder.repositories import questions as repo
 from jobfinder.schemas.questions import MAX_ANSWER_CHARS
 from jobfinder.services import profile as profile_service
+from jobfinder.services.tokens import InvalidToken, read_token
 from jobfinder.tasks import ledger
 
 log = logging.getLogger("jobfinder.questions")

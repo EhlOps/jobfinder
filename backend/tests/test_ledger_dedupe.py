@@ -9,7 +9,6 @@ import sqlalchemy as sa
 
 from jobfinder.core.clock import utcnow
 from jobfinder.models import Task
-from jobfinder.scheduling import queue
 from jobfinder.tasks import ledger, runtime
 from tests.rollback import count
 
@@ -97,34 +96,6 @@ async def test_reap_leaves_the_work_to_a_queued_rerun(db):
         await db.refresh(t)
     assert (first.status, rerun.status, lone.status) == ("failed", "queued", "queued")
     assert "rerun" in first.error
-
-
-async def test_legacy_enqueue_still_returns_a_running_twin(maker):
-    async with maker() as db:
-        a = await queue.enqueue(db, "k", dedupe=True)
-        a = await queue.claim(db)
-        assert (await queue.enqueue(db, "k", dedupe=True)).id == a.id
-
-
-async def test_legacy_claim_skips_a_rerun_while_its_twin_runs(maker):
-    async with maker() as db:
-        first = await _running(db, "plan_work")
-        await ledger.add(db, "plan_work", rerun=True)
-        await db.commit()
-        assert await queue.claim(db) is None
-        await queue.complete(db, first, {})
-        assert (await queue.claim(db)).kind == "plan_work"
-
-
-async def test_legacy_reap_leaves_the_work_to_a_queued_rerun(maker):
-    async with maker() as db:
-        first = await _running(db, "plan_work")
-        await ledger.add(db, "plan_work", rerun=True)
-        first.locked_at = utcnow() - timedelta(hours=1)
-        await db.commit()
-        assert await queue.reap_stuck(db) == 0
-        await db.refresh(first)
-        assert first.status == "failed"
 
 
 @pytest.mark.real_commit

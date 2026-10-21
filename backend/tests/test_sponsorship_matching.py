@@ -1,7 +1,7 @@
 import pytest
 
-from jobfinder.ai.tasks import AITasks, load_prompt
 from jobfinder.integrations.claude.schemas import MatchScore
+from jobfinder.integrations.claude.tasks import AITasks, load_prompt
 from jobfinder.models import Company, Job, JobMatch
 from jobfinder.schemas.profile import derive_needs_sponsorship
 from jobfinder.services.matching.service import sponsorship_info

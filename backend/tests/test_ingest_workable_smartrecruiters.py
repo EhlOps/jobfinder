@@ -4,9 +4,9 @@ from pathlib import Path
 import httpx
 import pytest
 
-from jobfinder.ingest.sources import ATS_FETCHERS
-from jobfinder.ingest.sources.smartrecruiters import fetch_smartrecruiters, parse_smartrecruiters
-from jobfinder.ingest.sources.workable import fetch_workable, parse_workable
+from jobfinder.integrations.ats.registry import ATS_FETCHERS
+from jobfinder.integrations.ats.smartrecruiters import fetch_smartrecruiters, parse_smartrecruiters
+from jobfinder.integrations.ats.workable import fetch_workable, parse_workable
 from tests.fakes import handle
 
 FIX = Path(__file__).parent / "fixtures"

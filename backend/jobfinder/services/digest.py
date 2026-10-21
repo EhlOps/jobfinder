@@ -7,9 +7,9 @@ from datetime import datetime, timedelta
 from jobfinder.core.config import settings
 from jobfinder.core.db import AsyncSession
 from jobfinder.integrations.smtp import EmailError
-from jobfinder.notify import daily
 from jobfinder.repositories import tasks as tasks_repo
 from jobfinder.repositories import users
+from jobfinder.services import daily
 from jobfinder.tasks import ledger
 
 log = logging.getLogger("jobfinder.digest")

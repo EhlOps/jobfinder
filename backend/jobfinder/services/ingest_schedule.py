@@ -27,7 +27,7 @@ The worker ticks every `ingest_tick_minutes`; each tick fetches only the boards 
                         tier 2   1440    540   180     90      60
                         tier 1    360    270    90     60      60
 
-Failures: the existing backoff in service.py (consecutive_failures, auto-disable after N) is
+Failures: the existing backoff in services/ingestion.py (consecutive_failures, auto-disable after N) is
 unchanged; on top of it the next slot is pushed out exponentially, interval × 2^failures capped
 at the max, so a dead board stops being hit every tick until it is disabled.
 

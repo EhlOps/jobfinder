@@ -1,7 +1,8 @@
 import pytest
 
+from jobfinder.integrations import github
 from jobfinder.models import Task
-from jobfinder.profile import github, web_page
+from jobfinder.profile import web_page
 
 
 def test_parse_github_username():
@@ -97,18 +98,6 @@ async def test_link_fetch_success_refresh_and_tags(authed, maker, monkeypatch):
     assert (await authed.get("/api/links")).json() == []
 
 
-async def test_the_legacy_worker_fetches_links(authed, maker, monkeypatch):
-    from jobfinder.worker import run_task
-
-    async def ok(url):
-        return "my portfolio"
-
-    monkeypatch.setattr(web_page, "fetch_page_text", ok)
-    r = await authed.post("/api/links", json={"kind": "portfolio", "url": "https://me.dev"})
-    await run_task(r.json()["task_id"], None, maker)
-    assert (await authed.get("/api/links")).json()[0]["fetched"] is True
-
-
 async def test_a_link_deleted_before_its_fetch_is_skipped(authed, maker):
     r = (await authed.post("/api/links", json={"kind": "portfolio", "url": "https://me.dev"})).json()
     assert (await authed.delete(f"/api/links/{r['link']['id']}")).status_code == 204
@@ -119,22 +108,6 @@ async def test_the_worker_fetch_keeps_the_ssrf_guard(authed, maker):
     """The real fetcher runs in the worker: an internal address is refused there and recorded."""
     link = await _add(authed, maker, "portfolio", "http://127.0.0.1:9/")
     assert link["status"] == "error" and "non-public" in link["fetch_error"]
-
-
-async def test_sync_links_are_fetched_in_the_request(authed, monkeypatch):
-    from jobfinder.core.config import get_settings
-
-    monkeypatch.setattr(get_settings(), "sync_uploads", True)
-
-    async def ok(url):
-        return "fetched now"
-
-    monkeypatch.setattr(web_page, "fetch_page_text", ok)
-    r = await authed.post("/api/links", json={"kind": "portfolio", "url": "https://me.dev"})
-    assert r.status_code == 202 and r.json()["task_id"] is None
-    assert r.json()["link"]["status"] == "ready" and r.json()["link"]["fetched"] is True
-    r = await authed.post(f"/api/links/{r.json()['link']['id']}/refresh")
-    assert r.status_code == 202 and r.json()["task_id"] is None and r.json()["link"]["fetched"] is True
 
 
 async def test_documents_cannot_be_managed_through_link_endpoints(authed):

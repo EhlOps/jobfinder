@@ -43,9 +43,9 @@ import httpx
 from jobfinder.core.config import settings
 from jobfinder.core.db import AsyncSession, IntegrityError
 from jobfinder.core.urls import clean_domain, registrable_domain
-from jobfinder.ingest.http_safety import TEXT_TYPES, FetchError, safe_fetch
-from jobfinder.integrations.ats.custom import refusal_for_url, refusal_message, site_for_url
+from jobfinder.integrations.http_safety import TEXT_TYPES, FetchError, safe_fetch
 from jobfinder.integrations.robots import PoliteFetcher
+from jobfinder.integrations.site_terms import refusal_for_url, refusal_message, site_for_url
 from jobfinder.models import Company, CovetedTarget
 from jobfinder.repositories import boards as boards_repo
 from jobfinder.services.resolver import _HEADERS, resolve_url

@@ -18,7 +18,6 @@ QUEUES: dict[str, Queue] = {
     "ingest_tick": "io",  # fans out one ingest_board per due board (#50)
     "ingest_board": "io",
     "ingest_source": "io",  # jobspy / usajobs
-    "ingest_jobs": "io",  # the old whole run, now a tick. TODO(#53): remove
     "plan_work": "io",
     "daily_emails": "io",  # sends only: questions are collected on ai ahead of the hour (#50)
     "discover_boards": "io",

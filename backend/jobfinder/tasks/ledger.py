@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session, aliased
 
 from jobfinder.core.clock import utcnow
 from jobfinder.core.config import settings
+from jobfinder.core.context import default_context
 from jobfinder.core.errors import Conflict, NotFound
 from jobfinder.models import Task
 from jobfinder.tasks.kinds import QUEUES, queue_for
@@ -35,7 +36,7 @@ PRUNE_BATCH = 5000  # rows one prune deletes, so a large backlog is cleared over
 
 
 def dedupe_key(kind: str, user_id: int | None, payload: dict) -> str:
-    """The one dedupe key: scheduling.queue uses it too, so legacy and ledger rows dedupe against each other."""
+    """The one dedupe key: kind, user and payload (sorted), so equal requests land on one row."""
     return hashlib.sha256(f"{kind}|{user_id}|{json.dumps(payload, sort_keys=True, default=str)}".encode()).hexdigest()
 
 
@@ -270,7 +271,7 @@ def _after_commit(session: Session) -> None:
     if session.in_nested_transaction():  # a savepoint released: the rows aren't committed yet
         return
     pending = session.info.pop(PENDING, None)
-    if not pending or settings.tasks_backend != "ledger":
+    if not pending:
         return
     try:
         loop = asyncio.get_running_loop()
@@ -311,10 +312,8 @@ async def _publish(pending: list[tuple[str, str, int]]) -> None:
 
 async def _mark_published(ids: list[int]) -> None:
     """One UPDATE in its own short session. Failing only costs a duplicate delivery from the relay."""
-    from jobfinder import db as dbmod
-
     try:
-        async with dbmod.SessionLocal() as db:
+        async with default_context().sessions() as db:
             await mark_sent(db, ids, utcnow(), unclaimed_only=True)
             await db.commit()
     except Exception as e:

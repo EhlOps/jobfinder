@@ -7,12 +7,10 @@ from datetime import UTC, datetime, timedelta
 from jobfinder.core.config import settings
 from jobfinder.core.db import AsyncSession
 from jobfinder.core.errors import Invalid, NotFound
-from jobfinder.ingest import coveted
 from jobfinder.integrations.claude import credentials
 from jobfinder.models import Company, CovetedTarget, User
 from jobfinder.repositories import admin as repo
 from jobfinder.repositories import companies, coverage
-from jobfinder.scheduling import planner
 from jobfinder.schemas.ai_admin import (
     ActiveTask,
     AiStatus,
@@ -24,6 +22,8 @@ from jobfinder.schemas.ai_admin import (
     TierCount,
 )
 from jobfinder.schemas.coverage import Coverage, CoverageRow, PinIn, PinOut, TargetRow, UnpinIn
+from jobfinder.services import coverage as coverage_service
+from jobfinder.services import planner
 from jobfinder.services.matching.service import BUDGET_WINDOW, UNLIMITED
 from jobfinder.tasks import ledger
 
@@ -104,7 +104,7 @@ async def enable(db: AsyncSession, company_id: int) -> SourceRow:
 def _target_row(t: CovetedTarget) -> TargetRow:
     return TargetRow(
         id=t.id, name=t.name, domain=t.domain, source=t.source, score=t.score, last_resolved_at=_iso(t.last_resolved_at),
-        last_error=t.last_error, careers_url=coveted.candidate_urls(t.domain)[0],
+        last_error=t.last_error, careers_url=coverage_service.candidate_urls(t.domain)[0],
     )
 
 
@@ -123,11 +123,11 @@ async def coverage_view(db: AsyncSession) -> Coverage:
         t = by_company.get(c.id)
         rows.append(CoverageRow(
             company_id=c.id, name=c.name, ats=c.ats, slug=c.slug, tier=c.coveted_tier or 3, score=c.coveted_score,
-            pinned=c.coveted_pinned, board_status=coveted.board_status(c, now), gap=coveted.is_gap(c, now),
+            pinned=c.coveted_pinned, board_status=coverage_service.board_status(c, now), gap=coverage_service.is_gap(c, now),
             job_count=counts.get(c.id, 0), last_success_at=_iso(c.last_success_at), recipe_state=c.recipe_state,
             last_error=c.last_error or c.disabled_reason, resolve_error=t.last_error if t else None,
             last_resolved_at=_iso(t.last_resolved_at) if t else None, domain=t.domain if t else None,
-            careers_url=coveted.candidate_urls(t.domain)[0] if t else None,
+            careers_url=coverage_service.candidate_urls(t.domain)[0] if t else None,
         ))
     rows.sort(key=lambda r: (r.tier, -r.score, r.name.lower(), r.company_id))
     unresolved = sorted((t for t in targets if t.company_id is None), key=lambda t: (-t.score, t.name.lower(), t.id))
@@ -136,7 +136,7 @@ async def coverage_view(db: AsyncSession) -> Coverage:
 
 def _pin_company(c: Company) -> None:
     c.coveted_pinned = True
-    coveted.apply_score(c, c.coveted_score)  # pinned is tier 1 whatever its score
+    coverage_service.apply_score(c, c.coveted_score)  # pinned is tier 1 whatever its score
 
 
 async def pin(db: AsyncSession, body: PinIn) -> PinOut:
@@ -151,7 +151,7 @@ async def pin(db: AsyncSession, body: PinIn) -> PinOut:
     name = (body.name or "").strip()
     if not name:
         raise NeedName()
-    domain = coveted.clean_domain(body.domain or "")
+    domain = coverage_service.clean_domain(body.domain or "")
     if domain is None:
         raise BadDomain()
     t = await coverage.by_domain(db, domain)
@@ -182,7 +182,7 @@ async def unpin(db: AsyncSession, body: UnpinIn) -> PinOut:
     if c is None:
         raise NoSuchCompany()
     c.coveted_pinned = False if body.exclude else None
-    coveted.apply_score(c, c.coveted_score)
+    coverage_service.apply_score(c, c.coveted_score)
     # an unpinned score is stale (an exclusion zeroes it): recompute without running a whole audit
     task = await ledger.add(db, "score_coveted", {"no_audit": True}, dedupe=True)
     return PinOut(company_id=c.id, task_id=task.id)

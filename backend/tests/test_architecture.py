@@ -36,13 +36,8 @@ COMMIT_EXCEPTIONS = {
     "integrations/render/__init__.py": "request_render commits its task so the renderer can claim it while it waits",
     "services/ingestion.py": "a run keeps each board's outcome as it goes (per-board checkpoint)",
     "services/digest.py": "each user's email is its own boundary, so one crash rolls back only theirs",
-    # path changes at #53 merge: the code moves out of the old packages, the reason stays
-    "ingest/runner.py": "each source is its own boundary: its postings are kept even if a later step fails",
-    "notify/daily.py": "a user's matches and questions are marked sent, or given back when the send fails",
-    "scheduling/planner.py": "the planner tick keeps its career-stage syncs and its plan",
-    # removed by #53 merge: the legacy poll-loop worker and its queue
-    "worker.py": "legacy worker loop",
-    "scheduling/queue.py": "legacy task queue",
+    "services/daily.py": "a user's matches and questions are marked sent, or given back when the send fails",
+    "services/planner.py": "the planner tick keeps its career-stage syncs and its plan",
 }
 
 
@@ -77,8 +72,6 @@ def test_a_commit_anywhere_else_is_refused(name):
 CORE = sorted((PKG / "core").glob("*.py"))
 MAX_LINES = 150
 LINE_BUDGETS = {"config.py": 160}  # Settings is the one list of every key; it grows with them
-# Top-level shims that still read get_settings; removed by #53 merge.
-OLD_SETTINGS_READERS = {"config.py"}
 
 
 def test_core_has_the_ten_files():
@@ -112,7 +105,7 @@ def test_core_imports_nothing_from_the_app(path):
 
 def test_only_core_reads_get_settings():
     readers = [rel(p) for p in FILES if "get_settings" in p.read_text() and not rel(p).startswith("core/")]
-    assert sorted(set(readers) - OLD_SETTINGS_READERS) == [], "read settings via `from jobfinder.core.config import settings`"
+    assert readers == [], "read settings via `from jobfinder.core.config import settings`"
 
 
 # ── api and schemas ──────────────────────────────────────────────────────

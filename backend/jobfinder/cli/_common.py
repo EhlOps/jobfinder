@@ -13,7 +13,7 @@ from typing import Any
 import typer
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from jobfinder import db as dbmod
+from jobfinder.core.context import default_context
 from jobfinder.core.db import Sessions
 from jobfinder.core.errors import AppError
 from jobfinder.tasks import ledger
@@ -21,7 +21,7 @@ from jobfinder.tasks import ledger
 
 def sessions() -> Sessions:
     """The process's session factory (default_context().sessions; the tests swap in theirs)."""
-    return dbmod.SessionLocal
+    return default_context().sessions
 
 
 @asynccontextmanager

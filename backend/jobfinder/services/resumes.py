@@ -1,8 +1,7 @@
 """Tailored resumes: one per match, kept in the file store, built from the candidate's own facts.
 
 The worker tailors (`tailor`, `save`); the user reads, edits, deletes and downloads. Edits are marked
-with a tag so a later regeneration never silently replaces them. Moved from resumes/service.py (#45),
-which stays importable as this same module until #53.
+with a tag so a later regeneration never silently replaces them. Moved from resumes/service.py (#45).
 """
 import json
 import re

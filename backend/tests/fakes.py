@@ -7,6 +7,7 @@
   has the methods a test expects fails loudly when code under test calls something else.
 - `FakeClock`, `fake_resolve_public` and `FakeRenderer` replace the clock, DNS and the renderer
   container.
+- `run_task` delivers one ledger row in-process, the way its queue's worker would.
 - `MockWeb` and its helpers (`serve`, `redirects`, `refuse`, `handle`) replace the
   network, through respx. The `web` fixture in conftest.py hands a test one that is already active.
 """
@@ -19,8 +20,9 @@ import httpx
 import respx
 from respx.models import AllMockedAssertionError
 from respx.patterns import M
+from sqlalchemy import select
 
-from jobfinder.ingest.http_safety import FetchError
+from jobfinder.core.clock import utcnow
 from jobfinder.integrations.claude.schemas import (
     AuditQuestion,
     Background,
@@ -33,7 +35,10 @@ from jobfinder.integrations.claude.schemas import (
     ProfileAudit,
     Unknown,
 )
-from jobfinder.scheduling import queue
+from jobfinder.integrations.http_safety import FetchError
+from jobfinder.integrations.render import KINDS as RENDER_KINDS
+from jobfinder.models import Task
+from jobfinder.tasks import ledger
 
 _UNSET = object()
 
@@ -236,13 +241,20 @@ class FakeRenderer:
     async def loop(self):
         while True:
             async with self.maker() as db:
-                t = await queue.claim(db, kind_prefix=queue.RENDER_PREFIX)
+                due = await db.scalar(
+                    select(Task.id)
+                    .where(Task.kind.in_(RENDER_KINDS), Task.status == "queued", Task.run_after <= utcnow())
+                    .order_by(Task.id).limit(1)
+                )
+                t = await ledger.claim(db, due) if due else None
                 if t:
                     self.seen.append((t.kind, t.payload))
                     if self.fail:
-                        await queue.fail(db, t, self.fail, retry=False)
+                        await ledger.fail(db, t, self.fail, retry=False)
                     else:
-                        await queue.complete(db, t, self.results[t.kind])
+                        await ledger.finish(db, t, self.results[t.kind])
+                await db.commit()
+                if t:
                     continue
             await asyncio.sleep(0.01)
 
@@ -256,6 +268,22 @@ class FakeRenderer:
         self.task.cancel()
         with suppress(asyncio.CancelledError):
             await self.task
+
+
+async def run_task(task_id: int, ai=None, session_factory=None) -> None:
+    """Deliver ledger row `task_id` to its kind's handler through tasks.runtime.execute, as worker-ai or
+    worker-io would: claim, run, finish or fail, and commit. `ai` is handed to the handler as is."""
+    import jobfinder.tasks.ai  # registers the handlers
+    import jobfinder.tasks.io  # noqa: F401
+    from jobfinder.core.context import default_context
+    from jobfinder.tasks import runtime
+
+    sessions = session_factory or default_context().sessions
+    async with sessions() as db:
+        kind = await db.scalar(select(Task.kind).where(Task.id == task_id))
+    assert kind is not None, f"no task {task_id}"
+    await runtime.execute(kind, runtime.REGISTRY[kind], task_id, payload_model=runtime.PAYLOADS[kind],
+                          wants_ai=ai is not None, session_factory=sessions, ai=ai)
 
 
 class MockWeb(respx.MockRouter):

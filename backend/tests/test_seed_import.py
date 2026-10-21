@@ -4,10 +4,10 @@ from pathlib import Path
 
 import sqlalchemy as sa
 
-from jobfinder.ingest.service import VALID_SIZES
-from jobfinder.ingest.sources import ATS_FETCHERS
-from jobfinder.ingest.validate import SLUG_RE
+from jobfinder.integrations.ats import SLUG_RE
+from jobfinder.integrations.ats.registry import ATS_FETCHERS
 from jobfinder.models import Company
+from jobfinder.services.ingestion import VALID_SIZES
 
 MIGRATION = Path(__file__).parents[1] / "alembic" / "versions" / "0021_import_seed_companies.py"
 _spec = importlib.util.spec_from_file_location("migration_0021", MIGRATION)

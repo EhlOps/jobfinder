@@ -7,7 +7,7 @@ it must be on the pasted URL's registrable domain, and it must return jobs inclu
 retry feeds the failure back; after that, or on any AI error, the rung passes. The recipe, not the model,
 reads the site from then on.
 
-Also here: reinduce_company(), the self-heal for a recipe board that degraded (scheduling handler
+Also here: reinduce_company(), the self-heal for a recipe board that degraded (the io handler
 reinduce_recipe), which re-runs the same induction with the old recipe and its failure as context.
 """
 import html as htmllib
@@ -21,13 +21,13 @@ import httpx
 
 from jobfinder.core.config import settings
 from jobfinder.core.db import AsyncSession
-from jobfinder.core.urls import registrable_domain
-from jobfinder.ingest.base import JobPosting, safe_http_url
-from jobfinder.ingest.http_safety import JSON_TYPES, FetchError, safe_fetch
+from jobfinder.core.urls import registrable_domain, safe_http_url
 from jobfinder.integrations.claude.claude_code import AIError
 from jobfinder.integrations.claude.tasks import AITasks
+from jobfinder.integrations.http_safety import JSON_TYPES, FetchError, safe_fetch
 from jobfinder.integrations.recipes import Recipe, RecipeError, health, run_recipe, validate_recipe
 from jobfinder.models import Company
+from jobfinder.models.posting import JobPosting
 from jobfinder.services.ingestion import deactivate_missing, upsert_postings
 from jobfinder.services.resolver.ladder import RecipeHit, ResolveContext
 from jobfinder.services.resolver.names import name_from_domain

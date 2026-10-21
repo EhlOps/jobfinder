@@ -3,11 +3,11 @@ from datetime import UTC, datetime, timedelta
 import pytest
 import sqlalchemy as sa
 
-from jobfinder.ai.claude_code import AIError
-from jobfinder.config import get_settings
-from jobfinder.ingest.base import dedupe_hash
+from jobfinder.core.config import get_settings
+from jobfinder.integrations.claude.claude_code import AIError
 from jobfinder.integrations.claude.schemas import MatchScore
 from jobfinder.models import Company, Job, JobMatch, Profile, User
+from jobfinder.models.posting import dedupe_hash
 from jobfinder.services.matching import service
 from tests.fakes import FakeScoringAI
 

@@ -2,8 +2,8 @@ import pytest
 import sqlalchemy as sa
 from factories import make_match, make_question, make_user, unknown
 
-from jobfinder.ai.claude_code import AIError
-from jobfinder.config import get_settings
+from jobfinder.core.config import get_settings
+from jobfinder.integrations.claude.claude_code import AIError
 from jobfinder.integrations.claude.schemas import Consolidated, ConsolidatedQuestion
 from jobfinder.models import ClarifyingQuestion, JobMatch, Profile, ProfileFact, Task
 from jobfinder.services import questions as service

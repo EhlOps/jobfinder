@@ -1,11 +1,10 @@
 """tasks.render (#48): the renderer's handlers on the render stream share one browser, fail a broken
-page's task (never the renderer), and `python -m jobfinder.renderer` picks its loop by TASKS_BACKEND."""
+page's task (never the renderer), and `python -m jobfinder.renderer` runs the render worker."""
 import subprocess
 import sys
 
 import pytest
 
-from jobfinder.core.config import get_settings
 from jobfinder.models import Task
 from jobfinder.renderer import __main__ as renderer_main
 from jobfinder.renderer import browser
@@ -97,26 +96,8 @@ async def test_worker_shutdown_closes_the_shared_renderer(fake_browser):
     await render.close_renderer(None)  # idempotent
 
 
-def test_main_runs_the_claim_loop_on_the_legacy_backend(monkeypatch):
+def test_main_runs_the_render_worker(monkeypatch):
     ran = []
-
-    async def serve():
-        ran.append("legacy")
-
-    monkeypatch.setattr(get_settings(), "tasks_backend", "legacy")
-    monkeypatch.setattr(renderer_main, "serve", serve)
-    monkeypatch.setattr("jobfinder.tasks.__main__.main", lambda argv: ran.append(argv) or 0)
-    assert renderer_main.main([]) == 0 and ran == ["legacy"]
-
-
-def test_main_delegates_to_the_render_worker_on_the_ledger_backend(monkeypatch):
-    ran = []
-
-    async def serve():
-        ran.append("legacy")
-
-    monkeypatch.setattr(get_settings(), "tasks_backend", "ledger")
-    monkeypatch.setattr(renderer_main, "serve", serve)
     monkeypatch.setattr("jobfinder.tasks.__main__.main", lambda argv: ran.append(argv) or 0)
     assert renderer_main.main([]) == 0 and ran == [["render"]]
 

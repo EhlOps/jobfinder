@@ -3,8 +3,8 @@ TASK_PRUNE_DAYS, old rate-limit events and expired sessions. One transaction per
 and the next tick tries again."""
 import logging
 
-from jobfinder import db as dbmod
 from jobfinder.core.config import settings
+from jobfinder.core.context import default_context
 from jobfinder.services import ratelimit
 from jobfinder.services.auth import prune_sessions
 from jobfinder.tasks import ledger
@@ -14,7 +14,7 @@ log = logging.getLogger("jobfinder.scheduler")
 
 async def tick() -> None:
     try:
-        async with dbmod.SessionLocal() as db:
+        async with default_context().sessions() as db:
             requeued = await ledger.reap(db)
             pruned = await ledger.prune(db)
             await ratelimit.prune(db)

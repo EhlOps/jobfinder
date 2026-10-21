@@ -20,8 +20,8 @@ resources:
   - postgres/        # Postgres 16 StatefulSet, Service, NetworkPolicy (app pods only)
   - valkey/          # valkey StatefulSet (AOF) for the task streams (#48)
   - storage/         # PVCs: store, claude-auth (mounted by the app in #43)
-  # #43: today's app (web, api, worker, renderer, smtp, the migrate Job, the Ingress). Each overlay
-  # supplies the Secret `jobfinder-env` as a SealedSecret and pins the images; see deploy/k8s/README.md.
+  # #43: the app (web, api, scheduler, worker-ai, worker-io, renderer, smtp, the migrate Job, the
+  # Ingress). Each overlay supplies the Secret `jobfinder-env` as a SealedSecret and pins the images; see deploy/k8s/README.md.
   - app/
   # #47: nightly backup CronJob onto the `backups` PVC (replaces deploy/backup.sh); restore drill:
   # deploy/k8s/backup-restore.sh.

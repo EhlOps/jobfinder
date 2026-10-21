@@ -42,16 +42,13 @@ claude-auth/
 pgdata/
 *.log
 
-# ── Docker ────────────────────────────────────────────────────────────────
-docker-compose.override.yml
-
 # ── OS / editor ───────────────────────────────────────────────────────────
 .DS_Store
 .idea/
 .vscode/
 *.swp
 
-# ── Backups (deploy/backup.sh) ────────────────────────────────────────────
+# ── Backups (local dump copies; the k8s CronJob writes to PVC backups) ────
 backups/
 
 # ── sealed-secrets controller key backup (docs/k3s.md); never commit ─────

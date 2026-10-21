@@ -18,7 +18,7 @@ from jobfinder.services import profile as profile_service
 from jobfinder.services.matching import prefilter as pf
 from jobfinder.services.matching.scoring import finalize
 
-log = logging.getLogger("jobfinder.matching")
+log = logging.getLogger("jobfinder.services.matching")
 BUDGET_WINDOW = timedelta(hours=24)
 STALE_STATUSES = ("new", "saved")  # dismissed/applied matches are never re-scored
 UNLIMITED = 10**9  # remaining budget for users who turned the daily limit off

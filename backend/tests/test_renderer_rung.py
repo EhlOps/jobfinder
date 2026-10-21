@@ -5,21 +5,21 @@ from pathlib import Path
 import httpx
 import pytest
 
-from jobfinder.config import get_settings
-from jobfinder.ingest import http_safety
-from jobfinder.ingest.recipes import RecipeError, run_recipe, validate_recipe
-from jobfinder.ingest.recipes.rendered import item_id
-from jobfinder.ingest.recipes.sniff import explain_json_sample, pagination_for
-from jobfinder.ingest.resolve.ladder import RecipeHit, ResolveContext
-from jobfinder.ingest.resolve.rungs import RUNGS
-from jobfinder.ingest.resolve.rungs.rendered import (
+from jobfinder.core.config import get_settings
+from jobfinder.integrations import http_safety
+from jobfinder.integrations import render as renderer
+from jobfinder.integrations.recipes import RecipeError, run_recipe, validate_recipe
+from jobfinder.integrations.recipes.rendered import item_id
+from jobfinder.integrations.recipes.sniff import explain_json_sample, pagination_for
+from jobfinder.models import Company, Task
+from jobfinder.services.resolver.ladder import RecipeHit, ResolveContext
+from jobfinder.services.resolver.rungs import RUNGS
+from jobfinder.services.resolver.rungs.rendered import (
     RenderedRung,
     job_pattern,
     listing_url,
     rendered_html_recipe,
 )
-from jobfinder.integrations import render as renderer
-from jobfinder.models import Company, Task
 from tests.fakes import FakeRenderer, fake_resolve_public, handle
 
 FIX = Path(__file__).parent / "fixtures" / "renderer"
@@ -153,7 +153,7 @@ async def test_truncated_capture_is_refetched_safely(maker, enabled, web):
 
 
 async def test_renderer_failure_is_noted(maker, enabled, monkeypatch):
-    monkeypatch.setattr("jobfinder.ingest.resolve.rungs.rendered.CAPTURE_WAIT_S", 0.05)
+    monkeypatch.setattr("jobfinder.services.resolver.rungs.rendered.CAPTURE_WAIT_S", 0.05)
     async with httpx.AsyncClient() as client:
         ctx = ResolveContext(POST_URL, client)
         assert await RenderedRung().run(ctx) is None
@@ -223,7 +223,7 @@ def test_item_ids_from_links():
 
 
 async def test_renderer_not_running_stops_the_rung_quickly(maker, enabled, monkeypatch):
-    monkeypatch.setattr("jobfinder.ingest.resolve.rungs.rendered.CAPTURE_WAIT_S", 0.05)
+    monkeypatch.setattr("jobfinder.services.resolver.rungs.rendered.CAPTURE_WAIT_S", 0.05)
     async with httpx.AsyncClient() as client:
         ctx = ResolveContext(DOM_URL, client)
         assert await RenderedRung().run(ctx) is None
@@ -233,7 +233,7 @@ async def test_renderer_not_running_stops_the_rung_quickly(maker, enabled, monke
 
 
 async def test_renderer_off_skips_board_without_counting_a_failure(maker):
-    from jobfinder.ingest.service import ingest_company
+    from jobfinder.services.ingestion import ingest_company
 
     async with maker() as db:
         c = Company(name="Widgetco", ats="recipe", slug="widgetco.io", origin="user", enabled=True,
@@ -249,7 +249,7 @@ async def test_renderer_off_skips_board_without_counting_a_failure(maker):
 
 
 def test_similar_jobs_endpoints_are_tried_last():
-    from jobfinder.ingest.resolve.rungs.rendered import _candidate_order
+    from jobfinder.services.resolver.rungs.rendered import _candidate_order
 
     rs = [{"url": "https://x.com/api/similar_positions?id=1", "size": 9000},
           {"url": "https://x.com/api/search?start=0", "size": 5000},

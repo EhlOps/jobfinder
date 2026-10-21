@@ -1,10 +1,8 @@
-# The app on k8s (#43): the processes of docker-compose.yml.
-#   web (Caddy, SPA + /api proxy) -> api (2 replicas) ; worker (1, Recreate) ; renderer (0, opt-in) ; smtp
+# The app on k8s (#43), one Deployment per process:
+#   web (Caddy, SPA + /api proxy) -> api (2 replicas) ; renderer (0, opt-in) ; smtp
 # plus the alembic Job that migrates before every rollout (deploy/k8s/deploy.sh).
-# The task platform (#48) adds scheduler, worker-ai and worker-io, at 0 replicas here: TASKS_BACKEND
-# defaults to legacy (the single `worker`). An overlay that sets TASKS_BACKEND=ledger scales the legacy
-# worker to 0, scheduler and worker-ai to 1, and unpauses worker-io's ScaledObject (KEDA, 1-4 replicas;
-# overlays/staging; docs/k3s.md, "Task platform").
+# The task platform (#48): scheduler (1, cron, relay, reaper), worker-ai (1) and worker-io (KEDA, 1-4
+# replicas), on Postgres (the ledger) and valkey (delivery; docs/k3s.md, "Task platform").
 #
 # Config: ConfigMap `jobfinder-config` = backend/.env.defaults (backend/kustomization.yaml) with the
 # k8s overrides below; overlays merge their own on top. Secrets: each overlay supplies Secret
@@ -21,10 +19,9 @@ kind: Kustomization
 resources:
   - ../../../../backend   # ConfigMap jobfinder-config from backend/.env.defaults
   - api.yaml
-  - worker.yaml          # legacy (TASKS_BACKEND=legacy)
-  - scheduler.yaml       # ledger: cron, relay, reaper
-  - worker-ai.yaml       # ledger: stream jobfinder:ai (Claude)
-  - worker-io.yaml       # ledger: stream jobfinder:io
+  - scheduler.yaml       # cron, relay, reaper
+  - worker-ai.yaml       # stream jobfinder:ai (Claude)
+  - worker-io.yaml       # stream jobfinder:io
   - worker-io-scaledobject.yaml   # KEDA: worker-io 1-4 on the io backlog (#52)
   - renderer.yaml
   - web.yaml
@@ -37,7 +34,7 @@ configMapGenerator:
   - name: jobfinder-config
     behavior: merge
     literals:
-      # Services and PVC mounts in this namespace (compose: db, /data/store, /data/claude).
+      # Services and PVC mounts in this namespace.
       - POSTGRES_HOST=postgres
       - STORE_DIR=/data/store
       - CLAUDE_AUTH_DIR=/data/claude
@@ -49,7 +46,7 @@ configMapGenerator:
       # uvicorn --proxy-headers: trust the pod network only (networkpolicy.yaml: web is the api's only
       # client).
       # It walks X-Forwarded-For from the right and keeps the first untrusted hop, the client IP that
-      # host Caddy set. Compose uses "*" because only the web container can reach its api.
+      # host Caddy set.
       - FORWARDED_ALLOW_IPS=10.42.0.0/16
       # The migrate Job runs alembic once per deploy; api pods must not race it (docker-entrypoint.sh).
       - MIGRATE_ON_START=false

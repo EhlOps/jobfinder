@@ -28,7 +28,7 @@ dependencies = [
 ]
 
 [project.scripts]
-# The Typer app; `python -m jobfinder.cli` also maps the pre-#49 command names (jobfinder.cli._legacy).
+# The Typer app (`python -m jobfinder.cli` runs it too).
 jobfinder = "jobfinder.cli:app"
 
 [project.optional-dependencies]
@@ -95,13 +95,6 @@ layers = [
   "jobfinder.tasks.ledger : jobfinder.tasks.kinds : jobfinder.tasks.brokers",
   "jobfinder.models",
   "jobfinder.core",
-]
-ignore_imports = [
-  # Old paths other #53 units delete or rework; the coordinator strips these once they are merged.
-  "jobfinder.integrations.directories -> jobfinder.ingest.validate",  # removed by #53 merge
-  "jobfinder.profile.interview -> jobfinder.ingest._moved",  # removed by #53 merge
-  "jobfinder.profile.github -> jobfinder.integrations.github",  # removed by #53 merge
-  "jobfinder.resumes.service -> jobfinder.ingest._moved",  # removed by #53 merge
 ]
 
 # Queries live in repositories. Typing and catching a unique-key race need no sqlalchemy import:

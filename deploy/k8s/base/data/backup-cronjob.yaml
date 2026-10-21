@@ -1,8 +1,8 @@
-# Nightly backup at 03:15 UTC (#47; compose ran deploy/backup.sh from host cron at the same time).
+# Nightly backup at 03:15 UTC (#47; replaced the host-cron deploy/backup.sh, deleted in #53).
 #   db-<UTC timestamp>.dump        pg_dump -Fc of the jobfinder database
 #   files-<UTC timestamp>.tar.gz   store/ and claude/ (uploaded documents, link text, the Claude token)
-# on PVC `backups`, the same names and layout as deploy/backup.sh, so its README restore steps still
-# apply. Each file is written as .part and renamed when complete; the newest BACKUP_KEEP of each kind
+# on PVC `backups` (deploy/k8s/backup-restore.sh restores the newest dump into a scratch database).
+# Each file is written as .part and renamed when complete; the newest BACKUP_KEEP of each kind
 # are kept. Run one now: kubectl -n <ns> create job --from=cronjob/backup backup-manual.
 # local-path volumes are RWO but node-local on this single node, so mounting `store` and
 # `claude-auth` next to the running app is fine.

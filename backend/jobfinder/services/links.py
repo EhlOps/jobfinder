@@ -2,12 +2,11 @@
 in the document store as a "link" document.
 
 Adding or refreshing a link saves it as "processing" and queues worker-io's fetch_link task (`fetch`), the
-only database write; SYNC_UPLOADS=true fetches in the request instead, as before #51. The fetchers are
-imported where they run, so the api process doesn't load them.
+only database write (#51); LinkedIn and X links are only saved. The fetchers are imported where they run,
+so the api process doesn't load them.
 """
 from urllib.parse import urlparse
 
-from jobfinder.core.config import settings
 from jobfinder.core.db import AsyncSession
 from jobfinder.core.errors import NotFound
 from jobfinder.schemas.links import LinkUpload, ProfileLinkOut
@@ -49,11 +48,6 @@ def _link(store: DocumentStore, user_id: int, link_id: str) -> DocumentMeta:
     return meta
 
 
-def _fetched_now(kind: str) -> bool:
-    """Fetch in the request: links we never fetch (nothing to wait for) and SYNC_UPLOADS."""
-    return kind in NO_FETCH or settings.sync_uploads
-
-
 async def _queue(db: AsyncSession, user_id: int, link_id: str) -> int:
     # rerun: a refresh while a fetch runs queues one more after it, since that one may have fetched already
     return (await ledger.add(db, "fetch_link", {"doc_id": link_id}, user_id=user_id, rerun=True)).id
@@ -66,12 +60,8 @@ def list_links(store: DocumentStore, user_id: int) -> list[DocumentMeta]:
 async def add(db: AsyncSession, store: DocumentStore, user_id: int, kind: str, url: str) -> LinkUpload:
     tags = {"source": "link", "url": url, "link_kind": kind}
     name = urlparse(url).netloc or url
-    if _fetched_now(kind):
-        text, error = await _fetch(kind, url)
-        meta, _ = store.put(
-            user_id, "link", name, text=text, content_type="text/plain", fetch_error=error, fetched=bool(text),
-            tags=tags, status=_status(error),
-        )
+    if kind in NO_FETCH:  # only saved: nothing to wait for
+        meta, _ = store.put(user_id, "link", name, text="", content_type="text/plain", tags=tags, status="ready")
         return LinkUpload(link=ProfileLinkOut.of(meta), task_id=None)
     meta, _ = store.put(user_id, "link", name, text="", content_type="text/plain", tags=tags, status="processing")
     return LinkUpload(link=ProfileLinkOut.of(meta), task_id=await _queue(db, user_id, meta.id))
@@ -81,9 +71,8 @@ async def refresh(db: AsyncSession, store: DocumentStore, user_id: int, link_id:
     """Fetch the link again. Its old text stays until the new fetch lands."""
     meta = _link(store, user_id, link_id)
     kind = meta.tags.get("link_kind", "other")
-    if _fetched_now(kind):
-        text, error = await _fetch(kind, meta.tags.get("url", ""))
-        meta = store.replace_text(user_id, link_id, text, fetch_error=error, fetched=bool(text), status=_status(error))
+    if kind in NO_FETCH:  # never fetched: nothing to wait for
+        meta = store.replace_text(user_id, link_id, "", fetch_error=None, fetched=False, status="ready")
         return LinkUpload(link=ProfileLinkOut.of(meta), task_id=None)
     meta = store.set_status(user_id, link_id, "processing")
     return LinkUpload(link=ProfileLinkOut.of(meta), task_id=await _queue(db, user_id, link_id))

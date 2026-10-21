@@ -19,7 +19,7 @@ from pydantic import ValidationError
 
 from jobfinder.core.config import settings
 from jobfinder.core.urls import registrable_domain
-from jobfinder.ingest.http_safety import JSON_TYPES, FetchError, safe_fetch
+from jobfinder.integrations.http_safety import JSON_TYPES, FetchError, safe_fetch
 from jobfinder.integrations.recipes import Recipe, RecipeError, run_recipe, validate_recipe
 from jobfinder.integrations.recipes.rendered import count_rendered_boards, run_rendered
 from jobfinder.integrations.recipes.sniff import explain_json_sample

@@ -1,8 +1,7 @@
 """Uploaded documents: what may be uploaded, reading its text, and the user's files in the document store.
 
 The store holds the files. An upload is saved as "processing" and read by worker-io's parse_document task
-(`parse`), the upload's only database write; SYNC_UPLOADS=true reads it in the request instead, as before
-#51. The store's NotFound becomes the API's 404, and every failure keeps the status and wording the
+(`parse`), the upload's only database write (#51). The store's NotFound becomes the API's 404, and every failure keeps the status and wording the
 routers always answered with.
 """
 import logging
@@ -11,7 +10,7 @@ from pathlib import Path
 
 from jobfinder.core.config import settings
 from jobfinder.core.db import AsyncSession
-from jobfinder.core.errors import Invalid, NotFound, TooLarge, Unavailable, Unsupported
+from jobfinder.core.errors import Invalid, NotFound, TooLarge, Unsupported
 from jobfinder.profile.formats import ALLOWED_EXTENSIONS, CONTENT_TYPES
 from jobfinder.schemas.documents import DocumentOut, DocumentUpload
 from jobfinder.storage import documents as storage
@@ -69,9 +68,6 @@ async def upload(
         raise TooLarge(f"File too large ({limit // 2**20}MB max)")
     name = Path(filename or "upload").name
     file = {"data": data, "ext": ext, "content_type": CONTENT_TYPES[ext], "tags": {"source": "upload"}}
-    if settings.sync_uploads:
-        meta, created = store.put(user_id, kind, name, text=await _read_now(data, ext), **file)
-        return DocumentUpload(document=DocumentOut.of(meta, duplicate=not created), task_id=None)
     meta, created = store.put(user_id, kind, name, text="", status="processing", **file)
     if meta.status == "error":  # the same file again: read it once more (it may have timed out)
         meta = store.set_status(user_id, meta.id, "processing")
@@ -80,18 +76,6 @@ async def upload(
         task = await ledger.add(db, "parse_document", {"doc_id": meta.id}, user_id=user_id, dedupe=True)
         task_id = task.id
     return DocumentUpload(document=DocumentOut.of(meta, duplicate=not created), task_id=task_id)
-
-
-async def _read_now(data: bytes, ext: str) -> str:
-    """SYNC_UPLOADS: parse in the request on the api's two-thread pool, as before #51 (imported only then)."""
-    from jobfinder.profile.resume_parse import ParserBusy, extract_text_async
-
-    try:
-        return await extract_text_async(data, ext)
-    except ParserBusy:
-        raise Unavailable("Busy reading other files, try again in a minute") from None
-    except Exception:
-        raise Invalid(UNREADABLE) from None
 
 
 async def parse(store: DocumentStore, user_id: int, doc_id: str) -> dict:

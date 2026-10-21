@@ -5,13 +5,13 @@ import pytest
 import sqlalchemy as sa
 from security_payloads import SQLI
 
-from jobfinder.config import get_settings
-from jobfinder.ingest import resolve
-from jobfinder.ingest.resolve import BadLink, clean_url, name_from_slug, resolve_link
-from jobfinder.ingest.resolve.rungs.url_pattern import UrlPatternRung
-from jobfinder.ingest.selection import select_boards
+from jobfinder.core.config import get_settings
 from jobfinder.models import Company, Job, JobLink, Task
-from jobfinder.scheduling import handlers
+from jobfinder.services import resolver
+from jobfinder.services.board_selection import select_boards
+from jobfinder.services.resolver import BadLink, clean_url, name_from_slug, resolve_link
+from jobfinder.services.resolver.rungs.url_pattern import UrlPatternRung
+from jobfinder.tasks import io
 from tests.fakes import serve
 
 GH = "https://boards.greenhouse.io/acme/jobs/123"
@@ -61,7 +61,7 @@ async def test_unknown_link_goes_through_the_ladder(authed, maker, monkeypatch, 
     r = await authed.post("/api/job-links", json={"url": "https://careers.example.com/jobs/42"})
     assert r.status_code == 202, r.text
     assert r.json()["status"] == "resolving" and r.json()["company"] is None
-    monkeypatch.setattr(resolve, "RUNGS", [UrlPatternRung()])  # only rung 1: nothing can read this site
+    monkeypatch.setattr(resolver, "RUNGS", [UrlPatternRung()])  # only rung 1: nothing can read this site
     async with maker() as db:
         [task] = await tasks(db, "resolve_job_link")
         out = await resolve_link(db, task.payload["link_id"], client=board_json(web, {}))
@@ -193,7 +193,7 @@ async def _link(db, url=GH, user_id=None):
 
 
 async def test_resolve_records_unreadable_board(maker, web, monkeypatch):
-    monkeypatch.setattr(resolve, "RUNGS", [UrlPatternRung()])  # the later rungs would fetch the page for real
+    monkeypatch.setattr(resolver, "RUNGS", [UrlPatternRung()])  # the later rungs would fetch the page for real
     async with maker() as db:
         link = await _link(db)
         async with board_json(web, {"error": "nope"}, status=404) as c:
@@ -208,7 +208,7 @@ async def test_resolve_never_leaves_link_stuck(maker, monkeypatch, web):
     async def boom(*a, **k):
         raise RuntimeError("kaboom")
 
-    monkeypatch.setattr(resolve, "add_board", boom)
+    monkeypatch.setattr(resolver, "add_board", boom)
     async with maker() as db:
         link = await _link(db)
         out = await resolve_link(db, link.id, client=board_json(web, GOOD))
@@ -226,8 +226,8 @@ async def test_handler_queues_matching_when_new_jobs(maker, monkeypatch):
     async def fake(db, link_id, **kw):
         return {"status": "resolved", "new": 3}
 
-    monkeypatch.setattr(resolve, "resolve_link", fake)
+    monkeypatch.setattr(resolver, "resolve_link", fake)
     async with maker() as db:
         task = Task(kind="resolve_job_link", payload={"link_id": 1})
-        assert (await handlers.resolve_job_link(db, None, task))["new"] == 3
+        assert (await io.resolve_job_link(db, None, task, io.ResolveLinkArgs(link_id=1)))["new"] == 3
         assert len(await tasks(db, "plan_work")) == 1
