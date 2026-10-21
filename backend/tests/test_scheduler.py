@@ -4,7 +4,7 @@ import pytest
 import sqlalchemy as sa
 
 from jobfinder import worker
-from jobfinder.config import get_settings
+from jobfinder.core.config import get_settings
 from jobfinder.models import AICall, Company, Job, PlannerState, Profile, Task, User
 from jobfinder.scheduling import planner, queue
 from jobfinder.scheduling.handlers import HANDLERS

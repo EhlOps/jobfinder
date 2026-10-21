@@ -50,10 +50,11 @@ async def run_task(task_id: int, renderer, session_factory) -> None:
 
 async def serve() -> None:
     from jobfinder.core.config import settings
-    from jobfinder.db import SessionLocal
+    from jobfinder.core.context import default_context
     from jobfinder.renderer.browser import Renderer
     from jobfinder.scheduling import queue
 
+    sessions = default_context().sessions
     concurrency = settings.renderer_concurrency
     renderer = Renderer()
     running: set[asyncio.Task] = set()
@@ -64,12 +65,12 @@ async def serve() -> None:
             claimed = None
             if len(running) < concurrency:
                 try:
-                    async with SessionLocal() as db:
+                    async with sessions() as db:
                         claimed = await queue.claim(db, kind_prefix=queue.RENDER_PREFIX)
                 except Exception:
                     log.exception("renderer claim failed")
             if claimed:
-                running.add(asyncio.create_task(run_task(claimed.id, renderer, SessionLocal)))
+                running.add(asyncio.create_task(run_task(claimed.id, renderer, sessions)))
                 continue
             await asyncio.sleep(settings.renderer_poll_seconds if len(running) < concurrency else 0.5)
     finally:

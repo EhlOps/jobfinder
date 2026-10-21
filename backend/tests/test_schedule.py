@@ -6,7 +6,7 @@ import httpx
 import pytest
 import sqlalchemy as sa
 
-from jobfinder.config import get_settings
+from jobfinder.core.config import get_settings
 from jobfinder.ingest import runner, schedule, service
 from jobfinder.ingest.base import JobPosting
 from jobfinder.ingest.sources import ATS_FETCHERS

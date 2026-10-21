@@ -5,7 +5,7 @@ import pytest
 import sqlalchemy as sa
 from security_payloads import SQLI
 
-from jobfinder.config import get_settings
+from jobfinder.core.config import get_settings
 from jobfinder.ingest import resolve
 from jobfinder.ingest.resolve import BadLink, clean_url, name_from_slug, resolve_link
 from jobfinder.ingest.resolve.rungs.url_pattern import UrlPatternRung

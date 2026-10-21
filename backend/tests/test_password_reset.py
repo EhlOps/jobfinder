@@ -5,7 +5,7 @@ import pytest
 import sqlalchemy as sa
 
 from jobfinder.auth.security import hash_session_token
-from jobfinder.config import Settings, get_settings
+from jobfinder.core.config import Settings, get_settings
 from jobfinder.core.db import database_url
 from jobfinder.models import Profile, Session, User
 from jobfinder.notify import tokens
