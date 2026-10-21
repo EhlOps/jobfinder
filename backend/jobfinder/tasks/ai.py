@@ -3,8 +3,7 @@ module (`python -m jobfinder.tasks ai`); it is the only worker image with the Cl
 
 Each handler is `(db, ai, task, payload) -> dict`, registered with @ledger_task: the runtime commits its
 result (and any follow-up `ledger.add`, which is published once that commit lands). The commits a
-handler makes itself are its own boundaries, kept from the poll-loop worker. scheduling.handlers adapts
-these same functions for that worker while TASKS_BACKEND=legacy.
+handler makes itself are its own boundaries.
 """
 from datetime import UTC, datetime, timedelta
 
@@ -185,7 +184,7 @@ async def induce_recipe(db: AsyncSession, ai: AITasks, task: Task, p: InduceReci
 @ledger_task(ai_broker, "reinduce_recipe", payload=ReinduceArgs)
 async def reinduce_recipe(db: AsyncSession, ai: AITasks, task: Task, p: ReinduceArgs) -> dict:
     """Self-heal a degraded recipe board (queued by ingest_company): ask Claude for a new recipe, at most
-    twice a week per domain (ingest.recipes.health)."""
+    twice a week per domain (integrations.recipes.health)."""
     from jobfinder.core.config import settings
     from jobfinder.services.resolver import llm_allowed
     from jobfinder.services.resolver.rungs.llm import reinduce_company

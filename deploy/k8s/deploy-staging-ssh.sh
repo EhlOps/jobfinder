@@ -42,7 +42,7 @@ exec 9>"$LOCK"
 flock -w 1200 9 || { echo "another staging deploy or restore is still running" >&2; exit 1; }
 
 # Only touches refs/remotes/origin/dev and the object store: the checkout's files and HEAD stay as they
-# are (the compose stack runs from this checkout).
+# are (someone may be working in this checkout).
 git -C "$REPO" fetch --quiet origin dev
 commit=$(git -C "$REPO" rev-parse --verify --quiet "${sha}^{commit}") \
   || { echo "refused: $sha is not a commit in $REPO after fetching dev" >&2; exit 1; }

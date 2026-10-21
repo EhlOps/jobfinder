@@ -6,7 +6,7 @@ import time
 import httpx
 import pytest
 
-from jobfinder.ingest import http_safety
+from jobfinder.integrations import http_safety
 from jobfinder.integrations.ats import greenhouse
 from jobfinder.integrations.recipes import html as html_recipe
 from jobfinder.integrations.recipes import json_api, parse_recipe, run_recipe

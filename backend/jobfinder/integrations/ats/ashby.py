@@ -3,7 +3,7 @@ from datetime import datetime
 
 import httpx
 
-from jobfinder.ingest.base import (
+from jobfinder.models.posting import (
     JobPosting,
     clip,
     infer_seniority,

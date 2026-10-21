@@ -9,8 +9,6 @@ PKG = Path(__file__).resolve().parents[1] / "jobfinder"
 CORE = sorted((PKG / "core").glob("*.py"))
 MAX_LINES = 150
 MAX_LINES_CONFIG = 160  # config.py's Settings is the one list of every key; it grows with them
-# Thin re-exports kept until #53 removes them.
-SHIMS = {PKG / "config.py", PKG / "db.py", PKG / "main.py"}
 
 
 def test_core_has_the_ten_files_and_the_rules():
@@ -39,9 +37,9 @@ def test_core_imports_nothing_from_the_app(path):
                 assert name.startswith("jobfinder.core"), f"{path.name} imports {name}"
 
 
-def test_only_core_and_the_shims_mention_get_settings():
+def test_only_core_mentions_get_settings():
     users = [
         str(p.relative_to(PKG)) for p in PKG.rglob("*.py")
-        if "get_settings" in p.read_text() and p not in SHIMS and PKG / "core" not in p.parents
+        if "get_settings" in p.read_text() and PKG / "core" not in p.parents
     ]
     assert users == [], "read settings via `from jobfinder.core.config import settings`"

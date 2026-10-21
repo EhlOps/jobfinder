@@ -4,7 +4,7 @@ import pytest
 from pydantic import BaseModel
 from stub_claude import StubClaude, envelope
 
-from jobfinder.ai.claude_code import AIError, CallRecord, ClaudeCode
+from jobfinder.integrations.claude.claude_code import AIError, CallRecord, ClaudeCode
 
 
 class Greeting(BaseModel):

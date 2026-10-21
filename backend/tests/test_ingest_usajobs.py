@@ -6,11 +6,11 @@ import httpx
 import pytest
 import sqlalchemy as sa
 
-from jobfinder.config import get_settings
-from jobfinder.ingest import runner, service
-from jobfinder.ingest.base import JobPosting
-from jobfinder.ingest.sources import usajobs
+from jobfinder.core.config import get_settings
+from jobfinder.integrations import usajobs
 from jobfinder.models import Job, Profile, User
+from jobfinder.models.posting import JobPosting
+from jobfinder.services import ingestion
 from tests.fakes import handle, serve
 
 FIX = json.loads((Path(__file__).parent / "fixtures" / "usajobs_search.json").read_text())
@@ -121,13 +121,13 @@ async def test_ingest_usajobs_upserts_and_expires(maker, monkeypatch, web):
     handle(web, lambda request: httpx.Response(200, json=state["payload"]))
     async with maker() as db:  # a stale job from an earlier run, never seen again
         old = JobPosting(source="usajobs", external_id="old", company_name="X", title="Old", url="https://x/o")
-        await service.upsert_postings(db, [old], None)
+        await ingestion.upsert_postings(db, [old], None)
         await db.execute(sa.update(Job).where(Job.external_id == "old").values(last_seen_at=datetime.now(UTC) - timedelta(days=30)))
         await db.commit()
 
-    st = await runner.ingest_usajobs(maker)
+    st = await ingestion.ingest_usajobs(maker)
     assert (st.fetched, st.new, st.updated, st.deactivated, st.error) == (2, 2, 0, 1, None)
-    st = await runner.ingest_usajobs(maker)
+    st = await ingestion.ingest_usajobs(maker)
     assert (st.new, st.updated, st.deactivated) == (0, 2, 0)
     async with maker() as db:
         active = set((await db.scalars(sa.select(Job.external_id).where(Job.is_active.is_(True), Job.source == "usajobs"))).all())
@@ -136,7 +136,7 @@ async def test_ingest_usajobs_upserts_and_expires(maker, monkeypatch, web):
         assert job.salary_min == 99172 and "citizenship" in job.description_text
 
     state["payload"] = {"SearchResult": {"SearchResultItems": []}}  # empty answer must not expire anything
-    st = await runner.ingest_usajobs(maker)
+    st = await ingestion.ingest_usajobs(maker)
     assert st.fetched == 0 and st.deactivated == 0 and st.error is None
 
 
@@ -146,8 +146,8 @@ async def test_run_ingest_skips_usajobs_without_key(maker, monkeypatch):
     async def boom(*a, **k):
         raise AssertionError("must not run")
 
-    monkeypatch.setattr(runner, "ingest_usajobs", boom)
-    out = await runner.run_ingest(maker, ats="usajobs", jobspy=False)
+    monkeypatch.setattr(ingestion, "ingest_usajobs", boom)
+    out = await ingestion.run_ingest(maker, ats="usajobs", jobspy=False)
     assert out["companies"] == 0
 
 

@@ -1,5 +1,5 @@
 """The render queue's handlers (#48): render_capture and render_list, run by the renderer container's
-taskiq worker (`python -m jobfinder.renderer` with TASKS_BACKEND=ledger).
+taskiq worker (`python -m jobfinder.renderer`).
 
 One Chromium serves the whole process: the shared `Renderer` is created on first use and closed on
 taskiq's WORKER_SHUTDOWN; each task still gets its own browser context. A refused or broken page raises,

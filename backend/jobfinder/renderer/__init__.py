@@ -1,8 +1,8 @@
 """Rung 4.5: the opt-in Playwright render worker (.plans/2026-10-13-adaptive-job-scraping).
 
-A separate container (backend/Dockerfile.renderer, compose profile "renderer") claims only `render_*` tasks
-from the shared queue; the main worker skips them. The api and worker never import Playwright: they enqueue a
-task with `request_render` and wait a bounded time for its result.
+A separate container (backend/Dockerfile.renderer) runs the render queue's worker, the only one that gets
+`render_*` tasks. The api and the other workers never import Playwright: they add a task with
+`request_render` and wait a bounded time for its result.
 
   render_capture {url}     -> {final_url, json_responses: [{url, method, status, content_type, body_preview,
                                truncated, size, request_body}], html}
@@ -16,6 +16,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy import update
 
+from jobfinder.core.context import default_context
 from jobfinder.models import Task
 from jobfinder.tasks import ledger
 
@@ -34,9 +35,7 @@ class RenderUnavailable(RenderError):
 
 
 def _sessions():
-    from jobfinder import db  # late: tests swap db.SessionLocal for the test database
-
-    return db.SessionLocal
+    return default_context().sessions  # read per call: tests swap it for the test database
 
 
 async def request_render(kind: str, payload: dict, *, timeout_s: float, session_factory=None) -> dict:

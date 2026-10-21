@@ -9,10 +9,9 @@ from jobfinder.core.db import Sessions, side_session
 from jobfinder.core.errors import BadGateway, Conflict, RateLimited
 from jobfinder.integrations.smtp import EmailError
 from jobfinder.models import User
-from jobfinder.notify import daily
 from jobfinder.repositories import users
 from jobfinder.schemas.settings import PreviewResult, SettingsBody
-from jobfinder.services import ratelimit
+from jobfinder.services import daily, ratelimit
 from jobfinder.tasks import ledger
 
 

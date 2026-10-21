@@ -16,18 +16,18 @@ from lxml import etree
 from lxml import html as lxml_html
 
 from jobfinder.core.http import FetchError
-from jobfinder.ingest.base import (
+from jobfinder.core.urls import safe_http_url
+from jobfinder.integrations.ats import SLUG_RE
+from jobfinder.integrations.http_safety import TEXT_TYPES, assert_public_host, safe_fetch
+from jobfinder.integrations.robots import PoliteFetcher
+from jobfinder.models.posting import (
     JobPosting,
     clip,
     html_to_text,
     infer_seniority,
     infer_workplace,
     parse_salary_range,
-    safe_http_url,
 )
-from jobfinder.ingest.http_safety import TEXT_TYPES, assert_public_host, safe_fetch
-from jobfinder.integrations.ats import SLUG_RE
-from jobfinder.integrations.robots import PoliteFetcher
 
 SEARCH_URL = "{base}/search/?q=&sortColumn=referencedate&sortDirection=desc&startrow={start}"
 MAX_PAGES = 40  # 25 rows a page -> 1,000 newest postings (EY lists ~8,800)

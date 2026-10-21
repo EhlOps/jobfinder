@@ -37,8 +37,9 @@ for t in ${DEPLOY_CANDIDATE_TAGS:-}; do
   [[ $t =~ ^sha-[0-9a-f]{7,40}$ ]] && candidates+=("$t")
 done
 REGISTRY=ghcr.io/ehlops
-# image name -> the Deployment that runs it (the api image also runs the migrate Job)
-declare -A WORKLOAD=([api]=api [worker]=worker [renderer]=renderer [web]=web)
+# image name -> a Deployment that runs it (the api image also runs the scheduler and the migrate Job;
+# the worker image runs worker-ai and worker-io)
+declare -A WORKLOAD=([api]=api [worker]=worker-ai [renderer]=renderer [web]=web)
 JOB_TIMEOUT=${JOB_TIMEOUT:-900}          # seconds; the Job's activeDeadlineSeconds is 900 too
 ROLLOUT_TIMEOUT=${ROLLOUT_TIMEOUT:-600s}
 

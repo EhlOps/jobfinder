@@ -5,9 +5,9 @@ from typing import Annotated
 import typer
 
 from jobfinder.cli._common import fail, run, transaction
-from jobfinder.ingest.validate import ORIGINS, add_board
 from jobfinder.integrations.ats.registry import ATS_FETCHERS
 from jobfinder.services import boards
+from jobfinder.services.board_validation import ORIGINS, add_board
 from jobfinder.services.ingestion import VALID_SIZES
 
 

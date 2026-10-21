@@ -18,8 +18,8 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import ListFlowable, ListItem, Paragraph, SimpleDocTemplate, Spacer
 
-from jobfinder.letters.docx_export import clean_text as _clean
-from jobfinder.letters.docx_export import new_document, to_bytes
+from jobfinder.integrations.docx_export import clean_text as _clean
+from jobfinder.integrations.docx_export import new_document, to_bytes
 
 # The built-in Helvetica is Latin-1 only, so names like "Łukasz" or Cyrillic/Greek text would render
 # as blanks. DejaVu Sans (bundled, see fonts/LICENSE-DejaVu.txt) covers Latin Extended, Vietnamese,

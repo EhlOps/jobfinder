@@ -25,17 +25,13 @@
 #   kubectl -n <ns> annotate scaledobject worker-io autoscaling.keda.sh/paused-replicas=0 --overwrite
 #   kubectl -n <ns> annotate scaledobject worker-io autoscaling.keda.sh/paused-replicas-     # resume
 # A pause also marked jobfinder.io/paused-by (the scripts' keda_pause, deploy/k8s/pg-lib.sh) is lifted by
-# the next deploy.sh; an unmarked one survives deploys. The base keeps it paused at 0 as long as
-# TASKS_BACKEND is legacy (the stream carries no work then); an overlay on the ledger removes the
-# annotation (overlays/staging; docs/k3s.md, "KEDA").
+# the next deploy.sh; an unmarked one survives deploys (docs/k3s.md, "KEDA").
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
   name: worker-io
   labels:
     jobfinder.io/rollout: app   # deploy.sh phase 2, after the migrations
-  annotations:
-    autoscaling.keda.sh/paused-replicas: "0"
 spec:
   scaleTargetRef:
     name: worker-io
