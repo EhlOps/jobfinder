@@ -6,9 +6,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import httpx
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
 
+from jobfinder.core.db import AsyncSession, IntegrityError
 from jobfinder.integrations.ats import SLUG_RE
 from jobfinder.integrations.ats.registry import ATS_FETCHERS, PROBE_FETCHERS
 from jobfinder.models import Company

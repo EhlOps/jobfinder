@@ -11,14 +11,14 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-import sqlalchemy as sa
 from jinja2 import Environment, FileSystemLoader, select_autoescape
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from jobfinder.core.config import settings
+from jobfinder.core.db import AsyncSession
 from jobfinder.core.urls import safe_http_url
 from jobfinder.integrations import smtp as mail
 from jobfinder.models import ClarifyingQuestion, Job, JobMatch, Profile, User
+from jobfinder.repositories import digest as repo
 from jobfinder.repositories.questions import OPEN
 from jobfinder.services.tokens import make_token
 
@@ -87,26 +87,13 @@ async def build_content(db: AsyncSession, user: User, *, preview: bool = False) 
     jobs: dict[int, Job] = {}
     more = 0
     if user.digest_enabled or preview:
-        q = (
-            sa.select(JobMatch, Job)
-            .join(Job, Job.id == JobMatch.job_id)
-            .where(
-                JobMatch.user_id == user.id, JobMatch.status == "new", Job.is_active.is_(True),
-                JobMatch.llm_score >= (50 if preview else s.digest_min_score),
-            )
-            .order_by(JobMatch.llm_score.desc(), JobMatch.id.desc())
-        )
-        if not preview:
-            q = q.where(JobMatch.digested_at.is_(None))
-        rows = (await db.execute(q)).all()
+        rows = await repo.new_matches(db, user.id, 50 if preview else s.digest_min_score, undigested_only=not preview)
         top = rows[: s.digest_max_matches]
         more = max(0, len(rows) - len(top))
         matches, jobs = [m for m, _ in top], {m.id: j for m, j in top}
     questions: list[ClarifyingQuestion] = []
     if user.question_emails_enabled or preview:
-        qq = sa.select(ClarifyingQuestion).where(ClarifyingQuestion.user_id == user.id)
-        qq = qq.where(ClarifyingQuestion.status.in_(OPEN if preview else ("pending",)))
-        questions = list((await db.scalars(qq.order_by(ClarifyingQuestion.id).limit(s.questions_per_email))).all())
+        questions = await repo.questions(db, user.id, OPEN if preview else ("pending",), s.questions_per_email)
     return Content(matches, jobs, more, questions)
 
 
@@ -158,20 +145,13 @@ async def _claim(db: AsyncSession, user: User, content: Content, now: datetime) 
     send it twice (at-most-once: a crash between claim and send loses that day's email rather than repeating it).
     The user row is a compare-and-set on last_digest_at, so only one runner wins."""
     prev = user.last_digest_at
-    won = await db.execute(
-        sa.update(User).where(User.id == user.id, User.last_digest_at.is_(None) if prev is None else User.last_digest_at == prev)
-        .values(last_digest_at=now)
-    )
-    if not won.rowcount:
+    if not await repo.claim_user(db, user.id, prev, now):
         await db.rollback()
         return False
     if content.matches:
-        await db.execute(sa.update(JobMatch).where(JobMatch.id.in_([m.id for m in content.matches])).values(digested_at=now))
+        await repo.mark_digested(db, [m.id for m in content.matches], now)
     if content.questions:
-        await db.execute(
-            sa.update(ClarifyingQuestion).where(ClarifyingQuestion.id.in_([q.id for q in content.questions]))
-            .values(status="emailed", emailed_at=now)
-        )
+        await repo.mark_questions(db, [q.id for q in content.questions], "emailed", now)
     await db.commit()
     return True
 
@@ -180,13 +160,10 @@ async def _release(db: AsyncSession, user_id: int, content: Content, prev: datet
     """The send failed: give the matches/questions back so the next tick tries again."""
     await db.rollback()
     if content.matches:
-        await db.execute(sa.update(JobMatch).where(JobMatch.id.in_([m.id for m in content.matches])).values(digested_at=None))
+        await repo.mark_digested(db, [m.id for m in content.matches], None)
     if content.questions:
-        await db.execute(
-            sa.update(ClarifyingQuestion).where(ClarifyingQuestion.id.in_([q.id for q in content.questions]))
-            .values(status="pending", emailed_at=None)
-        )
-    await db.execute(sa.update(User).where(User.id == user_id).values(last_digest_at=prev))
+        await repo.mark_questions(db, [q.id for q in content.questions], "pending", None)
+    await repo.set_last_digest(db, user_id, prev)
     await db.commit()
 
 
@@ -217,24 +194,11 @@ async def send_daily(db: AsyncSession, user: User, *, now: datetime | None = Non
     return {"matches": len(content.matches), "questions": len(content.questions), "subject": subject}
 
 
-async def _email_users(db: AsyncSession, *where) -> list[User]:
-    """Active users with a chosen hour, narrowed by `where`."""
-    return list((await db.scalars(sa.select(User).where(
-        User.password_hash.is_not(None), User.digest_hour.is_not(None), *where,
-    ))).all())
-
-
 async def due_users(db: AsyncSession, now: datetime) -> list[User]:
-    users = await _email_users(db, sa.or_(User.digest_enabled.is_(True), User.question_emails_enabled.is_(True)))
-    return [u for u in users if is_due(u, now)]
+    return [u for u in await repo.email_users(db) if is_due(u, now)]
 
 
 async def question_users(db: AsyncSession, now: datetime) -> list[tuple[User, datetime]]:
     """Users with question emails on, matches still to review and a digest coming up, each with that
     digest's time (questions_due)."""
-    unreviewed = sa.exists().where(
-        JobMatch.user_id == User.id, JobMatch.questions_collected.is_(False),
-        JobMatch.status.in_(("new", "saved")), JobMatch.job_id == Job.id, Job.is_active.is_(True),
-    )
-    users = await _email_users(db, User.question_emails_enabled.is_(True), unreviewed)
-    return [(u, at) for u in users if (at := questions_due(u, now))]
+    return [(u, at) for u in await repo.question_email_users(db) if (at := questions_due(u, now))]

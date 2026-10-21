@@ -59,3 +59,8 @@ async def cadence_by_tier(db: AsyncSession, now: datetime) -> list[tuple[int | N
         .group_by(Company.coveted_tier).order_by(Company.coveted_tier.nulls_last())
     )).all()
     return [(t, n, d) for t, n, d in rows]
+
+
+async def board_keys(db: AsyncSession) -> list[tuple[str, str]]:
+    """(ats, slug) of every board, enabled or not."""
+    return [(a, s) for a, s in (await db.execute(sa.select(Company.ats, Company.slug))).all()]

@@ -7,13 +7,12 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
 import httpx
-import sqlalchemy as sa
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from jobfinder.core.config import settings
+from jobfinder.core.db import AsyncSession
 from jobfinder.integrations.directories import Source, all_sources, name_from_slug
 from jobfinder.integrations.robots import PoliteFetcher, RobotsDisallowed, make_client
-from jobfinder.models import Company
+from jobfinder.repositories import companies
 from jobfinder.services.board_validation import ValidationResult, add_board, validate_board
 
 log = logging.getLogger("jobfinder.discovery")
@@ -128,8 +127,7 @@ async def discover_boards(
                 if src.curated:
                     result.listed.add(f"{ats}/{slug.lower()}")
         result.candidates = len(found)
-        rows = (await session.execute(sa.select(Company.ats, Company.slug))).all()
-        known = {(a, s.lower()) for a, s in rows}
+        known = {(a, s.lower()) for a, s in await companies.board_keys(session)}
         fresh = [b for k, b in found.items() if k not in known]
         result.already_known = len(found) - len(fresh)
         if len(fresh) > cap:
