@@ -1,0 +1,10 @@
+# The dev cluster's dependencies (#53): Postgres and valkey in k3d, applied by `uv run jobfinder dev up`.
+# Plain credentials (jobfinder/jobfinder/jobfinder), no NetworkPolicy, no sealed secrets: this is a
+# throwaway local cluster, never a deploy target. The images match deploy/k8s/base.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: jobfinder-dev
+resources:
+  - namespace.yaml
+  - postgres.yaml
+  - valkey.yaml

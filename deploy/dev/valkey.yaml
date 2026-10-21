@@ -1,0 +1,67 @@
+# Valkey for dev (#53), with the same append-only, no-eviction settings as deploy/k8s/base.
+# NodePort 30379 is mapped to 127.0.0.1:${DEV_VALKEY_PORT:-6380} on the host by `k3d cluster create -p`.
+apiVersion: v1
+kind: Service
+metadata:
+  name: valkey
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: valkey
+  ports:
+    - name: valkey
+      port: 6379
+      targetPort: valkey
+      nodePort: 30379
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: valkey
+spec:
+  serviceName: valkey
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: valkey
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: valkey
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: valkey
+          image: valkey/valkey:8.1.10
+          args:
+            - valkey-server
+            - --dir
+            - /data
+            - --appendonly
+            - "yes"
+            - --appendfsync
+            - everysec
+            # Queues must not be evicted: fail writes instead of dropping keys when full.
+            - --maxmemory
+            - 256mb
+            - --maxmemory-policy
+            - noeviction
+          ports:
+            - name: valkey
+              containerPort: 6379
+          readinessProbe:
+            exec:
+              command: ["valkey-cli", "ping"]
+            periodSeconds: 2
+          volumeMounts:
+            - name: data
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 1Gi

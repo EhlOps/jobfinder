@@ -1,0 +1,67 @@
+# Postgres for dev (#53). The jobfinder role is the superuser, so the tests' admin URL
+# (postgresql+asyncpg://jobfinder:jobfinder@localhost:<DEV_PG_PORT>/postgres) can create their databases.
+# NodePort 30432 is mapped to 127.0.0.1:${DEV_PG_PORT:-5433} on the host by `k3d cluster create -p`.
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+      nodePort: 30432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: postgres
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: postgres
+          image: postgres:16.15
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: jobfinder
+            - name: POSTGRES_PASSWORD
+              value: jobfinder
+            - name: POSTGRES_DB
+              value: jobfinder
+            # A subdirectory, so initdb never trips over the volume root.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-h", "127.0.0.1", "-U", "jobfinder", "-d", "jobfinder"]
+            periodSeconds: 2
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+  # k3d's local-path storage lives in the node container: kept across `up`, gone with `down`.
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 5Gi

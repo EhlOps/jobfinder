@@ -7,7 +7,7 @@ stderr), 2 for a usage error. `python -m jobfinder.cli` runs the same app.
 """
 import typer
 
-from jobfinder.cli import boards, ops, users
+from jobfinder.cli import boards, dev, ops, users
 
 app = typer.Typer(
     name="jobfinder",
@@ -23,4 +23,5 @@ app.add_typer(ops.questions_app, name="questions")
 app.add_typer(ops.email, name="email")
 app.add_typer(ops.ai, name="ai")
 app.add_typer(ops.tasks, name="tasks")
+app.add_typer(dev.app, name="dev")
 
