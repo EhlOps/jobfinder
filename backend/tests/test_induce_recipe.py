@@ -156,3 +156,32 @@ def test_hints_drop_nul_characters_jsonb_cannot_store():
 
     assert _no_nul({"samples": [("u", "a\x00b")], "single_job": {"title": "x\x00"}, "n": 1}) == \
         {"samples": [["u", "ab"]], "single_job": {"title": "x"}, "n": 1}
+
+
+
+@pytest.mark.parametrize("kind,payload,patch,out", [
+    ("resolve_job_link", {"link_id": 1}, "jobfinder.services.resolver.resolve_link", {"new": 2}),
+    ("audit_coverage", {}, "jobfinder.services.coverage.audit_coverage", {"resolved": 1}),
+    ("induce_recipe", {"link_id": 1}, "jobfinder.services.resolver.induce_link", {"new": 2}),
+])
+async def test_new_jobs_are_planned_even_while_a_plan_runs(maker, monkeypatch, kind, payload, patch, out):
+    """A plan_work running on older jobs must not absorb the follow-up (rerun, not dedupe)."""
+    from jobfinder.tasks import ledger
+
+    async def done(*a, **kw):
+        return dict(out)
+
+    async def allowed(db):
+        return True
+
+    monkeypatch.setattr(patch, done)
+    monkeypatch.setattr("jobfinder.services.resolver.llm_allowed", allowed)
+    async with maker() as db:
+        running = await ledger.add(db, "plan_work", rerun=True)
+        await ledger.claim(db, running.id)
+        task = await ledger.add(db, kind, payload)
+        await db.commit()
+    await _deliver(kind, task.id, ai=AITasks(RaisingClaude()))
+    [task] = [t for t in await _rows(maker, kind) if t.id == task.id]
+    assert task.status == "done", task.error
+    assert sorted(t.status for t in await _rows(maker, "plan_work")) == ["queued", "running"]

@@ -156,7 +156,7 @@ async def resolve_job_link(db: AsyncSession, ai, task: Task, p: ResolveLinkArgs)
         out["queued"] = "induce_recipe"
     await db.commit()  # the boundary: the link's outcome, the board and jobs it found, or its induce_recipe
     if out.get("new"):
-        await ledger.add(db, "plan_work", dedupe=True)
+        await _plan(db)
     return out
 
 
@@ -172,5 +172,5 @@ async def audit_coverage(db: AsyncSession, ai, task: Task, p: AuditCoverageArgs)
     )
     await db.commit()
     if out.get("resolved"):
-        await ledger.add(db, "plan_work", dedupe=True)
+        await _plan(db)
     return out
