@@ -145,7 +145,7 @@ async def test_an_unreadable_file_uploaded_again_is_read_again(authed, maker, mo
 
 # ── unchanged behaviour ────────────────────────────────────────────────
 async def test_list_hides_tailored_resumes(authed, maker):
-    from jobfinder.resumes.service import match_tags
+    from jobfinder.services.resumes import match_tags
     from jobfinder.storage.documents import get_store
 
     up = await upload(authed, maker, "a.txt", b"aaa")

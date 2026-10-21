@@ -38,9 +38,9 @@ os.environ["SECRET_KEY"] = "test-secret-key-0123456789-abcdefghijklmnop"
 # An https value in backend/.env would make the session cookie Secure, which the http test client drops.
 os.environ["PUBLIC_BASE_URL"] = "http://test"
 
-from jobfinder import db as dbmod
 from jobfinder.api.app import create_app
 from jobfinder.context import build_context, default_context
+from jobfinder.core import context as core_context
 from jobfinder.core.config import get_settings
 from jobfinder.core.db import Base
 from jobfinder.storage.documents import DocumentStore
@@ -89,7 +89,7 @@ async def _create_databases():
             if not exists:
                 await conn.execute(sa.text(f'create database "{name}"'))
     await admin.dispose()
-    # Both, up front: the app's own db.SessionLocal points at the rc database, so a plain test that
+    # Both, up front: the process context's sessions point at the rc database, so a plain test that
     # reaches it before any real_commit test has run on this worker still finds a current schema.
     await _reset_schema(TEST_URL)
     await _reset_schema(RC_URL)
@@ -154,13 +154,15 @@ def _guard_savepoint_stack(sync_engine, violations):
 
 
 def _route_app_sessions(monkeypatch, m):
-    # App code outside a request (worker, CLI, renderer, scheduler) opens db.SessionLocal itself.
-    monkeypatch.setattr(dbmod, "SessionLocal", m)
+    # App code outside a request (task runtime, CLI, renderer, scheduler) opens the process context's
+    # sessions itself (#53); both contexts, so jobfinder.context's copy agrees.
+    monkeypatch.setattr(core_context.default_context(), "sessions", m)
+    monkeypatch.setattr(default_context(), "sessions", m)
 
 
 @pytest_asyncio.fixture
 async def maker(request, monkeypatch, _test_databases):
-    """The one session factory for a test, its HTTP client and the app's own SessionLocal.
+    """The one session factory for a test, its HTTP client and the process context's sessions.
 
     Every session joins a single outer transaction on one connection, so the app's commit() only
     releases a SAVEPOINT and the whole test is rolled back at the end. Sessions that run
@@ -284,7 +286,7 @@ def sent_mail(monkeypatch):
     async def fake(to, subject, text, html=None, headers=None):
         sent.append((to, subject, text))
 
-    monkeypatch.setattr("jobfinder.notify.email.send_email", fake)
+    monkeypatch.setattr("jobfinder.integrations.smtp.send_email", fake)
     return sent
 
 

@@ -4,7 +4,7 @@ import pytest
 import sqlalchemy as sa
 
 from jobfinder import worker
-from jobfinder.config import get_settings
+from jobfinder.core.config import get_settings
 from jobfinder.models import AICall, Company, Job, PlannerState, Profile, Task, User
 from jobfinder.scheduling import planner, queue
 from jobfinder.scheduling.handlers import HANDLERS
@@ -208,12 +208,12 @@ async def test_pending_and_unfinished_users_are_never_planned(maker):
 
 
 async def test_ingest_queues_one_planner_run_instead_of_one_per_user(maker, monkeypatch):
-    from jobfinder.ingest import runner
+    from jobfinder.services import ingestion
 
     async def fake_ingest(_):
         return {"new": 2}
 
-    monkeypatch.setattr(runner, "run_ingest", fake_ingest)
+    monkeypatch.setattr(ingestion, "run_ingest", fake_ingest)
     async with maker() as db:
         for i in range(3):
             await make_user(db, f"u{i}@x.com")
@@ -224,12 +224,12 @@ async def test_ingest_queues_one_planner_run_instead_of_one_per_user(maker, monk
 
 
 async def test_adaptive_tick_that_changed_nothing_does_not_queue_the_planner(maker, monkeypatch):
-    from jobfinder.ingest import runner
+    from jobfinder.services import ingestion
 
     async def fake_ingest(_):
         return {"new": 0, "deactivated": 0}
 
-    monkeypatch.setattr(runner, "run_ingest", fake_ingest)
+    monkeypatch.setattr(ingestion, "run_ingest", fake_ingest)
     monkeypatch.setattr(get_settings(), "adaptive_schedule_enabled", True)
     async with maker() as db:
         task = await queue.enqueue(db, "ingest_jobs")

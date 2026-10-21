@@ -4,14 +4,14 @@ from datetime import UTC, datetime, timedelta
 
 import httpx
 
-from jobfinder.ingest.base import (
+from jobfinder.core.urls import safe_http_url
+from jobfinder.models.posting import (
     JobPosting,
     clip,
     html_to_text,
     infer_seniority,
     infer_workplace,
     parse_salary_range,
-    safe_http_url,
 )
 
 # Slug format: "{tenant}.{wdN}.{site}", e.g. "boeing.wd1.EXTERNAL_CAREERS".

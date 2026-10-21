@@ -4,7 +4,6 @@ from functools import partial
 
 import httpx
 
-from jobfinder.ingest.base import JobPosting
 from jobfinder.integrations.ats.ashby import fetch_ashby
 from jobfinder.integrations.ats.bamboohr import fetch_bamboohr
 from jobfinder.integrations.ats.eightfold import fetch_eightfold
@@ -19,6 +18,7 @@ from jobfinder.integrations.ats.successfactors import fetch_successfactors
 from jobfinder.integrations.ats.taleo import fetch_taleo
 from jobfinder.integrations.ats.workable import fetch_workable
 from jobfinder.integrations.ats.workday import fetch_workday
+from jobfinder.models.posting import JobPosting
 
 Fetcher = Callable[[httpx.AsyncClient, str, str], Awaitable[list[JobPosting]]]
 

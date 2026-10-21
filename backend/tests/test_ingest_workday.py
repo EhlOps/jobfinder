@@ -7,14 +7,14 @@ from pathlib import Path
 import httpx
 import pytest
 
-from jobfinder.ingest.discovery import board_from_url
-from jobfinder.ingest.sources import ATS_FETCHERS, PROBE_FETCHERS
-from jobfinder.ingest.sources.workday import (
+from jobfinder.integrations.ats.registry import ATS_FETCHERS, PROBE_FETCHERS
+from jobfinder.integrations.ats.workday import (
     fetch_workday,
     parse_posted_on,
     parse_slug,
     parse_workday,
 )
+from jobfinder.integrations.directories import board_from_url
 from tests.fakes import handle
 
 FIX = Path(__file__).parent / "fixtures"
@@ -180,7 +180,7 @@ def test_429_is_retried_with_retry_after(web, monkeypatch):
     async def fake_sleep(s):
         waits.append(s)
 
-    monkeypatch.setattr("jobfinder.ingest.sources.workday.asyncio.sleep", fake_sleep)
+    monkeypatch.setattr("jobfinder.integrations.ats.workday.asyncio.sleep", fake_sleep)
     inner = _handler()
     calls = {"n": 0}
 
@@ -199,7 +199,7 @@ def test_persistent_429_raises(web, monkeypatch):
     async def fake_sleep(s):
         pass
 
-    monkeypatch.setattr("jobfinder.ingest.sources.workday.asyncio.sleep", fake_sleep)
+    monkeypatch.setattr("jobfinder.integrations.ats.workday.asyncio.sleep", fake_sleep)
     with pytest.raises(httpx.HTTPStatusError):
         _run(web, lambda c: fetch_workday(c, SLUG, "Acme", list_only=True), lambda req: httpx.Response(429))
 

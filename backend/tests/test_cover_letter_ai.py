@@ -1,7 +1,7 @@
 import pytest
 
-from jobfinder.ai.claude_code import AIError
-from jobfinder.ai.tasks import TONES, AITasks, clean_letter
+from jobfinder.integrations.claude.claude_code import AIError
+from jobfinder.integrations.claude.tasks import TONES, AITasks, clean_letter
 from tests.fakes import FakeClaude
 
 GOOD = (

@@ -1,12 +1,13 @@
-"""Common job-posting shape and the text/field normalisation every source shares."""
+"""Common job-posting shape and the text/field normalisation every source shares.
+
+A plain dataclass, not a table: integrations produce it and repositories/postings.py stores it, so it
+lives below both (#53). It imports nothing from jobfinder.
+"""
 import hashlib
 import re
 from dataclasses import dataclass
 from datetime import datetime
 from html.parser import HTMLParser
-
-# safe_http_url moved to core (the API schemas use it too); re-exported for ingest code that imports it from here
-from jobfinder.core.urls import safe_http_url  # noqa: F401
 
 MAX_DESCRIPTION_CHARS = 20_000
 

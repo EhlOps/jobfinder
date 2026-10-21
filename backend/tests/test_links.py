@@ -1,7 +1,8 @@
 import pytest
 
+from jobfinder.integrations import github
 from jobfinder.models import Task
-from jobfinder.profile import github, web_page
+from jobfinder.profile import web_page
 
 
 def test_parse_github_username():

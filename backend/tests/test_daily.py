@@ -5,12 +5,12 @@ import pytest
 import sqlalchemy as sa
 from factories import make_match, make_question, make_user, unknown
 
-from jobfinder.config import get_settings
+from jobfinder.core.config import get_settings
+from jobfinder.integrations import smtp as mail
+from jobfinder.integrations.smtp import EmailError
 from jobfinder.models import ClarifyingQuestion, JobMatch, Task, User
-from jobfinder.notify import daily
-from jobfinder.notify import email as mail
-from jobfinder.notify.email import EmailError
-from jobfinder.notify.tokens import read_token
+from jobfinder.services import daily
+from jobfinder.services.tokens import read_token
 from jobfinder.tasks import ledger
 from jobfinder.worker import run_task
 from tests.fakes import FakeQuestionsAI

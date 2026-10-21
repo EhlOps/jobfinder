@@ -7,22 +7,22 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import httpx
 
-from jobfinder.ingest.base import (
-    JobPosting,
-    clip,
-    html_to_text,
-    infer_seniority,
-    infer_workplace,
-    parse_salary_range,
-    safe_http_url,
-)
-from jobfinder.ingest.http_safety import JSON_TYPES, SafeResponse, safe_fetch
+from jobfinder.core.urls import safe_http_url
+from jobfinder.integrations.http_safety import JSON_TYPES, SafeResponse, safe_fetch
 from jobfinder.integrations.recipes import (
     MAX_ITEMS,
     RECIPE_RUNNERS,
     Recipe,
     RecipeError,
     fill_template,
+)
+from jobfinder.models.posting import (
+    JobPosting,
+    clip,
+    html_to_text,
+    infer_seniority,
+    infer_workplace,
+    parse_salary_range,
 )
 
 _TOKEN = re.compile(r"\.([A-Za-z0-9_\-$@]+)|\[(\d+|\*)\]|\[\"([^\"]+)\"\]|\['([^']+)'\]")

@@ -5,9 +5,9 @@ from pathlib import Path
 import httpx
 import pytest
 
-from jobfinder.ingest.sources import ATS_FETCHERS
-from jobfinder.ingest.sources.bamboohr import fetch_bamboohr, parse_bamboohr
-from jobfinder.ingest.sources.recruitee import fetch_recruitee, parse_recruitee
+from jobfinder.integrations.ats.bamboohr import fetch_bamboohr, parse_bamboohr
+from jobfinder.integrations.ats.recruitee import fetch_recruitee, parse_recruitee
+from jobfinder.integrations.ats.registry import ATS_FETCHERS
 from tests.fakes import handle, serve
 
 FIX = Path(__file__).parent / "fixtures"

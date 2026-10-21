@@ -1,7 +1,6 @@
 """Board validation: a live fetch must succeed and return at least one posting before a board is added.
 
-Stays in ingest/ (not services/) because board discovery, an integration, adds boards through it; it never
-commits: the caller (discover_boards task, `cli add-board`, the resolver) does.
+Never commits: the caller (the discover_boards task, `cli boards add`, the resolver) does.
 """
 from dataclasses import dataclass
 from datetime import UTC, datetime

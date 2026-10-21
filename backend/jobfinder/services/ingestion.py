@@ -1,8 +1,10 @@
-"""Ingestion: fetch boards, upsert into the `jobs` cache, expire jobs that disappeared.
+"""Ingestion: fetch boards, upsert into the `jobs` cache, expire jobs that disappeared, and the top-level
+run the CLI and the task handlers share.
 
-Nothing here commits except `ingest_board`, which opens one session per board and is the boundary for
-each, so one board failing never loses another's run. Everything else runs in the caller's session and
-the caller commits (the task handler, the CLI, ingest.runner).
+Ingestion's commits all live in this file (#53): `ingest_board` opens one session per board and is
+the boundary for each, so one board failing never loses another's run; the jobspy and usajobs runs and the
+extra-source cadence (`_extra_due`) commit their own sessions too. Everything else runs in the caller's
+session and the caller commits (the task handler, the CLI).
 """
 from __future__ import annotations
 
@@ -19,15 +21,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from jobfinder.core.config import settings
 from jobfinder.core.http import USER_AGENT
-from jobfinder.ingest import schedule
-from jobfinder.ingest.base import JobPosting
-from jobfinder.ingest.selection import Target, select_boards
+from jobfinder.integrations import jobspy as jobspy_source
+from jobfinder.integrations import usajobs
 from jobfinder.integrations.ats.registry import ATS_FETCHERS, Fetcher
 from jobfinder.integrations.recipes import RecipeUnavailable, run_recipe
 from jobfinder.integrations.recipes.health import needs_reinduce, record_run
 from jobfinder.models import Company
+from jobfinder.models.posting import JobPosting
 from jobfinder.repositories import boards as boards_repo
 from jobfinder.repositories import postings as postings_repo
+from jobfinder.services import ingest_schedule as schedule
+from jobfinder.services import ratelimit
+from jobfinder.services.board_selection import Target, select_boards
 from jobfinder.tasks import ledger
 
 log = logging.getLogger("jobfinder.ingest")
@@ -108,7 +113,7 @@ def _record_failure(company: Company, error: str) -> bool:
 
 
 async def _schedule_next(db: AsyncSession, company: Company, *, failed: bool = False) -> None:
-    """Set the board's adaptive interval and next slot (ingest.schedule); no-op when that's off."""
+    """Set the board's adaptive interval and next slot (services.ingest_schedule); no-op when that's off."""
     s = settings
     if not s.adaptive_schedule_enabled:
         return
@@ -307,3 +312,120 @@ async def ingest_boards(
                 r = IngestStats(source="?", company=f"board {company_id}", error=_describe(r) if isinstance(r, Exception) else type(r).__name__)
             out.append(r)
         return out
+
+
+# ---------------------------------------------------------------- the run (was ingest/runner.py, #53)
+
+
+async def ingest_jobspy(session_factory: SessionFactory) -> IngestStats:
+    stats = IngestStats(source=jobspy_source.SOURCE, company="(linkedin/indeed)")
+    try:
+        async with session_factory() as db:
+            queries = await jobspy_source.build_queries(db)
+            if not queries:
+                stats.error = "no target roles in any profile yet"
+                return stats
+            postings = await jobspy_source.fetch_jobspy(queries)
+            stats.fetched = len(postings)
+            if postings:
+                stats.new, stats.updated = await upsert_postings(db, postings, None)
+                await db.commit()  # kept even if the expiry below fails
+            stats.deactivated = await expire_stale(db, jobspy_source.SOURCE, JOBSPY_EXPIRE_AFTER)
+            await db.commit()
+    except Exception as e:
+        log.exception("jobspy ingest failed")
+        stats.error = f"{type(e).__name__}: {e}"[:300]
+    return stats
+
+
+async def ingest_usajobs(session_factory: SessionFactory) -> IngestStats:
+    stats = IngestStats(source=usajobs.SOURCE, company="(usajobs.gov)")
+    try:
+        async with session_factory() as db:
+            locations = await usajobs.build_locations(db)
+        async with httpx.AsyncClient(timeout=60) as client:  # no DB session held while crawling
+            postings = await usajobs.fetch_usajobs(client, locations)
+        stats.fetched = len(postings)
+        async with session_factory() as db:
+            if postings:
+                stats.new, stats.updated = await upsert_postings(db, postings, None)
+                await db.commit()  # kept even if the expiry below fails
+                # only a successful non-empty fetch may expire jobs, so an API outage never wipes them
+                stats.deactivated = await expire_stale(db, usajobs.SOURCE, USAJOBS_EXPIRE_AFTER)
+                await db.commit()
+    except Exception as e:
+        log.exception("usajobs ingest failed")
+        stats.error = f"{type(e).__name__}: {e}"[:300]
+    return stats
+
+
+EXTRA_KIND = "ingest_extra"  # rate_events kind: when jobspy/usajobs last ran
+
+
+async def _extra_due(session_factory: SessionFactory, source: str, *, record: bool = True) -> bool:
+    """On the adaptive schedule the run fires every few minutes, but jobspy and usajobs keep their
+    own `ingest_interval_hours` cadence: run only if the last run is older than that, and record
+    this one (unless `record` is off: the ingest_source task records its own run, #50). (rate_events
+    are pruned after a day, so intervals over 24h behave as 24h.)"""
+    async with session_factory() as db:
+        last = await ratelimit.last_at(db, EXTRA_KIND, source)
+        if last and last > datetime.now(UTC) - timedelta(hours=settings.ingest_interval_hours):
+            return False
+        if record:
+            await ratelimit.hit(db, EXTRA_KIND, source)
+            await db.commit()
+    return True
+
+
+async def due_extras(
+    session_factory: SessionFactory, *, ats: str | None = None, slug: str | None = None, jobspy: bool | None = None,
+    all_boards: bool = False, record: bool = True,
+) -> list[str]:
+    """Which of jobspy/usajobs this run fetches. An explicit request (CLI, --jobspy, ats=...) always
+    runs; the scheduled run is gated by their own cadence (_extra_due, which records the run)."""
+    gated = settings.adaptive_schedule_enabled and ats is None and not all_boards
+    use_jobspy = settings.enable_jobspy if jobspy is None else jobspy
+    out = []
+    if use_jobspy and not slug and ats in (None, "jobspy") and (
+        not (gated and jobspy is None) or await _extra_due(session_factory, "jobspy", record=record)
+    ):
+        out.append("jobspy")
+    if settings.usajobs_enabled and not slug and ats in (None, "usajobs") and (
+        not gated or await _extra_due(session_factory, "usajobs", record=record)
+    ):
+        out.append("usajobs")
+    return out
+
+
+async def ingest_extra(session_factory: SessionFactory, source: str) -> IngestStats:
+    """Run one extra source; like ingest_board it records a failure in the stats instead of raising."""
+    if source == "jobspy":
+        return await ingest_jobspy(session_factory)
+    if source == "usajobs":
+        return await ingest_usajobs(session_factory)
+    raise ValueError(f"unknown ingest source {source!r}")
+
+
+def summarize(results: list[IngestStats]) -> dict:
+    return {
+        "companies": len(results),
+        "fetched": sum(r.fetched for r in results),
+        "new": sum(r.new for r in results),
+        "updated": sum(r.updated for r in results),
+        "deactivated": sum(r.deactivated for r in results),
+        "errors": {r.company: r.error for r in results if r.error},
+        "detail": [r.__dict__ for r in results],
+    }
+
+
+async def run_ingest(
+    session_factory: SessionFactory, *, ats: str | None = None, slug: str | None = None, jobspy: bool | None = None,
+    all_boards: bool = False,
+) -> dict:
+    """One run, inline: the boards INGEST_CONCURRENCY at a time, then the extras. The scheduled run
+    fetches only due boards; `all_boards` (the CLI) is a full run, as before. The ledger's ingest_tick
+    fans the same work out as tasks instead (#50)."""
+    results = await ingest_boards(session_factory, ats=ats, slug=slug, all_boards=all_boards)
+    for source in await due_extras(session_factory, ats=ats, slug=slug, jobspy=jobspy, all_boards=all_boards):
+        results.append(await ingest_extra(session_factory, source))
+    return summarize(results)

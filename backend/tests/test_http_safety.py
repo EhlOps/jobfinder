@@ -2,8 +2,8 @@ import httpx
 import pytest
 from security_payloads import PRIVATE_URLS
 
-from jobfinder.ingest import http_safety
-from jobfinder.ingest.http_safety import FetchError, assert_public_host, safe_fetch
+from jobfinder.integrations import http_safety
+from jobfinder.integrations.http_safety import FetchError, assert_public_host, safe_fetch
 from tests.fakes import PUBLIC_IP, fake_resolve_public, handle
 
 

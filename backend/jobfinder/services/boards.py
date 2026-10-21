@@ -1,6 +1,6 @@
 """Editing boards from the CLI (`jobfinder boards list|set`): the listing and the per-board edit.
 
-Adding a board goes through ingest.validate.add_board (it validates with a live fetch); re-enabling goes
+Adding a board goes through services.board_validation.add_board (it validates with a live fetch); re-enabling goes
 through admin.enable_source, the same rule as Admin › Sources. Nothing here commits.
 """
 from sqlalchemy.ext.asyncio import AsyncSession

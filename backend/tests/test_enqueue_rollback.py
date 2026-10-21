@@ -2,7 +2,7 @@
 other writes, and a request that fails after it keeps no task and publishes nothing."""
 import pytest
 
-from jobfinder.config import get_settings
+from jobfinder.core.config import get_settings
 from jobfinder.models import Company, CovetedTarget, Task, User
 from jobfinder.tasks import ledger
 from tests.rollback import Boom, count, raise_after
