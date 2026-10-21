@@ -8,9 +8,9 @@ queued are sent again (ledger.RELAY_RESEND). Duplicates are harmless: workers cl
 import logging
 from datetime import datetime
 
-from jobfinder import db as dbmod
 from jobfinder import scheduler as pkg
 from jobfinder.core.clock import utcnow
+from jobfinder.core.context import default_context
 from jobfinder.tasks import brokers, ledger
 from jobfinder.tasks.kinds import QUEUES
 
@@ -29,7 +29,7 @@ async def tick(now: datetime | None = None) -> int:
 
 
 async def _relay(now: datetime) -> int:
-    async with dbmod.SessionLocal() as db:  # read, then let go: no transaction stays open across publishes
+    async with default_context().sessions() as db:  # read, then let go: no transaction stays open across publishes
         rows = await ledger.due_for_relay(db, now)
     sent: list[int] = []
     failed: dict[str, Exception] = {}  # queue -> its first error; that queue's other rows wait a tick
@@ -48,7 +48,7 @@ async def _relay(now: datetime) -> int:
         log.warning("relay: publish failed (%s), %d task(s) wait for the next tick",
                     "; ".join(f"{q}: {type(e).__name__}: {e}" for q, e in failed.items()), len(rows) - len(sent))
     if sent:
-        async with dbmod.SessionLocal() as db:
+        async with default_context().sessions() as db:
             await ledger.mark_sent(db, sent, now)
             await db.commit()
         log.info("relay: published %d task(s)", len(sent))

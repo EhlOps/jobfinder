@@ -21,13 +21,13 @@ import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jobfinder.core.config import settings
-from jobfinder.core.urls import registrable_domain
-from jobfinder.ingest.base import JobPosting, safe_http_url
-from jobfinder.ingest.http_safety import JSON_TYPES, FetchError, safe_fetch
+from jobfinder.core.urls import registrable_domain, safe_http_url
 from jobfinder.integrations.claude.claude_code import AIError
 from jobfinder.integrations.claude.tasks import AITasks
+from jobfinder.integrations.http_safety import JSON_TYPES, FetchError, safe_fetch
 from jobfinder.integrations.recipes import Recipe, RecipeError, health, run_recipe, validate_recipe
 from jobfinder.models import Company
+from jobfinder.models.posting import JobPosting
 from jobfinder.services.ingestion import deactivate_missing, upsert_postings
 from jobfinder.services.resolver.ladder import RecipeHit, ResolveContext
 from jobfinder.services.resolver.names import name_from_domain

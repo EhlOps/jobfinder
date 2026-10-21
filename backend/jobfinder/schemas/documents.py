@@ -31,6 +31,6 @@ class DocumentOut(BaseModel):
 class DocumentUpload(BaseModel):
     """An accepted upload: the document, and the parse_document task reading it while it is processing.
     Poll GET /api/tasks/{task_id}, then GET the document. task_id is null when there is nothing left to
-    wait for (SYNC_UPLOADS, or a duplicate of a file already read)."""
+    wait for: a duplicate of a file already read."""
     document: DocumentOut
     task_id: int | None

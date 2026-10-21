@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from jobfinder.core.config import settings
 from jobfinder.integrations.smtp import EmailError
 from jobfinder.models import Task
-from jobfinder.notify import daily
+from jobfinder.services import daily
 from jobfinder.tasks import ledger
 
 log = logging.getLogger("jobfinder.digest")

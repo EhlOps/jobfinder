@@ -2,8 +2,8 @@ import os
 
 import sqlalchemy as sa
 
-from jobfinder.ai import credentials
-from jobfinder.ai.claude_code import AIError
+from jobfinder.integrations.claude import credentials
+from jobfinder.integrations.claude.claude_code import AIError
 from jobfinder.models import AICall, User
 from tests.fakes import FakePingAI, run_task
 

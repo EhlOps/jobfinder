@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 import sqlalchemy as sa
 
-from jobfinder.config import get_settings
+from jobfinder.core.config import get_settings
 from jobfinder.models import AICall, Company, Job, PlannerState, Profile, Task, User
 from jobfinder.scheduler import cron
 from jobfinder.services import planner

@@ -34,10 +34,8 @@ async def _read_capped(resp: httpx.Response) -> bytes:
     return b"".join(chunks)
 
 
-async def _fetch(url: str, transport: httpx.AsyncBaseTransport | None) -> str:
-    async with httpx.AsyncClient(
-        timeout=15, follow_redirects=False, headers={"User-Agent": USER_AGENT}, transport=transport
-    ) as client:
+async def _fetch(url: str) -> str:
+    async with httpx.AsyncClient(timeout=15, follow_redirects=False, headers={"User-Agent": USER_AGENT}) as client:
         for _ in range(MAX_REDIRECTS + 1):
             host, ip = await resolve_public(url)
             target = httpx.URL(url).copy_with(host=ip)
@@ -64,10 +62,10 @@ async def _fetch(url: str, transport: httpx.AsyncBaseTransport | None) -> str:
         raise FetchError("Too many redirects")
 
 
-async def fetch_page_text(url: str, *, transport: httpx.AsyncBaseTransport | None = None) -> str:
+async def fetch_page_text(url: str) -> str:
     try:
         async with asyncio.timeout(DEADLINE_S):
-            html = await _fetch(url, transport)
+            html = await _fetch(url)
     except TimeoutError:
         raise FetchError("The page took too long to load") from None
     except httpx.HTTPError:

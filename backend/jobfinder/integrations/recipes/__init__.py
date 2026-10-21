@@ -15,7 +15,7 @@ from urllib.parse import urlsplit
 import httpx
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
-from jobfinder.ingest.base import JobPosting
+from jobfinder.models.posting import JobPosting
 
 RecipeKind = Literal["json_api", "html", "rendered_html"]
 # Headers a recipe may set. Anything that could carry credentials or redirect routing is refused.

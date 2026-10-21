@@ -5,11 +5,11 @@ import pytest
 import sqlalchemy as sa
 
 from jobfinder.auth.security import hash_session_token
-from jobfinder.config import Settings, get_settings
+from jobfinder.core.config import Settings, get_settings
 from jobfinder.core.db import database_url
 from jobfinder.models import Profile, Session, User
-from jobfinder.notify import tokens
-from jobfinder.notify.tokens import make_password_token, make_token
+from jobfinder.services import tokens
+from jobfinder.services.tokens import make_password_token, make_token
 
 REQ = "/api/auth/password-reset/request"
 CONF = "/api/auth/password-reset/confirm"
@@ -155,7 +155,7 @@ async def test_email_failure_does_not_change_the_response(client, make_account, 
     async def boom(*a, **k):
         raise RuntimeError("smtp down")
 
-    monkeypatch.setattr("jobfinder.notify.email.send_email", boom)
+    monkeypatch.setattr("jobfinder.integrations.smtp.send_email", boom)
     await make_account("down@x.com", pending=True)
     assert (await client.post(REQ, json={"email": "down@x.com"})).status_code == 202
 
@@ -171,8 +171,7 @@ async def test_pending_user_cannot_hold_a_session(client, make_account, maker):
 
 
 async def test_pending_users_get_no_daily_email_or_matching(client, make_account, maker):
-    from jobfinder.notify import daily
-    from jobfinder.services import planner
+    from jobfinder.services import daily, planner
     from tests.factories import make_user
 
     await make_account("pend@x.com", pending=True)

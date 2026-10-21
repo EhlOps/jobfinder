@@ -7,24 +7,25 @@ import sqlalchemy as sa
 from factories import make_user
 from security_payloads import PRIVATE_URLS, SCRIPT_URLS, SQLI
 
-from jobfinder.ingest import http_safety, resolve
-from jobfinder.ingest.discovery import board_from_url, boards_from_text
-from jobfinder.ingest.http_safety import FetchError, safe_fetch
-from jobfinder.ingest.resolve import resolve_link
-from jobfinder.ingest.resolve.ladder import BoardHit, ResolveContext
-from jobfinder.ingest.resolve.rungs.url_pattern import UrlPatternRung
-from jobfinder.ingest.sources import ATS_FETCHERS, PROBE_FETCHERS
-from jobfinder.ingest.sources.custom import (
+from jobfinder.integrations import http_safety
+from jobfinder.integrations.ats import SLUG_RE
+from jobfinder.integrations.ats.registry import ATS_FETCHERS, PROBE_FETCHERS
+from jobfinder.integrations.directories import board_from_url, boards_from_text
+from jobfinder.integrations.http_safety import FetchError, safe_fetch
+from jobfinder.integrations.site_terms import (
     CUSTOM_SITES,
     board_for_url,
     refusal_for_url,
     site_for_url,
 )
-from jobfinder.ingest.validate import SLUG_RE
 from jobfinder.models import JobLink, Task
+from jobfinder.services import resolver
+from jobfinder.services.resolver import resolve_link
+from jobfinder.services.resolver.ladder import BoardHit, ResolveContext
+from jobfinder.services.resolver.rungs.url_pattern import UrlPatternRung
 from tests.fakes import fake_resolve_public, handle, serve
 
-TERMS = Path(__file__).parents[1] / "jobfinder/integrations/ats/custom/TERMS.md"
+TERMS = Path(__file__).parents[1] / "jobfinder/integrations/site_terms/TERMS.md"
 
 REFUSED_URLS = {
     "Google": [
@@ -143,7 +144,7 @@ async def test_pasted_refused_link_never_reaches_a_rung_or_the_network(maker, mo
         async def run(self, ctx):
             calls.append(ctx.url)
 
-    monkeypatch.setattr(resolve, "RUNGS", [Spy()])
+    monkeypatch.setattr(resolver, "RUNGS", [Spy()])
 
     def handler(request):
         calls.append(str(request.url))
@@ -196,7 +197,7 @@ async def test_failed_custom_board_stops_the_ladder(maker, monkeypatch, web):
         async def run(self, ctx):
             later.append(ctx.url)
 
-    monkeypatch.setattr(resolve, "RUNGS", [UrlPatternRung(), Later()])
+    monkeypatch.setattr(resolver, "RUNGS", [UrlPatternRung(), Later()])
     serve(web, status=404, json={})
     client = httpx.AsyncClient()
     async with maker() as db:

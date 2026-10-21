@@ -35,7 +35,7 @@ from jobfinder.ai.schemas import (
     Unknown,
 )
 from jobfinder.core.clock import utcnow
-from jobfinder.ingest.http_safety import FetchError
+from jobfinder.integrations.http_safety import FetchError
 from jobfinder.models import Task
 from jobfinder.renderer import KINDS as RENDER_KINDS
 from jobfinder.tasks import ledger
@@ -275,10 +275,10 @@ async def run_task(task_id: int, ai=None, session_factory=None) -> None:
     worker-io would: claim, run, finish or fail, and commit. `ai` is handed to the handler as is."""
     import jobfinder.tasks.ai  # registers the handlers
     import jobfinder.tasks.io  # noqa: F401
-    from jobfinder import db as dbmod
+    from jobfinder.core.context import default_context
     from jobfinder.tasks import runtime
 
-    sessions = session_factory or dbmod.SessionLocal
+    sessions = session_factory or default_context().sessions
     async with sessions() as db:
         kind = await db.scalar(select(Task.kind).where(Task.id == task_id))
     assert kind is not None, f"no task {task_id}"

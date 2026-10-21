@@ -3,14 +3,11 @@
 
 Each group is a module (users, boards, ops); each verb is one transaction over the same services the
 routers use (_common). Exit codes: 0 ok, 1 when the command failed (an AppError's message goes to
-stderr), 2 for a usage error. `python -m jobfinder.cli` still takes the pre-#49 flat names for one
-release (_legacy); the `jobfinder` script (`app`) takes only the new ones.
+stderr), 2 for a usage error. `python -m jobfinder.cli` runs the same app.
 """
-import sys
-
 import typer
 
-from jobfinder.cli import _legacy, boards, ops, users
+from jobfinder.cli import boards, ops, users
 
 app = typer.Typer(
     name="jobfinder",
@@ -27,7 +24,3 @@ app.add_typer(ops.email, name="email")
 app.add_typer(ops.ai, name="ai")
 app.add_typer(ops.tasks, name="tasks")
 
-
-def legacy_main(argv: list[str] | None = None) -> None:
-    """`python -m jobfinder.cli`: an old command name is mapped to its verb first, then Typer runs."""
-    app(args=_legacy.translate(sys.argv[1:] if argv is None else argv), prog_name="jobfinder")

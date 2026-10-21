@@ -1,5 +1,8 @@
 """The daily email: new matches (if the digest is on) and clarifying questions (if question emails are on),
-sent once per day around each user's chosen hour in their own timezone. Never sends an empty email."""
+sent once per day around each user's chosen hour in their own timezone. Never sends an empty email.
+
+Moved from notify/daily.py (#53). Unlike most services this one commits: _claim and _release commit
+around the SMTP call, so a send is claimed (or given back) whatever the caller does next."""
 from __future__ import annotations
 
 import logging
@@ -13,11 +16,11 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jobfinder.core.config import settings
-from jobfinder.ingest.base import safe_http_url
+from jobfinder.core.urls import safe_http_url
 from jobfinder.integrations import smtp as mail
 from jobfinder.models import ClarifyingQuestion, Job, JobMatch, Profile, User
-from jobfinder.notify.tokens import make_token
 from jobfinder.repositories.questions import OPEN
+from jobfinder.services.tokens import make_token
 
 log = logging.getLogger("jobfinder.daily")
 VERDICT_LABEL = {"strong": "Strong fit", "good": "Good fit", "stretch": "Stretch", "no": "Poor fit"}

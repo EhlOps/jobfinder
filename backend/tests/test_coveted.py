@@ -5,8 +5,11 @@ import pytest
 import sqlalchemy as sa
 from factories import make_match, make_user
 
-from jobfinder.ingest import coveted, http_safety
-from jobfinder.ingest.coveted import (
+from jobfinder.integrations import http_safety
+from jobfinder.integrations.directories import Source
+from jobfinder.models import Company, CovetedTarget, Job, JobLink, Task
+from jobfinder.services import coverage
+from jobfinder.services.coverage import (
     Signals,
     board_status,
     clean_domain,
@@ -14,8 +17,7 @@ from jobfinder.ingest.coveted import (
     score,
     tier_for,
 )
-from jobfinder.ingest.discovery import DiscoveryResult, Source, discover_boards
-from jobfinder.models import Company, CovetedTarget, Job, JobLink, Task
+from jobfinder.services.discovery import DiscoveryResult, discover_boards
 from jobfinder.tasks import io
 from tests.fakes import fake_resolve_public, handle
 
@@ -146,7 +148,7 @@ async def test_score_all_uses_every_signal(maker):
             job.company_id = loved.id
         await db.commit()
 
-        out = await coveted.score_all(db)
+        out = await coverage.score_all(db)
         rows = {c.name: c for c in (await db.scalars(sa.select(Company))).all()}
     assert out["scored"] == 5 and out["listed"] == 2
     assert rows["Star"].coveted_score == 50 and rows["Star"].coveted_tier == 2  # prestige 25 + list 25
@@ -178,7 +180,7 @@ async def test_pinned_target_resolves_through_its_careers_page(maker, web):
         t = CovetedTarget(name="Acme", domain="acme.com", source="admin", score=100)
         db.add(t)
         await db.commit()
-        out = await coveted.audit_coverage(db, client=c)
+        out = await coverage.audit_coverage(db, client=c)
         await db.refresh(t)
         company = await db.get(Company, t.company_id)
         jobs = (await db.scalars(sa.select(Job).where(Job.company_id == company.id))).all()
@@ -195,7 +197,7 @@ async def test_failed_target_records_why_and_tries_one_family(maker, web):
         t = CovetedTarget(name="Nope", domain="nope.com", source="admin")
         db.add(t)
         await db.commit()
-        out = await coveted.audit_coverage(db, client=c)
+        out = await coverage.audit_coverage(db, client=c)
         await db.refresh(t)
     assert out["resolved"] == 0
     assert t.company_id is None and t.last_resolved_at is not None
@@ -218,7 +220,7 @@ async def test_audit_picks_coveted_gaps_oldest_first_and_respects_limit(maker, w
         db.add(CovetedTarget(name="Fresh", domain="fresh.com", last_resolved_at=now))
         db.add(CovetedTarget(name="Stale", domain="stale.com", last_resolved_at=now - timedelta(days=9)))
         await db.commit()
-        out = await coveted.audit_coverage(db, limit=3, client=c)
+        out = await coverage.audit_coverage(db, limit=3, client=c)
         targets = {t.domain: t for t in (await db.scalars(sa.select(CovetedTarget))).all()}
     assert set(targets) == {"brokenco.com", "failing.com", "fresh.com", "stale.com"}  # blip and dull: no gap
     assert targets["brokenco.com"].company_id == broken.id and targets["brokenco.com"].source == "audit"
@@ -232,7 +234,7 @@ async def test_same_failing_board_is_not_a_fix(maker, web):
         broken = Company(name="BrokenCo", ats="greenhouse", slug="brokenco", enabled=False, coveted_tier=1)
         db.add(broken)
         await db.commit()
-        out = await coveted.audit_coverage(db, company_id=broken.id, client=c)
+        out = await coverage.audit_coverage(db, company_id=broken.id, client=c)
         t = await db.scalar(sa.select(CovetedTarget))
     assert out["resolved"] == 0 and t.company_id == broken.id
     assert "same failing board" in t.last_error
@@ -242,11 +244,11 @@ async def test_audit_survives_a_crash(maker, monkeypatch, web):
     async def boom(*a, **k):
         raise RuntimeError("bug")
 
-    monkeypatch.setattr(coveted, "resolve_target", boom)
+    monkeypatch.setattr(coverage, "resolve_target", boom)
     async with maker() as db, site(web, {}) as c:
         db.add(CovetedTarget(name="X", domain="x.com"))
         await db.commit()
-        out = await coveted.audit_coverage(db, client=c)
+        out = await coverage.audit_coverage(db, client=c)
         t = await db.scalar(sa.select(CovetedTarget))
     assert out["results"][0]["status"] == "error" and "RuntimeError" in t.last_error
 
@@ -272,7 +274,7 @@ async def test_target_resolves_from_a_link_on_its_careers_page(maker, web):
         t = CovetedTarget(name="Acme", domain="acme.com", source="admin")
         db.add(t)
         await db.commit()
-        out = await coveted.audit_coverage(db, client=c)
+        out = await coverage.audit_coverage(db, client=c)
         await db.refresh(t)
         company = await db.get(Company, t.company_id)
     assert out["resolved"] == 1 and out["results"][0]["rung"] == "embedded"
@@ -286,7 +288,7 @@ async def test_another_broken_board_is_not_a_fix_either(maker, web):
         t = CovetedTarget(name="Acme", domain="acme.com", source="admin")
         db.add(t)
         await db.commit()
-        out = await coveted.audit_coverage(db, client=c)
+        out = await coverage.audit_coverage(db, client=c)
         await db.refresh(t)
     assert out["resolved"] == 0 and t.company_id is None and "isn't working either" in t.last_error
 
@@ -297,7 +299,7 @@ async def test_refused_sites_are_never_fetched(maker, web):
         t = CovetedTarget(name="Apple", domain="apple.com", source="admin")
         db.add(t)
         await db.commit()
-        await coveted.audit_coverage(db, client=c)
+        await coverage.audit_coverage(db, client=c)
         await db.refresh(t)
     assert calls == [] and "We don't read Apple" in t.last_error
 
@@ -308,5 +310,5 @@ async def test_a_guessed_domain_owned_by_another_company_is_left_alone(maker):
         b = Company(name="Acme", ats="lever", slug="acme", enabled=False, coveted_tier=1)
         db.add_all([a, b])
         await db.commit()
-        assert (await coveted._target_for(db, a)).company_id == a.id
-        assert await coveted._target_for(db, b) is None
+        assert (await coverage._target_for(db, a)).company_id == a.id
+        assert await coverage._target_for(db, b) is None

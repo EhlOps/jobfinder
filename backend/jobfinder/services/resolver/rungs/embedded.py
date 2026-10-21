@@ -10,7 +10,7 @@ import re
 from collections import Counter
 
 from jobfinder.core.urls import registrable_domain
-from jobfinder.ingest.validate import SLUG_RE
+from jobfinder.integrations.ats import SLUG_RE
 from jobfinder.integrations.ats.detect import detect_board
 from jobfinder.integrations.directories import URL_RE, board_from_url
 from jobfinder.services.resolver.ladder import BoardHit, ResolveContext

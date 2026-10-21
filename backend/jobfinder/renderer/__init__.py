@@ -16,6 +16,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy import update
 
+from jobfinder.core.context import default_context
 from jobfinder.models import Task
 from jobfinder.tasks import ledger
 
@@ -34,9 +35,7 @@ class RenderUnavailable(RenderError):
 
 
 def _sessions():
-    from jobfinder import db  # late: tests swap db.SessionLocal for the test database
-
-    return db.SessionLocal
+    return default_context().sessions  # read per call: tests swap it for the test database
 
 
 async def request_render(kind: str, payload: dict, *, timeout_s: float, session_factory=None) -> dict:

@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session, aliased
 
 from jobfinder.core.clock import utcnow
 from jobfinder.core.config import settings
+from jobfinder.core.context import default_context
 from jobfinder.core.errors import Conflict, NotFound
 from jobfinder.models import Task
 from jobfinder.tasks.kinds import QUEUES, queue_for
@@ -311,10 +312,8 @@ async def _publish(pending: list[tuple[str, str, int]]) -> None:
 
 async def _mark_published(ids: list[int]) -> None:
     """One UPDATE in its own short session. Failing only costs a duplicate delivery from the relay."""
-    from jobfinder import db as dbmod
-
     try:
-        async with dbmod.SessionLocal() as db:
+        async with default_context().sessions() as db:
             await mark_sent(db, ids, utcnow(), unclaimed_only=True)
             await db.commit()
     except Exception as e:

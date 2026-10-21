@@ -11,10 +11,10 @@ from typing import TYPE_CHECKING, Protocol
 
 import httpx
 
-from jobfinder.ingest.base import JobPosting
-from jobfinder.ingest.http_safety import TEXT_TYPES, FetchError, SafeResponse, safe_fetch
+from jobfinder.integrations.http_safety import TEXT_TYPES, FetchError, SafeResponse, safe_fetch
 from jobfinder.integrations.recipes import Recipe
 from jobfinder.integrations.robots import PoliteFetcher
+from jobfinder.models.posting import JobPosting
 
 if TYPE_CHECKING:
     from jobfinder.integrations.claude.claude_code import AIError

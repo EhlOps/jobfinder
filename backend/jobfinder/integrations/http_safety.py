@@ -15,7 +15,7 @@ from urllib.parse import urljoin, urlparse
 import httpx
 
 from jobfinder.core.http import USER_AGENT, FetchError, resolve_public
-from jobfinder.integrations.ats.custom import refusal_for_url
+from jobfinder.integrations.site_terms import refusal_for_url
 
 if TYPE_CHECKING:  # robots.py fetches robots.txt through safe_fetch, so it imports this module
     from jobfinder.integrations.robots import PoliteFetcher

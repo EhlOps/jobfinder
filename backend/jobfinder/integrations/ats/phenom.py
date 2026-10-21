@@ -12,16 +12,8 @@ from urllib.parse import urlsplit
 
 import httpx
 
-from jobfinder.ingest.base import (
-    JobPosting,
-    clip,
-    html_to_text,
-    infer_seniority,
-    infer_workplace,
-    parse_salary_range,
-    safe_http_url,
-)
-from jobfinder.ingest.http_safety import (
+from jobfinder.core.urls import safe_http_url
+from jobfinder.integrations.http_safety import (
     JSON_TYPES,
     TEXT_TYPES,
     FetchError,
@@ -29,6 +21,14 @@ from jobfinder.ingest.http_safety import (
     safe_fetch,
 )
 from jobfinder.integrations.robots import PoliteFetcher
+from jobfinder.models.posting import (
+    JobPosting,
+    clip,
+    html_to_text,
+    infer_seniority,
+    infer_workplace,
+    parse_salary_range,
+)
 
 LIST_API = "https://{host}/widgets"
 JOB_URL = "https://{host}/{country}/{lang}/job/{job_id}"

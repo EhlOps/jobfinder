@@ -24,7 +24,7 @@ class Company(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(200))
-    ats: Mapped[str] = mapped_column(String(32))  # see ingest.sources.ATS_FETCHERS
+    ats: Mapped[str] = mapped_column(String(32))  # see integrations.ats.registry.ATS_FETCHERS
     slug: Mapped[str] = mapped_column(String(200))
     prestige_tier: Mapped[int] = mapped_column(Integer, default=3)  # 1..5
     size: Mapped[str] = mapped_column(String(16), default="mid")  # startup|mid|large
@@ -38,7 +38,7 @@ class Company(Base):
     disabled_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
     origin: Mapped[str] = mapped_column(String(16), default="seed", server_default="seed")  # seed|discovered|user
     validated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    # ats='recipe' boards: how to read the site (ingest.recipes.Recipe), its lifecycle and yield history
+    # ats='recipe' boards: how to read the site (integrations.recipes.Recipe), its lifecycle and yield history
     recipe: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
     recipe_state: Mapped[str | None] = mapped_column(String(16), nullable=True)  # induced|validated|active|degraded|disabled
     recipe_health: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
