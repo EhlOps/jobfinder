@@ -33,7 +33,7 @@ from jobfinder.core.config import settings
 from jobfinder.core.context import default_context
 from jobfinder.integrations.claude.claude_code import AIError
 from jobfinder.models import Task
-from jobfinder.tasks import ledger
+from jobfinder.tasks import failures, ledger
 from jobfinder.tasks.kinds import queue_for
 
 log = logging.getLogger("jobfinder.tasks")
@@ -128,12 +128,14 @@ async def _heartbeat_loop(task_id: int, sessions) -> None:
 
 
 async def _fail(sessions, task_id: int, error: str, *, retry: bool) -> None:
-    """Record a failure on a fresh session: the handler's may be in a failed transaction."""
+    """Record a failure on a fresh session: the handler's may be in a failed transaction. A task that
+    failed for good settles what it leaves behind (tasks.failures) in the same commit."""
     try:
         async with sessions() as db:
             task = await db.get(Task, task_id)
             if task:
-                await ledger.fail(db, task, error, retry=retry)
+                if await ledger.fail(db, task, error, retry=retry):
+                    await failures.settle(db, [task])
                 await db.commit()
     except Exception:
         log.exception("could not record failure of task %s; the reaper will recover it", task_id)

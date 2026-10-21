@@ -9,6 +9,7 @@ import asyncio
 import hashlib
 import json
 import logging
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
 
 from sqlalchemy import delete, event, exists, literal_column, or_, select, update
@@ -123,25 +124,26 @@ async def finish(db: AsyncSession, task: Task, result: dict) -> None:
     await _wake_rerun(db, task.dedupe_key)
 
 
-async def fail(db: AsyncSession, task: Task, error: str, *, retry: bool) -> None:
+async def fail(db: AsyncSession, task: Task, error: str, *, retry: bool) -> bool:
     """Record a failure; with retry, queue it again after a backoff (TASK_BACKOFF_SECONDS x4 per attempt:
     30s, 2m, 8m) until TASK_MAX_ATTEMPTS. The relay delivers the retry once it's due. A queued twin (a
-    rerun) does the same work again, so it replaces the retry."""
+    rerun) does the same work again, so it replaces the retry. Returns True when this is the end of it:
+    failed, with no retry or rerun left to do the work (the cue for tasks.failures)."""
     key, attempts, now = task.dedupe_key, task.attempts, utcnow()
     task.error = error[:2000]
-    if retry and attempts < settings.task_max_attempts and not await db.scalar(
-        select(Task.id).where(Task.id == task.id, has_twin("queued"))
-    ):
+    replaced = bool(await db.scalar(select(Task.id).where(Task.id == task.id, has_twin("queued"))))
+    if retry and attempts < settings.task_max_attempts and not replaced:
         try:
             async with db.begin_nested():  # a rerun added meanwhile conflicts with this on the unique index
                 task.status, task.sent_at = "queued", None
                 task.run_after = now + timedelta(seconds=settings.task_backoff_seconds * 4 ** (attempts - 1))
-            return
+            return False
         except IntegrityError:
-            pass  # the savepoint's rollback expired `task`: only set attributes below, never read them
+            replaced = True  # the savepoint's rollback expired `task`: only set attributes below, never read them
     task.status, task.error, task.finished_at = "failed", error[:2000], now
     await db.flush()
     await _wake_rerun(db, key)
+    return not replaced
 
 
 async def _wake_rerun(db: AsyncSession, key: str | None) -> None:
@@ -162,6 +164,22 @@ async def _wake_rerun(db: AsyncSession, key: str | None) -> None:
 async def heartbeat(db: AsyncSession, task_id: int) -> None:
     """Called periodically while a task runs so `reap` can tell it from one whose worker died."""
     await db.execute(update(Task).where(Task.id == task_id, Task.status == "running").values(locked_at=utcnow()))
+
+
+async def expire_queued(db: AsyncSession, task_id: int, reason: str) -> bool:
+    """Fail a task nobody claimed in time, so no backlog is left behind; True if it was still queued."""
+    result = await db.execute(
+        update(Task).where(Task.id == task_id, Task.status == "queued")
+        .values(status="failed", error=reason, finished_at=utcnow())
+    )
+    return bool(result.rowcount)
+
+
+async def active_keys(db: AsyncSession, keys: list[str]) -> set[str]:
+    """The dedupe keys among `keys` (dedupe_key's) that have a queued or running task."""
+    if not keys:
+        return set()
+    return set(await db.scalars(select(Task.dedupe_key).where(Task.dedupe_key.in_(keys), Task.status.in_(ACTIVE))))
 
 
 async def requeue(db: AsyncSession, task_id: int) -> Task:
@@ -191,15 +209,20 @@ async def requeue(db: AsyncSession, task_id: int) -> Task:
     return task
 
 
-async def reap(db: AsyncSession) -> int:
+async def reap(db: AsyncSession, *, on_failed: Callable[[AsyncSession, list[Task]], Awaitable[None]] | None = None
+               ) -> int:
     """Recover tasks whose worker died mid-run (no heartbeat for TASK_STUCK_AFTER_MINUTES): queue them
-    again for the relay, or fail them once they used all their attempts. Returns the number requeued."""
+    again for the relay, or fail them once they used all their attempts. Returns the number requeued.
+    `on_failed` gets the ones failed for good (no queued rerun takes over), like `fail`'s True."""
     attempts = settings.task_max_attempts
     stale = (Task.status == "running", Task.locked_at < utcnow() - timedelta(minutes=settings.task_stuck_after_minutes))
-    failed = await db.execute(
-        update(Task).where(*stale, Task.attempts >= attempts)
-        .values(status="failed", finished_at=utcnow(), error=f"worker stopped responding during {attempts} attempts")
-    )
+    failed = (await db.scalars(
+        select(Task).from_statement(
+            update(Task).where(*stale, Task.attempts >= attempts, ~has_twin("queued"))
+            .values(status="failed", finished_at=utcnow(), error=f"worker stopped responding during {attempts} attempts")
+            .returning(Task)
+        ).execution_options(populate_existing=True)
+    )).all()
     # A stale row whose rerun is already queued leaves the work to it (the index allows one queued twin).
     superseded = await db.execute(
         update(Task).where(*stale, has_twin("queued"))
@@ -215,8 +238,10 @@ async def reap(db: AsyncSession) -> int:
         requeued = None
     if superseded.rowcount:
         log.info("failed %d stale task(s) that a queued rerun replaces", superseded.rowcount)
-    if failed.rowcount:
-        log.warning("failed %d task(s) that kept timing out", failed.rowcount)
+    if failed:
+        log.warning("failed %d task(s) that kept timing out", len(failed))
+        if on_failed is not None:
+            await on_failed(db, list(failed))
     return requeued.rowcount if requeued else 0
 
 

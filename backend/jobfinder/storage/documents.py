@@ -197,6 +197,13 @@ class DocumentStore:
         self._write_json(self._doc_dir(user_id, doc_id) / "meta.json", _stored(meta))
         return meta
 
+    def mark_error(self, user_id: int, doc_id: str, error: str) -> DocumentMeta:
+        """status error with a reason, text untouched: a read or fetch that never finished."""
+        meta = self.get(user_id, doc_id)
+        meta.status, meta.fetch_error = "error", error[:500]
+        self._write_json(self._doc_dir(user_id, doc_id) / "meta.json", _stored(meta))
+        return meta
+
     def delete(self, user_id: int, doc_id: str) -> None:
         d = self._doc_dir(user_id, doc_id)
         if not d.is_dir():
@@ -216,6 +223,14 @@ class DocumentStore:
             return (self._doc_dir(user_id, doc_id) / "text.txt").read_text()
         except FileNotFoundError:
             raise NotFound("Document not found") from None
+
+    def changed_at(self, user_id: int, doc_id: str) -> datetime:
+        """When meta.json was last written: every status change rewrites it."""
+        try:
+            mtime = (self._doc_dir(user_id, doc_id) / "meta.json").stat().st_mtime
+        except FileNotFoundError:
+            raise NotFound("Document not found") from None
+        return datetime.fromtimestamp(mtime, UTC)
 
     def original_path(self, user_id: int, doc_id: str) -> Path | None:
         d = self._doc_dir(user_id, doc_id)
