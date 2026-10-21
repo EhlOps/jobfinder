@@ -16,8 +16,8 @@ deploy/k8s/
     valkey/             # #40: valkey StatefulSet (AOF), Service, NetworkPolicy; the task streams (#48)
     storage/            # #40: PVCs store, claude-auth
     data/               # #47: backup CronJob and PVC backups
-    app/                # #43: web, api, worker, renderer, smtp, migrate Job, Ingress, config overrides;
-                        # #48: scheduler, worker-ai, worker-io (0 replicas until an overlay sets TASKS_BACKEND=ledger);
+    app/                # #43: web, api, renderer, smtp, migrate Job, Ingress, config overrides;
+                        # #48: scheduler, worker-ai, worker-io (the task platform);
                         # #52: worker-io's KEDA ScaledObject (1-4 replicas on the io backlog)
   overlays/
     staging/            # namespace `jobfinder-staging`; sealed secrets, mailpit, staging config
@@ -25,8 +25,7 @@ deploy/k8s/
   hello/                # #38 smoke test: whoami behind Traefik at /healthz
   deploy.sh             # #43: pin images, migrate, roll out (deploy.sh <overlay> sha-<commit>)
   deploy-staging-ssh.sh # #43: SSH forced command GitHub Actions deploys staging through
-  staging-restore.sh    # #43: copy prod's compose database into staging
-  prod-cutover.sh       # #47: compose -> k3s data move and first prod deploy (--rehearsal on staging)
+  staging-restore.sh    # #43: copy prod's database (namespace jobfinder) into staging
   backup-restore.sh     # #47: restore drill of the newest backup into a scratch database
   pg-lib.sh             # #47: row-count, stream and KEDA-pause helpers the scripts above share
 ```
@@ -55,7 +54,7 @@ tag (`dev`/`main`); `deploy.sh` layers a pin per image on top at deploy time:
 Deployment already runs, otherwise the current digest of `dev`/`main`. Deploy
 with `deploy.sh`, not a bare `kubectl apply -k`, which would deploy the moving
 default tag and skip the migrate-before-rollout ordering. Runbook:
-`docs/k3s.md`, "Staging".
+`docs/k3s.md`, "Deploying prod" and "Staging".
 
 **Data services.** Postgres and valkey only accept pods in the same namespace
 labelled `jobfinder.io/postgres-client: "true"` / `jobfinder.io/valkey-client:
@@ -151,16 +150,16 @@ To rotate a value, re-run step 1 and commit the new file. Add
 `CLAUDE_CODE_OAUTH_TOKEN`; the pods take `POSTGRES_PASSWORD` from
 `postgres-credentials`, so the database password lives in one Secret. Staging's
 was sealed like this (the token is the one saved on prod's admin "AI setup"
-page, which lives in the compose `claude-auth` volume; `backend/.env` has none):
+page, which lives in prod's `claude-auth` PVC; `backend/.env` has none):
 
 ```sh
 kubectl create secret generic jobfinder-env --namespace jobfinder-staging \
   --from-literal=SECRET_KEY="$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')" \
-  --from-literal=CLAUDE_CODE_OAUTH_TOKEN="$(docker exec jobfinder-api-1 cat /data/claude/oauth_token)" \
+  --from-literal=CLAUDE_CODE_OAUTH_TOKEN="$(kubectl -n jobfinder exec deploy/worker-ai -- cat /data/claude/oauth_token)" \
   --dry-run=client -o yaml \
 | kubeseal --format yaml --controller-namespace kube-system --controller-name sealed-secrets-controller \
 > deploy/k8s/overlays/staging/sealed-secret-env.yaml
 ```
 
 Pods read the Secret at start: after applying a new one, `kubectl -n
-jobfinder-staging rollout restart deploy/api deploy/worker deploy/scheduler deploy/worker-ai deploy/worker-io`.
+jobfinder-staging rollout restart deploy/api deploy/scheduler deploy/worker-ai deploy/worker-io`.
