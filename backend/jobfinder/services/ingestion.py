@@ -20,7 +20,7 @@ import httpx
 
 from jobfinder.core.config import settings
 from jobfinder.core.db import AsyncSession
-from jobfinder.core.http import USER_AGENT
+from jobfinder.core.http import new_client
 from jobfinder.integrations import jobspy as jobspy_source
 from jobfinder.integrations import usajobs
 from jobfinder.integrations.ats.registry import ATS_FETCHERS, Fetcher
@@ -255,7 +255,8 @@ async def due_board_ids(
 
 
 def http_client() -> httpx.AsyncClient:
-    return httpx.AsyncClient(timeout=30, follow_redirects=True, headers={"User-Agent": USER_AGENT})
+    """The client a board fetch uses (worker-io shares one per process, tasks.io)."""
+    return new_client(timeout_s=30, follow_redirects=True)
 
 
 async def ingest_board(session_factory: SessionFactory, client: httpx.AsyncClient, company_id: int) -> IngestStats:
@@ -342,7 +343,7 @@ async def ingest_usajobs(session_factory: SessionFactory) -> IngestStats:
     try:
         async with session_factory() as db:
             locations = await usajobs.build_locations(db)
-        async with httpx.AsyncClient(timeout=60) as client:  # no DB session held while crawling
+        async with new_client(timeout_s=60) as client:  # no DB session held while crawling
             postings = await usajobs.fetch_usajobs(client, locations)
         stats.fetched = len(postings)
         async with session_factory() as db:

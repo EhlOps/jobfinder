@@ -185,3 +185,24 @@ async def test_a_board_removed_since_the_tick_is_skipped(maker, published):
 def test_board_payloads_validate():
     assert io_tasks.IngestBoardArgs.model_validate({"company_id": "4", "old": 1}).model_dump() == {"company_id": 4}
     assert io_tasks.IngestSourceArgs.model_validate({"source": "jobspy"}).source == "jobspy"
+
+
+
+async def test_board_fetches_share_one_client_per_worker_process(maker, settings, boards, monkeypatch):
+    """ingest_board reuses worker-io's client (tasks.io.shared_http) instead of opening one per task, and
+    the worker's shutdown closes it."""
+    ids = await _seed(maker, ("alpha", "beta"))
+    seen = []
+    real = ingestion.ingest_board
+
+    async def spy(sessions, client, company_id):
+        seen.append(client)
+        return await real(sessions, client, company_id)
+
+    monkeypatch.setattr(ingestion, "ingest_board", spy)
+    for slug in ("alpha", "beta"):
+        await _run("ingest_board", await _queued(maker, "ingest_board", {"company_id": ids[slug]}))
+    assert len(seen) == 2 and seen[0] is seen[1] is io_tasks.shared_http() and not seen[0].is_closed
+    assert seen[0].headers["User-Agent"].startswith("JobFinder/")
+    await io_tasks.close_http()
+    assert seen[0].is_closed and io_tasks.shared_http() is not seen[0]

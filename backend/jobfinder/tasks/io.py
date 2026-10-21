@@ -7,8 +7,10 @@ Handlers are `(db, ai, task, payload) -> dict` like tasks.ai's; `ai` is unused h
 from datetime import timedelta
 from typing import Literal
 
+import httpx
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
+from taskiq import TaskiqEvents, TaskiqState
 
 import jobfinder.tasks.documents  # noqa: F401  (registers parse_document and fetch_link on io, #51)
 from jobfinder.core.context import default_context
@@ -32,6 +34,28 @@ class AuditCoverageArgs(BaseModel):
 
 
 PLAN_COALESCE = timedelta(minutes=1)  # boards finishing within this of each other share one plan_work
+
+
+_http: httpx.AsyncClient | None = None  # worker-io's one client for board fetches; tests may set their own
+
+
+def shared_http() -> httpx.AsyncClient:
+    """The process's board-fetch client, created on first use: the boards fetched in parallel share its
+    connection pool instead of opening a client (and new connections) per ingest_board."""
+    global _http
+    if _http is None:
+        from jobfinder.services import ingestion
+
+        _http = ingestion.http_client()
+    return _http
+
+
+@io_broker.on_event(TaskiqEvents.WORKER_SHUTDOWN)
+async def close_http(state: TaskiqState | None = None) -> None:
+    global _http
+    if _http is not None:
+        client, _http = _http, None
+        await client.aclose()
 
 
 class IngestBoardArgs(BaseModel):
@@ -69,8 +93,7 @@ async def ingest_board(db: AsyncSession, ai, task: Task, p: IngestBoardArgs) -> 
     only the follow-up."""
     from jobfinder.services import ingestion
 
-    async with ingestion.http_client() as client:
-        stats = await ingestion.ingest_board(default_context().sessions, client, p.company_id)
+    stats = await ingestion.ingest_board(default_context().sessions, shared_http(), p.company_id)
     return await _changed(db, stats)
 
 

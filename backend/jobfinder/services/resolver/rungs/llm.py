@@ -21,6 +21,7 @@ import httpx
 
 from jobfinder.core.config import settings
 from jobfinder.core.db import AsyncSession
+from jobfinder.core.http import new_client
 from jobfinder.core.urls import registrable_domain, safe_http_url
 from jobfinder.integrations.claude.claude_code import AIError
 from jobfinder.integrations.claude.tasks import AITasks
@@ -187,7 +188,7 @@ async def reinduce_company(db: AsyncSession, ai: AITasks, company_id: int,
     failure = h.get("last_error") or f"yield fell to {h.get('last_yield', 0)} (baseline {h.get('baseline_yield')})"
 
     own = client is None
-    client = client or httpx.AsyncClient(timeout=30, follow_redirects=True)
+    client = client or new_client(timeout_s=30, follow_redirects=True)
     try:
         page, ctx = None, None
         for url in dict.fromkeys(pages):

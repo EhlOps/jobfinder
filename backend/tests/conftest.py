@@ -2,6 +2,7 @@ import asyncio
 import ipaddress
 import os
 import socket
+import sys
 from urllib.parse import urlsplit
 
 import pytest
@@ -221,6 +222,15 @@ def isolated_store(tmp_path, monkeypatch):
     monkeypatch.setattr(get_settings(), "store_dir", str(store.root))
     monkeypatch.setattr(default_context(), "store", store)
     return store
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _close_shared_http():
+    """worker-io's shared board-fetch client (tasks.io.shared_http) belongs to one test's event loop."""
+    yield
+    io = sys.modules.get("jobfinder.tasks.io")
+    if io is not None:
+        await io.close_http()
 
 
 @pytest.fixture(autouse=True)
