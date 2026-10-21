@@ -8,11 +8,21 @@ questions for uncertain matches.
 **Stack:** FastAPI + uv, Postgres, valkey (task delivery for a Postgres task ledger, run by taskiq workers),
 Vite + React + TypeScript, and a single-node k3s cluster for staging and production.
 
-- Production: https://jobs.ehlops.com (namespace `jobfinder`); staging: https://staging.ehlops.com
-  (`jobfinder-staging`). Runbook: **[docs/k3s.md](docs/k3s.md)**.
-- Manifests: [deploy/k8s/](deploy/k8s/README.md); cluster install: `deploy/k3s/`.
-- History: [docs/PLAN.md](docs/PLAN.md), [docs/PRD.json](docs/PRD.json) and [docs/HISTORY.md](docs/HISTORY.md)
-  record the original design and milestones; they are not kept up to date.
+Production: https://jobs.ehlops.com (namespace `jobfinder`). Staging: https://staging.ehlops.com
+(`jobfinder-staging`).
+
+## Documentation
+
+| Document | Covers |
+|---|---|
+| This README | What the app does, the architecture, local development, access, the CLI, deploys |
+| [docs/k3s.md](docs/k3s.md) | The runbook for both clusters: [install](docs/k3s.md#install--re-converge), [releasing](docs/k3s.md#releasing-118), [rollback](docs/k3s.md#rollback), [staging](docs/k3s.md#staging-43), [the task platform](docs/k3s.md#task-platform-48), [KEDA](docs/k3s.md#keda-52), [scaling](docs/k3s.md#scale), [logs and troubleshooting](docs/k3s.md#logs--troubleshooting), [backups](docs/k3s.md#backups-47) |
+| [deploy/k8s/README.md](deploy/k8s/README.md) | The manifests: layout, rendering and applying, sealed secrets |
+| [backend/.env.defaults](backend/.env.defaults) | Every setting, with its default and what it does |
+| [Backend packages](#backend-layout) | Each package's `__init__.py` docstring describes its modules and rules |
+| [integrations/claude/prompts/](backend/jobfinder/integrations/claude/prompts/) | The prompt for each AI task |
+| [integrations/site_terms/TERMS.md](backend/jobfinder/integrations/site_terms/TERMS.md) | The terms and robots.txt review of big-tech careers sites, and which ones are refused |
+| [docs/PLAN.md](docs/PLAN.md), [docs/PRD.json](docs/PRD.json), [docs/HISTORY.md](docs/HISTORY.md) | The original design and milestones. Not kept up to date. |
 
 ## How it fits together
 
@@ -35,24 +45,63 @@ it again. Details: [docs/k3s.md, "Task platform"](docs/k3s.md#task-platform-48).
 `backend/jobfinder/` is layered. A request goes `api` → `services` → `repositories` → `models`; nothing below
 imports anything above it, and `lint-imports` (blocking in CI) enforces it.
 
+Each package name links to its docstring, which lists its modules.
+
 | Package | What lives there |
 |---|---|
-| `api/` | FastAPI routers: parse the request, call a service, commit, return a schema. No SQL, no pydantic models of its own. |
-| `schemas/` | Pydantic request and response models (the API contract). |
-| `services/` | Business logic. Takes a session, never commits: the caller (router, task handler, CLI) owns the transaction. |
-| `repositories/` | SQL (SQLAlchemy queries), one module per aggregate. |
-| `models/` | SQLAlchemy ORM models. Migrations are in `backend/alembic/`. |
-| `integrations/` | External systems: ATS boards (`ats/`), Claude (`claude/`), SMTP, GitHub, careers-site recipes (`recipes/`), board directories, USAJobs, jobspy. |
-| `tasks/` | The task ledger, the taskiq brokers and the handlers for each queue (`ai`, `io`, `render`). |
-| `scheduler/` | The scheduler process: cron table, relay and reaper. |
-| `cli/` | The Typer CLI, `jobfinder <group> <verb>`. |
-| `core/` | Config, database engine, request context and small helpers; kept tiny and imports nothing else from `jobfinder`. |
+| [`api/`](backend/jobfinder/api/__init__.py) | FastAPI routers: parse the request, call a service, commit, return a schema. No SQL, no pydantic models of its own. |
+| [`schemas/`](backend/jobfinder/schemas/__init__.py) | Pydantic request and response models (the API contract). |
+| [`services/`](backend/jobfinder/services/__init__.py) | Business logic. Takes a session, never commits: the caller (router, task handler, CLI) owns the transaction. |
+| [`repositories/`](backend/jobfinder/repositories/__init__.py) | SQL (SQLAlchemy queries), one module per aggregate. |
+| [`models/`](backend/jobfinder/models/__init__.py) | SQLAlchemy ORM models. Migrations are in `backend/alembic/`. |
+| [`integrations/`](backend/jobfinder/integrations/__init__.py) | External systems: ATS boards (`ats/`), Claude (`claude/`), SMTP, GitHub, careers-site recipes (`recipes/`), board directories, USAJobs, jobspy. |
+| [`tasks/`](backend/jobfinder/tasks/__init__.py) | The task ledger, the taskiq brokers and the handlers for each queue (`ai`, `io`, `render`). |
+| [`scheduler/`](backend/jobfinder/scheduler/__init__.py) | The scheduler process: cron table, relay and reaper. |
+| [`cli/`](backend/jobfinder/cli/__init__.py) | The Typer CLI, `jobfinder <group> <verb>`. |
+| [`core/`](backend/jobfinder/core/__init__.py) | Config, database engine, request context and small helpers; kept tiny and imports nothing else from `jobfinder`. |
 
-Beside `integrations/` sit three small helpers on the same layer: `profile/` (reading resumes and web pages),
-`resumes/` (export and keywords) and `storage/` (the document store). `renderer/` is the Playwright container's
-entrypoint; its client is `integrations/render/`. `tests/test_architecture.py` checks what import-linter can't:
+Beside `integrations/` sit three small helpers on the same layer:
+[`profile/`](backend/jobfinder/profile/__init__.py) (reading resumes and web pages),
+[`resumes/`](backend/jobfinder/resumes/__init__.py) (tailored resumes: export and keywords) and
+[`storage/`](backend/jobfinder/storage/__init__.py) (the document store).
+[`renderer/`](backend/jobfinder/renderer/__init__.py) is the Playwright container's entrypoint; its client is
+[`integrations/render/`](backend/jobfinder/integrations/render/__init__.py).
+[`context.py`](backend/jobfinder/context.py) adds the integrations to core's process context.
+
+Subpackages with their own docstring:
+
+- [`services/matching/`](backend/jobfinder/services/matching/__init__.py): hard filters, a cheap rank, then Claude's scoring.
+- [`services/resolver/`](backend/jobfinder/services/resolver/__init__.py): the ladder that turns a pasted job link
+  into a board.
+- [`integrations/ats/`](backend/jobfinder/integrations/ats/__init__.py): one fetcher per ATS vendor and their registry.
+- [`integrations/recipes/`](backend/jobfinder/integrations/recipes/__init__.py): recipes, data that says how to read a
+  careers site no ATS adapter covers.
+- [`integrations/claude/`](backend/jobfinder/integrations/claude/__init__.py): the `claude -p` client and one typed
+  task per AI feature.
+- [`integrations/directories/`](backend/jobfinder/integrations/directories/__init__.py): public board lists used for
+  discovery.
+- [`integrations/site_terms/`](backend/jobfinder/integrations/site_terms/__init__.py): the reviewed big-tech careers
+  sites.
+
+`tests/test_architecture.py` checks what import-linter can't:
 commits happen only at the boundaries, `core` modules stay under 150 lines (`config.py`, the list of every setting,
 may reach 160), and `api/` defines no pydantic `BaseModel`.
+
+### Frontend layout
+
+`frontend/src/` is a React single-page app; server state goes through TanStack Query.
+
+| Path | What lives there |
+|---|---|
+| `App.tsx` | The routes. `/login`, `/reset-password` and `/q/:token` (questions from an email) need no session. |
+| `routes/` | One component per page; `routes/onboarding/` holds the onboarding steps. The `Admin*` pages are under `/settings/`. |
+| `components/` | Pieces shared by pages: match details, the cover letter and resume panels, AI notices, form fields. |
+| `lib/api.ts` | The fetch wrapper; non-2xx responses throw `ApiError` with the server's `detail`. |
+| `lib/types.ts` | The response types, written by hand to match `backend/jobfinder/schemas/`. |
+| `lib/useTask.ts` | Polls `/api/tasks/{id}` until a background task finishes. |
+| `auth/AuthProvider.tsx` | The signed-in user, sign-in and sign-out. |
+
+Tests sit next to the file they test (`*.test.tsx`); shared setup is in `src/test/`.
 
 ### Configuration
 
@@ -103,9 +152,8 @@ On a remote machine, tunnel it: `ssh -L 5173:localhost:5173 user@server`.
 
 Local notes:
 
-- **First user.** There is no sign-up: `uv run jobfinder users add --email you@example.com`, `uv run jobfinder
-  users admin grant --email you@example.com`, then `uv run jobfinder users reset-link --email you@example.com`
-  prints a link to set your password (see [Access](#access-invite-only)).
+- **First user.** There is no sign-up. Run `uv run jobfinder users add`, `users admin grant` and `users reset-link`
+  with `--email you@example.com`; the last prints a link to set your password (see [Access](#access-invite-only)).
 - **Mail.** The dev stack has no mail server. Point `SMTP_*` in `backend/.env` at a relay you can use, or rely on
   `users reset-link`.
 - **Claude.** worker-ai runs your own `claude` CLI (`CLAUDE_BIN`) with the token from the AI setup page or
@@ -125,6 +173,18 @@ cd frontend
 npm test                               # Vitest + Testing Library, no backend needed
 npm run typecheck
 ```
+
+CI (`.github/workflows/`) runs on pull requests and pushes to `dev` and `main`, each workflow only when its paths
+change:
+
+| Workflow | Runs |
+|---|---|
+| `backend` | `ruff`, `pytest -n auto` and `lint-imports` against a Postgres service |
+| `k8s` | Renders every overlay with kustomize, validates it with kubeconform, and checks the scaling rules (worker-ai never autoscaled, worker-io's replicas left to KEDA) |
+| `images` | Builds the images whose directory changed and, on a push, pushes them to ghcr.io, then calls `deploy-staging` (dev) or `deploy-prod` (main) |
+
+The frontend's tests and typecheck are not in CI; run them before you push. The image build runs `tsc` as part of
+`npm run build`.
 
 The tests connect to `postgresql+asyncpg://jobfinder:jobfinder@localhost:5433/postgres` and create their own
 databases there. `TEST_ADMIN_URL` overrides that URL (URL-encode special characters such as `@` and `!`).
