@@ -6,7 +6,6 @@ from datetime import timedelta
 import pytest
 import sqlalchemy as sa
 
-from jobfinder import worker
 from jobfinder.core.clock import utcnow
 from jobfinder.core.config import get_settings
 from jobfinder.integrations.claude.claude_code import AIError
@@ -58,7 +57,7 @@ async def test_the_registered_taskiq_task_runs_the_handler(maker, monkeypatch):
         seen.append(1)
         return {"planned": 0}
 
-    from jobfinder.scheduling import planner
+    from jobfinder.services import planner
 
     monkeypatch.setattr(planner, "plan", plan)
     tid = await _queued(maker, "plan_work")
@@ -119,9 +118,9 @@ async def test_a_row_of_another_kind_is_not_run(maker):
         raise AssertionError("must not run")
 
     tid = await _queued(maker, "plan_work")
-    await runtime.execute("ingest_jobs", handler, tid, wants_ai=False)
+    await runtime.execute("ingest_tick", handler, tid, wants_ai=False)
     row = await _row(maker, tid)
-    assert row.status == "failed" and "delivered as 'ingest_jobs'" in row.error
+    assert row.status == "failed" and "delivered as 'ingest_tick'" in row.error
 
 
 async def test_a_delivery_for_a_running_row_is_dropped(maker):
@@ -172,13 +171,13 @@ async def test_a_delivery_never_raises_into_taskiq(maker, caplog):
 async def test_follow_ups_are_published_with_the_result_not_before(maker, published, monkeypatch):
     async def handler(db, ai, task, payload):
         await ledger.add(db, "plan_work", dedupe=True)
-        assert await published.settle() == [("io", "ingest_jobs", tid)]  # only the delivered row so far
+        assert await published.settle() == [("io", "ingest_tick", tid)]  # only the delivered row so far
         return {"new": 1}
 
-    tid = await _queued(maker, "ingest_jobs")
-    await runtime.execute("ingest_jobs", handler, tid, wants_ai=False)
+    tid = await _queued(maker, "ingest_tick")
+    await runtime.execute("ingest_tick", handler, tid, wants_ai=False)
     follow = await _follow_up(maker, "plan_work")
-    assert await published.settle() == [("io", "ingest_jobs", tid), ("io", "plan_work", follow.id)]
+    assert await published.settle() == [("io", "ingest_tick", tid), ("io", "plan_work", follow.id)]
 
 
 async def test_a_failed_handler_publishes_no_follow_up(maker, published):
@@ -186,9 +185,9 @@ async def test_a_failed_handler_publishes_no_follow_up(maker, published):
         await ledger.add(db, "plan_work")
         raise RuntimeError("broken")
 
-    tid = await _queued(maker, "ingest_jobs")
-    await runtime.execute("ingest_jobs", handler, tid, wants_ai=False)
-    assert await published.settle() == [("io", "ingest_jobs", tid)]
+    tid = await _queued(maker, "ingest_tick")
+    await runtime.execute("ingest_tick", handler, tid, wants_ai=False)
+    assert await published.settle() == [("io", "ingest_tick", tid)]
     assert await count(maker, Task, kind="plan_work") == 0
 
 
@@ -211,9 +210,9 @@ async def test_an_ai_task_finishes_while_an_io_task_is_in_flight(maker, monkeypa
     async def letter(db, ai, task, payload):
         return {"match_id": payload.match_id}
 
-    ingest = await _queued(maker, "ingest_jobs")
+    ingest = await _queued(maker, "ingest_tick")
     draft = await _queued(maker, "cover_letter", {"match_id": 7})
-    io_run = asyncio.create_task(runtime.execute("ingest_jobs", long_ingest, ingest, wants_ai=False))
+    io_run = asyncio.create_task(runtime.execute("ingest_tick", long_ingest, ingest, wants_ai=False))
     await asyncio.sleep(0.2)
     assert (await _row(maker, ingest)).status == "running"
     await runtime.execute("cover_letter", letter, draft, payload_model=ai_tasks.CoverLetterArgs, ai=object())
@@ -221,10 +220,3 @@ async def test_an_ai_task_finishes_while_an_io_task_is_in_flight(maker, monkeypa
     release.set()
     await io_run
     assert (await _row(maker, ingest)).status == "done"
-
-
-async def test_the_legacy_worker_refuses_to_run_beside_the_ledger(monkeypatch, caplog):
-    monkeypatch.setattr(get_settings(), "tasks_backend", "ledger")
-    with pytest.raises(SystemExit) as stop:
-        await worker.main()
-    assert stop.value.code == 1 and "python -m jobfinder.tasks ai|io" in caplog.text

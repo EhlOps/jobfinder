@@ -1,5 +1,5 @@
 """`python -m jobfinder.scheduler`: the cron table (when SCHEDULER_ENABLED), the relay and maintenance on
-one AsyncIOScheduler (UTC), until SIGTERM. Refuses to start unless TASKS_BACKEND=ledger."""
+one AsyncIOScheduler (UTC), until SIGTERM."""
 import asyncio
 import logging
 import signal
@@ -7,10 +7,10 @@ import sys
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from jobfinder import db as dbmod
 from jobfinder.core import logging as core_logging
 from jobfinder.core.clock import utcnow
 from jobfinder.core.config import settings
+from jobfinder.core.context import default_context
 from jobfinder.scheduler import cron, maintenance, relay
 
 log = logging.getLogger("jobfinder.scheduler")
@@ -48,7 +48,7 @@ async def serve() -> None:
     if running:
         await asyncio.wait(running, timeout=SHUTDOWN_GRACE)
     scheduler.shutdown(wait=False)
-    await dbmod.engine.dispose()
+    await default_context().engine.dispose()
     log.info("scheduler stopped")
 
 
@@ -56,10 +56,6 @@ def main() -> int:
     core_logging.configure(settings.log_level)
     # APScheduler logs every run at INFO; with the relay every few seconds that drowns everything else.
     logging.getLogger("apscheduler.executors").setLevel(max(logging.WARNING, logging.getLogger().level))
-    if settings.tasks_backend != "ledger":
-        log.error("TASKS_BACKEND=%s: the legacy worker runs the cron and the reaper itself; not starting a "
-                  "second scheduler (set TASKS_BACKEND=ledger)", settings.tasks_backend)
-        return 2
     asyncio.run(serve())
     return 0
 

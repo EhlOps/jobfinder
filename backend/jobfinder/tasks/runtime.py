@@ -29,8 +29,8 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from taskiq import AsyncBroker
 
-from jobfinder import db as dbmod
 from jobfinder.core.config import settings
+from jobfinder.core.context import default_context
 from jobfinder.integrations.claude.claude_code import AIError
 from jobfinder.models import Task
 from jobfinder.tasks import ledger
@@ -41,7 +41,7 @@ log = logging.getLogger("jobfinder.tasks")
 # and the renderer); payload is the validated model, or None for kinds without one.
 LedgerHandler = Callable[[AsyncSession, Any, Task, Any], Awaitable[dict]]
 REGISTRY: dict[str, LedgerHandler] = {}
-PAYLOADS: dict[str, type[BaseModel] | None] = {}  # kind -> its payload model (scheduling.handlers reuses it)
+PAYLOADS: dict[str, type[BaseModel] | None] = {}  # kind -> its payload model
 
 
 def ledger_task(broker: AsyncBroker, kind: str, *, payload: type[BaseModel] | None = None, ai: bool = True):
@@ -62,7 +62,7 @@ def ledger_task(broker: AsyncBroker, kind: str, *, payload: type[BaseModel] | No
 async def execute(kind: str, handler: LedgerHandler, task_id: int, *, payload_model: type[BaseModel] | None = None,
                   wants_ai: bool = True, session_factory=None, ai=None) -> None:
     """Run one delivery of `task_id` to its end. Never raises (but lets a cancellation through)."""
-    sessions = session_factory or dbmod.SessionLocal
+    sessions = session_factory or default_context().sessions
     try:
         await _execute(kind, handler, task_id, payload_model, wants_ai, sessions, ai)
     except Exception:  # the claim or the failure record itself failed: the row is queued or running

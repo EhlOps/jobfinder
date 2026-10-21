@@ -1,7 +1,6 @@
-# Outbound mail relay (compose: smtp, boky/postfix), reached as smtp:587. Same relay-mode settings as
-# compose: RELAYHOST (+ credentials) relays through a provider, an empty RELAYHOST sends directly.
-# The overlay sets them: staging relays to mailpit only (overlays/staging), prod gets its relay with
-# the cutover (#47). No DKIM volume: compose's dkim keys move with #47 if direct mode is ever used.
+# Outbound mail relay (boky/postfix), reached as smtp:587. RELAYHOST (+ credentials) relays through a
+# provider, an empty RELAYHOST sends directly. The overlay sets them: staging relays to mailpit only
+# (overlays/staging), prod relays through Gmail (#47). No DKIM volume: add one if direct mode is ever used.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -30,7 +29,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: smtp
-          # Pinned (compose still uses the floating tag).
+          # Pinned, not the floating tag.
           image: boky/postfix:5.1.0
           env:
             - name: ALLOWED_SENDER_DOMAINS

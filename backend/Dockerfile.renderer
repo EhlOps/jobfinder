@@ -1,6 +1,6 @@
-# renderer image (opt-in, compose profile "renderer"): the official Playwright image (Chromium + its system
-# libraries, multi-arch incl. linux/arm64) plus the backend package with the `renderer` extra. It claims only
-# render_* tasks. Keep the image tag and the playwright pin in pyproject.toml on the same version.
+# renderer image (opt-in, k8s Deployment `renderer`): the official Playwright image (Chromium + its
+# system libraries, multi-arch incl. linux/arm64) plus the backend package with the `renderer` extra. It
+# claims only render_* tasks. Keep the image tag and the playwright pin in pyproject.toml on the same version.
 FROM mcr.microsoft.com/playwright/python:v1.63.0-noble
 
 # Browsers ship in the image (/ms-playwright); never download at runtime.

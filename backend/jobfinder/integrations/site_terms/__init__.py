@@ -1,5 +1,8 @@
 """Big-tech custom careers sites, gated on a terms/robots review (see TERMS.md next to this file).
 
+Not an ATS adapter: http_safety.py checks every fetch hop against these refusals, so the review lives
+in a neutral module rather than under ats/ (#53).
+
 Each candidate site was reviewed (robots.txt + terms of use, 2026-10) before any adapter was written.
 `terms_ok=False` sites are refused: they are never registered as an ATS, never recognised by
 `board_from_url`, and the resolver ladder stops on them before any rung fetches the page, so a pasted
@@ -10,7 +13,8 @@ link from its careers site resolves straight to that ATS board. Adding a custom 
 review terms, set terms_ok=True, set `ats` and `board=(ats, fixed_slug)`, and register the fetcher in
 integrations/ats/registry.py.
 
-This module is a leaf (no jobfinder imports) so discovery and the resolver can import it without cycles.
+This module is a leaf (no jobfinder imports) so http_safety, discovery and the resolver can import it
+without cycles.
 """
 import re
 from dataclasses import dataclass

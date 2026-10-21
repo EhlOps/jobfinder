@@ -30,7 +30,7 @@ jobs:
         working-directory: backend
     services:
       postgres:
-        image: postgres:16  # same image as docker-compose.yml
+        image: postgres:16  # same major version as deploy/k8s/base/postgres
         env:
           POSTGRES_USER: jobfinder
           POSTGRES_PASSWORD: jobfinder

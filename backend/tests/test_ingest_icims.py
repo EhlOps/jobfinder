@@ -6,13 +6,9 @@ import httpx
 import pytest
 from security_payloads import SCRIPT_URLS, SQLI
 
-from jobfinder.ingest import http_safety
-from jobfinder.ingest.discovery import board_from_url, boards_from_text
-from jobfinder.ingest.http_safety import FetchError
-from jobfinder.ingest.resolve import name_from_slug
-from jobfinder.ingest.sources import ATS_FETCHERS, PROBE_FETCHERS
-from jobfinder.ingest.sources.detect import detect_board
-from jobfinder.ingest.sources.icims import (
+from jobfinder.integrations import http_safety
+from jobfinder.integrations.ats.detect import detect_board
+from jobfinder.integrations.ats.icims import (
     NotIcimsBoard,
     detect_icims,
     fetch_icims,
@@ -23,7 +19,11 @@ from jobfinder.ingest.sources.icims import (
     parse_slug,
     title_from_path,
 )
-from jobfinder.ingest.validate import validate_board
+from jobfinder.integrations.ats.registry import ATS_FETCHERS, PROBE_FETCHERS
+from jobfinder.integrations.directories import board_from_url, boards_from_text
+from jobfinder.integrations.http_safety import FetchError
+from jobfinder.services.board_validation import validate_board
+from jobfinder.services.resolver import name_from_slug
 from tests.fakes import fake_resolve_public, handle
 
 FIX = Path(__file__).parent / "fixtures"
@@ -279,8 +279,8 @@ async def test_list_only_uses_sitemap_without_details(web):
 async def test_discovery_probe_goes_through_safe_fetch(web):
     # discovery hands fetchers a robots-checking get/post wrapper; the adapter unwraps it and still uses
     # safe_fetch (SSRF checks, byte caps) with that wrapper's robots cache
-    from jobfinder.ingest.discovery import _PoliteClient
-    from jobfinder.ingest.discovery.robots import PoliteFetcher
+    from jobfinder.integrations.robots import PoliteFetcher
+    from jobfinder.services.discovery import _PoliteClient
 
     seen = []
     async with portal(web, {f"{HOST}/jobs/search?ss=1&in_iframe=1&pr=0": page(SEARCH_P0)}, seen) as c:

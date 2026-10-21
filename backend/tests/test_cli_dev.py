@@ -56,7 +56,7 @@ class Tools:
 
 @pytest.fixture
 def tools(monkeypatch, tmp_path):
-    for name in ("DEV_PG_PORT", "DEV_VALKEY_PORT", "DEV_API_PORT", "TASKS_BACKEND", "SECRET_KEY"):
+    for name in ("DEV_PG_PORT", "DEV_VALKEY_PORT", "DEV_API_PORT", "SECRET_KEY"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr(dev.shutil, "which", lambda name: f"/usr/bin/{name}")

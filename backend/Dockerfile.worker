@@ -33,4 +33,4 @@ RUN uv sync --locked --no-dev $([ "$WITH_JOBSPY" = "true" ] && echo "--extra job
 USER jobfinder
 ENV CLAUDE_SCRATCH_DIR=/tmp/claude-scratch
 ENTRYPOINT ["tini", "--"]
-CMD ["python", "-m", "jobfinder.worker"]
+CMD ["python", "-m", "jobfinder.tasks", "io"]

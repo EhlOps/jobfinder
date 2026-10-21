@@ -1,7 +1,7 @@
 """The rollback-test helpers, and the rate events that must survive a failed request (side_session)."""
 import pytest
 
-from jobfinder.config import get_settings
+from jobfinder.core.config import get_settings
 from jobfinder.models import RateEvent
 from jobfinder.services import ratelimit
 from tests.rollback import Boom, count, raise_after

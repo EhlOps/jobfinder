@@ -1,9 +1,9 @@
-# Shared volumes (#40). `store` and `claude-auth` replace the compose volumes of the same names and
-# are mounted by the app (#43).
+# Shared volumes (#40). `store` (uploaded documents) and `claude-auth` (the Claude token) are mounted
+# by the app (#43).
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# The data tier: prod-cutover.sh applies only objects with this label before it restores (#47).
+# The data tier (#47): the objects a restore needs before the app (the cutover applied these first).
 labels:
   - pairs:
       jobfinder.io/tier: data

@@ -1,5 +1,5 @@
-# `alembic upgrade head`, once per deploy, before any app pod rolls (compose ran it in the api's
-# entrypoint on every start; with two api replicas they would race). deploy/k8s/deploy.sh deletes the
+# `alembic upgrade head`, once per deploy, before any app pod rolls (not in the api's
+# entrypoint on every start: with two api replicas they would race). deploy/k8s/deploy.sh deletes the
 # previous Job (a Job's pod template is immutable), applies this one with the new api image, waits
 # for it, and only then applies the Deployments; a failed migration stops the deploy there.
 apiVersion: batch/v1

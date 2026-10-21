@@ -1,6 +1,6 @@
 """Per-board ingest (#50): ingest_tick queues one ingest_board per due board (and one ingest_source per
 due extra source), each board runs and fails on its own, and the planner is queued once when jobs
-changed. Under TASKS_BACKEND=legacy the tick still runs every board inline, INGEST_CONCURRENCY at a time."""
+changed."""
 import asyncio
 import json
 from pathlib import Path
@@ -8,9 +8,7 @@ from pathlib import Path
 import pytest
 import sqlalchemy as sa
 
-from jobfinder import worker
 from jobfinder.core.config import get_settings
-from jobfinder.ingest import runner
 from jobfinder.models import Company, Job, Task
 from jobfinder.services import ingestion
 from jobfinder.tasks import io as io_tasks
@@ -71,7 +69,7 @@ async def _extra_runs(maker) -> int:
     from jobfinder.models import RateEvent
 
     async with maker() as db:
-        return await db.scalar(sa.select(sa.func.count()).where(RateEvent.kind == runner.EXTRA_KIND))
+        return await db.scalar(sa.select(sa.func.count()).where(RateEvent.kind == ingestion.EXTRA_KIND))
 
 
 @pytest.mark.real_commit
@@ -86,7 +84,7 @@ async def test_the_tick_fans_out_and_one_failing_board_fails_nothing_else(maker,
         extras.append(source)
         return ingestion.IngestStats(source=source, company="(usajobs.gov)", fetched=0)
 
-    monkeypatch.setattr(runner, "ingest_extra", fake_extra)
+    monkeypatch.setattr(ingestion, "ingest_extra", fake_extra)
 
     tick = await _queued(maker, "ingest_tick")
     await _run("ingest_tick", tick)
@@ -182,45 +180,6 @@ async def test_a_board_removed_since_the_tick_is_skipped(maker, published):
     await _run("ingest_board", await _queued(maker, "ingest_board", {"company_id": 999_999}))
     [row] = await _tasks(maker, "ingest_board")
     assert row.status == "done" and row.result["error"].startswith("skipped")
-
-
-@pytest.mark.real_commit
-async def test_a_legacy_ingest_jobs_row_runs_as_a_tick(maker, published, settings, boards):
-    await _seed(maker, boards)
-    await _run("ingest_jobs", await _queued(maker, "ingest_jobs"))
-    [row] = await _tasks(maker, "ingest_jobs")
-    assert row.status == "done" and row.result["due"] == 3 and len(await _tasks(maker, "ingest_board")) == 3
-
-
-# ── the legacy poll-loop worker ───────────────────────────────────────────
-@pytest.mark.real_commit
-async def test_legacy_tick_runs_every_board_inline(maker, settings, boards, monkeypatch):
-    """The legacy worker runs AI_MAX_CONCURRENCY tasks at once: fanning out there would fetch two boards
-    at a time, so the tick fetches them all itself, INGEST_CONCURRENCY at a time, as ingest_jobs did."""
-    monkeypatch.setattr(settings, "tasks_backend", "legacy")
-    ids = await _seed(maker, boards)
-    tick = await _queued(maker, "ingest_tick")
-    await worker.run_task(tick, None)
-    [row] = await _tasks(maker, "ingest_tick")
-    assert row.status == "done" and row.result["companies"] == 3 and row.result["new"] == 2 * len(GREENHOUSE["jobs"])
-    assert set(row.result["errors"]) == {"Gone"}
-    assert await _tasks(maker, "ingest_board") == []
-    assert [t.status for t in await _tasks(maker, "plan_work")] == ["queued"]
-    async with maker() as db:
-        assert (await db.get(Company, ids["gone"])).consecutive_failures == 1
-
-
-@pytest.mark.real_commit
-async def test_legacy_worker_runs_a_queued_board_row(maker, settings, boards, monkeypatch):
-    """ingest_board rows queued under the ledger still run if the deployment goes back to legacy."""
-    monkeypatch.setattr(settings, "tasks_backend", "legacy")
-    ids = await _seed(maker, boards)
-    good = await _queued(maker, "ingest_board", {"company_id": ids["alpha"]})
-    bad = await _queued(maker, "ingest_board", {"company_id": ids["gone"]})
-    await asyncio.gather(worker.run_task(good, None), worker.run_task(bad, None))
-    rows = {t.id: t for t in await _tasks(maker, "ingest_board")}
-    assert rows[good].status == rows[bad].status == "done"
-    assert rows[good].result["new"] == len(GREENHOUSE["jobs"]) and rows[bad].result["error"]
 
 
 def test_board_payloads_validate():

@@ -229,7 +229,6 @@ def app_env(p: Ports) -> dict[str, str]:
         PUBLIC_BASE_URL="http://localhost:5173",  # vite's dev server, which proxies /api here
         PYTHONUNBUFFERED="1",  # so prefixed lines show up as they are written
     )
-    env["TASKS_BACKEND"] = "ledger"  # drop once #53's legacy removal lands
     if not env.get("SECRET_KEY") and not has_secret_key(BACKEND / ".env"):
         env["SECRET_KEY"] = dev_secret_key()  # a fresh checkout has no backend/.env yet
     return env

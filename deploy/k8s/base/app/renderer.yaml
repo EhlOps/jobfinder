@@ -1,9 +1,8 @@
-# The opt-in headless browser (compose profile "renderer", resolver rung 4.5): runs only render_*
-# tasks. Under TASKS_BACKEND=legacy it polls the Postgres queue; under ledger it consumes the valkey
-# stream `jobfinder:render` (#48), hence the valkey-client label and the two task settings below.
-# Off by default (replicas 0), as in compose. To turn it on, patch replicas to 1 in the overlay
+# The opt-in headless browser (resolver rung 4.5): runs only render_* tasks, from the valkey stream
+# `jobfinder:render` (#48), hence the valkey-client label and VALKEY_URL below.
+# Off by default (replicas 0). To turn it on, patch replicas to 1 in the overlay
 # and merge RENDERER_ENABLED=true into its jobfinder-config, so the workers start queueing render tasks.
-# Like compose, it gets only selected settings: no Secret (the image bakes in a placeholder
+# It gets only selected settings: no Secret (the image bakes in a placeholder
 # SECRET_KEY, since it signs nothing), no volumes, a read-only root and a /tmp scratch dir.
 apiVersion: apps/v1
 kind: Deployment
@@ -24,7 +23,7 @@ spec:
         app.kubernetes.io/name: renderer
         app.kubernetes.io/component: renderer
         jobfinder.io/postgres-client: "true"
-        jobfinder.io/valkey-client: "true"   # stream jobfinder:render under TASKS_BACKEND=ledger
+        jobfinder.io/valkey-client: "true"   # stream jobfinder:render
     spec:
       automountServiceAccountToken: false
       securityContext:
@@ -61,26 +60,20 @@ spec:
             - name: RENDERER_CONCURRENCY
               valueFrom:
                 configMapKeyRef: {name: jobfinder-config, key: RENDERER_CONCURRENCY}
-            - name: RENDERER_POLL_SECONDS
-              valueFrom:
-                configMapKeyRef: {name: jobfinder-config, key: RENDERER_POLL_SECONDS}
-            # Which task system feeds it, and where valkey is (#48).
-            - name: TASKS_BACKEND
-              valueFrom:
-                configMapKeyRef: {name: jobfinder-config, key: TASKS_BACKEND}
+            # Where valkey is (#48).
             - name: VALKEY_URL
               valueFrom:
                 configMapKeyRef: {name: jobfinder-config, key: VALKEY_URL}
             # Chromium writes its profile under $HOME.
             - name: HOME
               value: /tmp
-          # No HTTP endpoint; tini exits when the renderer dies. See worker.yaml.
+          # No HTTP endpoint; tini exits when the renderer dies. See worker-ai.yaml.
           livenessProbe:
             exec:
               command: ["sh", "-c", "grep -qs 'jobfinder[.]renderer' /proc/[0-9]*/cmdline"]
             initialDelaySeconds: 15
             periodSeconds: 30
-          # Compose: cpus 1.5, mem_limit 1536m.
+          # 1.5 CPUs, 1.5 GiB.
           resources:
             requests:
               cpu: 100m
@@ -96,7 +89,7 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
-            # Chromium's shared memory (compose: shm_size 256m).
+            # Chromium's shared memory (256 MiB).
             - name: shm
               mountPath: /dev/shm
       volumes:

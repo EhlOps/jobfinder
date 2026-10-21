@@ -1,4 +1,4 @@
-# The FastAPI app (compose: api). Two replicas: it is stateless apart from the two RWO volumes, which
+# The FastAPI app. Two replicas: it is stateless apart from the two RWO volumes, which
 # every pod on this single node can mount. Only the web pod talks to it (Caddy proxies /api/* to api:8000).
 apiVersion: apps/v1
 kind: Deployment

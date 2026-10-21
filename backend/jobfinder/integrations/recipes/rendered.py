@@ -6,9 +6,8 @@ from urllib.parse import urljoin, urlsplit
 import httpx
 import sqlalchemy as sa
 
-from jobfinder import db as app_db  # the module: tests swap db.SessionLocal for the test database
 from jobfinder.core.config import settings
-from jobfinder.ingest.base import JobPosting
+from jobfinder.core.context import default_context
 from jobfinder.integrations.recipes import (
     MAX_ITEMS,
     RECIPE_RUNNERS,
@@ -19,6 +18,7 @@ from jobfinder.integrations.recipes import (
 )
 from jobfinder.integrations.recipes.json_api import make_posting, parse_date
 from jobfinder.models import Company
+from jobfinder.models.posting import JobPosting
 from jobfinder.renderer import LIST, RenderError, RenderUnavailable, request_render
 
 LIST_WAIT_S = 150.0  # ingest runs boards concurrently and the renderer takes two at a time, 30 s each
@@ -70,7 +70,7 @@ async def run_rendered(client: httpx.AsyncClient, recipe: Recipe, slug: str, com
 async def count_rendered_boards(session_factory=None) -> int:
     """Recipe boards that need the browser on every fetch (for the cap)."""
     if session_factory is None:
-        session_factory = app_db.SessionLocal
+        session_factory = default_context().sessions
     async with session_factory() as db:
         return await db.scalar(
             sa.select(sa.func.count()).select_from(Company)

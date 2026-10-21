@@ -7,16 +7,16 @@ import pytest
 import sqlalchemy as sa
 from security_payloads import PRIVATE_URLS, SCRIPT_URLS, SQLI, XSS_TEXT
 
-from jobfinder.ingest import http_safety
-from jobfinder.ingest.resolve import resolve_link
-from jobfinder.ingest.resolve.ladder import ResolveContext, SingleJob
-from jobfinder.ingest.resolve.rungs.jsonld import (
+from jobfinder.integrations import http_safety
+from jobfinder.models import Job, JobLink, Task
+from jobfinder.services.resolver import resolve_link
+from jobfinder.services.resolver.ladder import ResolveContext, SingleJob
+from jobfinder.services.resolver.rungs.jsonld import (
     MAX_BLOCKS,
     JsonLdRung,
     find_job_posting,
     posting_from_ld,
 )
-from jobfinder.models import Job, JobLink, Task
 from tests.fakes import fake_resolve_public, handle
 
 FIX = Path(__file__).parent / "fixtures"

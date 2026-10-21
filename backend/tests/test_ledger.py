@@ -90,14 +90,6 @@ async def test_a_released_savepoint_publishes_nothing_yet(maker, published):
     assert await published.settle() == [("io", "plan_work", t.id)] and published.marked == [t.id]
 
 
-async def test_legacy_backend_publishes_nothing(maker, published, monkeypatch):
-    monkeypatch.setattr(get_settings(), "tasks_backend", "legacy")
-    async with maker() as db:
-        await ledger.add(db, "plan_work")
-        await db.commit()
-    assert await published.settle() == []
-
-
 async def test_later_rows_wait_for_the_relay(maker, published):
     async with maker() as db:
         await ledger.add(db, "plan_work", run_after=utcnow() + timedelta(minutes=5))
@@ -217,7 +209,7 @@ async def test_reap_requeues_stale_running_rows_for_the_relay(db):
 async def test_due_for_relay(db):
     now = utcnow()
     fresh = await ledger.add(db, "plan_work")  # created_at is the transaction's now(): "fresh" until +15s
-    later = await ledger.add(db, "ingest_jobs", run_after=now + timedelta(hours=1))
+    later = await ledger.add(db, "ingest_tick", run_after=now + timedelta(hours=1))
     sent = await ledger.add(db, "score_coveted")
     await ledger.mark_sent(db, [sent.id], now)
     assert await ledger.due_for_relay(db, now) == []
@@ -251,10 +243,11 @@ async def test_prune_deletes_only_old_finished_rows_in_batches(db):
 
 
 def test_every_handler_kind_has_a_queue():
+    import jobfinder.tasks.ai
+    import jobfinder.tasks.io  # noqa: F401  (registers their handlers)
     from jobfinder.renderer import KINDS
-    from jobfinder.scheduling.handlers import HANDLERS
 
-    assert set(HANDLERS) | set(KINDS) == set(QUEUES)
+    assert set(runtime.REGISTRY) | set(KINDS) == set(QUEUES)
     with pytest.raises(ValueError):
         queue_for("nope")
 
