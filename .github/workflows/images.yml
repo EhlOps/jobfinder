@@ -3,6 +3,10 @@
 # Pull requests build only (no push), to catch broken Dockerfiles before merge.
 # Pushes and PRs build only the images whose build context changed (backend/** -> api, worker,
 # renderer; frontend/** -> web); a change to this workflow, or a manual run, builds all four.
+# Its last job deploys the pushed commit: dev pushes roll staging (deploy-staging.yml, #43) and main
+# pushes, i.e. merged release PRs, roll prod (deploy-prod.yml, #118). A push that builds no images
+# (a manifest-only change) skips build and so the deploy too; run that branch's deploy workflow by
+# hand ("Run workflow" on that branch).
 #
 # One-time step for the owner: a package created by the first push starts out PRIVATE, even though
 # the repo is public. Open each package (github.com/EhlOps?tab=packages → jobfinder-<name> →
@@ -143,7 +147,20 @@ jobs:
   deploy-staging:
     needs: build
     if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    # A called workflow's jobs get at most what this job grants; the report comments on PRs (#118).
     permissions:
       contents: read
+      pull-requests: write
     uses: ./.github/workflows/deploy-staging.yml
+    secrets: inherit
+
+  # Pushes to main (a merged dev → main release PR) roll prod the same way (#118). The host gates,
+  # backs up, deploys, smoke-checks and rolls back; see deploy-prod.yml.
+  deploy-prod:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      pull-requests: write
+    uses: ./.github/workflows/deploy-prod.yml
     secrets: inherit

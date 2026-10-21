@@ -39,8 +39,8 @@ esac
 [ "$NS" != jobfinder ] || die "refusing to restore into the prod namespace"
 [ "$NS" != "$SRC_NS" ] || die "source and target are the same namespace ($NS)"
 
-# The deploy lock (deploy-staging-ssh.sh): a deploy during the restore would migrate the empty
-# database under pg_restore and scale the app back up.
+# The staging deploy lock (deploy-ssh.sh staging takes the same file): a deploy during the restore
+# would migrate the empty database under pg_restore and scale the app back up.
 exec 9>"${JOBFINDER_DEPLOY_LOCK:-/tmp/jobfinder-deploy-staging.lock}"
 flock -n 9 || die "a staging deploy is running; try again when it has finished"
 kubectl -n "$SRC_NS" get pod "$SRC_POD" >/dev/null || die "$SRC_POD not found in $SRC_NS"
