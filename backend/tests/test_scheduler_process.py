@@ -155,8 +155,6 @@ async def test_one_queue_down_does_not_hold_up_the_others(maker, published, monk
     async with maker() as db:
         ai = await ledger.add(db, "cover_letter", {"match_id": 1})
         io = await ledger.add(db, "plan_work")
-        moved = await ledger.add(db, "match_user")
-        moved.queue = "io"  # a row queued before its kind moved keeps the old column
         await db.commit()
     (await published.settle()).clear()
 
@@ -167,10 +165,10 @@ async def test_one_queue_down_does_not_hold_up_the_others(maker, published, monk
 
     monkeypatch.setattr(brokers, "publish", ai_down)
     assert await relay.tick(utcnow() + timedelta(seconds=30)) == 1
-    assert published == [("io", "plan_work", io.id)]  # match_user goes to its kind's stream, not 'io'
+    assert published == [("io", "plan_work", io.id)]
     assert sum("relay: publish failed" in r.message for r in caplog.records) == 1
     async with maker() as db:
-        assert (await db.get(Task, ai.id)).sent_at is None and (await db.get(Task, moved.id)).sent_at is None
+        assert (await db.get(Task, ai.id)).sent_at is None
 
 
 async def test_a_failing_relay_tick_is_logged_not_raised(monkeypatch, caplog, alive_file):

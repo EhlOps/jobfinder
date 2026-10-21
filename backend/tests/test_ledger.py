@@ -176,7 +176,38 @@ async def test_a_row_queued_before_its_kind_moved_publishes_to_the_new_stream(db
     await db.flush()
     await ledger.requeue(db, t.id)
     await db.commit()
+    assert t.queue == "io"  # the column is the truth again (the relay reads only it)
     assert (await published.settle()) == [("io", "daily_emails", t.id)]
+
+
+@pytest.mark.parametrize("how", ["retry", "reap"])
+async def test_a_retry_or_reap_moves_the_row_to_its_kinds_queue(db, how):
+    t = await ledger.add(db, "resolve_job_link", {"link_id": 1})
+    t = await ledger.claim(db, t.id)
+    t.queue = "ai"  # as 0022 backfilled it, before #50 moved the kind to io
+    await db.flush()
+    if how == "retry":
+        await ledger.fail(db, t, "busy", retry=True)
+    else:
+        t.locked_at = utcnow() - timedelta(hours=1)
+        await db.flush()
+        assert await ledger.reap(db) == 1
+        await db.refresh(t)
+    assert (t.status, t.queue) == ("queued", "io")
+    assert [r[1] for r in await ledger.due_for_relay(db, utcnow() + timedelta(hours=1))] == ["io"]
+
+
+def test_the_latest_queue_backfill_matches_the_kinds():
+    """Migration 0026 rewrote every row's queue from tasks.kinds.QUEUES. If this fails, a kind moved
+    queues: add a migration that rewrites its rows, and point this test at it."""
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[1] / "alembic" / "versions" / "0026_task_queue_backfill.py"
+    spec = importlib.util.spec_from_file_location("m0026", path)
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    assert {kind: queue for queue, kinds in m.QUEUES.items() for kind in kinds} == QUEUES
 
 
 async def test_requeue_turns_a_twin_racing_the_check_into_a_conflict(db, monkeypatch):

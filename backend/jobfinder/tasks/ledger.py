@@ -12,7 +12,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
 
-from sqlalchemy import delete, event, exists, literal_column, or_, select, update
+from sqlalchemy import case, delete, event, exists, literal_column, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -135,7 +135,7 @@ async def fail(db: AsyncSession, task: Task, error: str, *, retry: bool) -> bool
     if retry and attempts < settings.task_max_attempts and not replaced:
         try:
             async with db.begin_nested():  # a rerun added meanwhile conflicts with this on the unique index
-                task.status, task.sent_at = "queued", None
+                task.status, task.sent_at, task.queue = "queued", None, QUEUES.get(task.kind, task.queue)
                 task.run_after = now + timedelta(seconds=settings.task_backoff_seconds * 4 ** (attempts - 1))
             return False
         except IntegrityError:
@@ -190,6 +190,8 @@ async def requeue(db: AsyncSession, task_id: int) -> Task:
         raise NotFound(f"No task {task_id}")
     if task.status in ACTIVE:
         raise Conflict(f"task {task_id} is already {task.status}")
+    if task.kind not in QUEUES:
+        raise Conflict(f"{task.kind} is no longer a task kind")
     twin = Conflict(f"an identical {task.kind} task is already queued or running")
     if task.dedupe_key and await db.scalar(  # the common case, without a savepoint
         select(Task.id).where(Task.dedupe_key == task.dedupe_key, Task.status.in_(ACTIVE))
@@ -200,6 +202,7 @@ async def requeue(db: AsyncSession, task_id: int) -> Task:
     try:
         async with db.begin_nested():  # a twin added since the check rolls back only this
             task.status, task.attempts, task.error, task.result = "queued", 0, None, None
+            task.queue = queue_for(task.kind)  # the kind may have moved queues since it first ran
             task.run_after, task.finished_at, task.locked_at, task.sent_at = now, None, None, None
     except IntegrityError as e:
         if getattr(e.orig.__cause__, "constraint_name", None) == DEDUPE_INDEX:  # asyncpg's error
@@ -231,7 +234,8 @@ async def reap(db: AsyncSession, *, on_failed: Callable[[AsyncSession, list[Task
     try:
         async with db.begin_nested():  # a rerun added meanwhile conflicts on the unique index: next reap
             requeued = await db.execute(
-                update(Task).where(*stale, ~has_twin("queued")).values(status="queued", sent_at=None)
+                update(Task).where(*stale, ~has_twin("queued"))
+                .values(status="queued", sent_at=None, queue=case(QUEUES, value=Task.kind, else_=Task.queue))
             )
     except IntegrityError:
         log.info("a rerun was queued while reaping; the next reap recovers the rest")
@@ -294,8 +298,7 @@ _publishing: set[asyncio.Task] = set()  # strong refs until each publish finishe
 
 def _note(db: AsyncSession, task: Task, now: datetime) -> None:
     if task.run_after <= now:  # later rows wait for the relay
-        # The kind decides the stream, as in the relay: a row queued before its kind moved keeps the old column.
-        db.info.setdefault(PENDING, []).append((QUEUES.get(task.kind, task.queue), task.kind, task.id))
+        db.info.setdefault(PENDING, []).append((task.queue, task.kind, task.id))
 
 
 @event.listens_for(Session, "after_commit")
