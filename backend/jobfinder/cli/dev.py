@@ -124,6 +124,7 @@ def mapped_ports() -> dict[int, int]:
 
 def port_free(port: int) -> bool:
     with socket.socket() as s:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # TIME_WAIT leftovers don't hold a port (#53)
         try:
             s.bind(("127.0.0.1", port))
         except OSError:
