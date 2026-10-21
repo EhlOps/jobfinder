@@ -8,7 +8,7 @@ kind: Namespace
 metadata:
   name: jobfinder
   labels:
-    # prod-cutover.sh applies the data tier (this label) before the restore, the app after it (#47).
+    # The data tier (#47): the cutover applied these objects before its restore, the app after it.
     jobfinder.io/tier: data
     pod-security.kubernetes.io/enforce: baseline
     pod-security.kubernetes.io/enforce-version: v1.33

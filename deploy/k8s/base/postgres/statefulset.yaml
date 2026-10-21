@@ -1,5 +1,5 @@
 # One replica on one node: a plain StatefulSet with a local-path volume (#36 Q2 draft default).
-# Same major version and image family as compose (postgres:16), so compose dumps restore directly.
+# postgres:16, the major version prod's data was dumped from at the cutover (#47).
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:

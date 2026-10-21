@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# Shared by prod-cutover.sh, backup-restore.sh and staging-restore.sh (#47); source it, don't run it.
+# Shared by backup-restore.sh and staging-restore.sh (#47); source it, don't run it.
 # Exact per-table row counts, as `table|count` lines sorted by table name; emptying the task streams;
 # pausing worker-io's autoscaler.
 
@@ -14,24 +14,12 @@ k8s_row_counts() {
     | LC_ALL=C sort
 }
 
-# compose_row_counts <container>: counts in the compose database (its POSTGRES_USER/POSTGRES_DB env).
-compose_row_counts() {
-  # shellcheck disable=SC2016  # expanded inside the container
-  printf '%s\n' "$PG_ROW_COUNTS_SQL" \
-    | docker exec -i "$1" sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -XAtq -v ON_ERROR_STOP=1 -f -' \
-    | LC_ALL=C sort
-}
-
-# compare_row_counts <expected-label> <expected-file> <actual-label> <actual-file> [<expected-after-file>]
-# Prints one line per table and returns 0 only when every table matches. With an "after" file (the
-# source counted again after the dump), a table whose source count moved during the dump matches when
-# the actual count lies between the two (written while pg_dump ran; rehearsals only) and is flagged.
+# compare_row_counts <expected-label> <expected-file> <actual-label> <actual-file>
+# Prints one line per table and returns 0 only when every table matches.
 compare_row_counts() {
-  local after=${5:-/dev/null}
-  awk -F'|' -v la="$1" -v lb="$3" -v has_after="${5:+1}" '
+  awk -F'|' -v la="$1" -v lb="$3" '
     FILENAME == ARGV[1] { a[$1] = $2; t[$1] = 1; next }
-    FILENAME == ARGV[2] { b[$1] = $2; t[$1] = 1; next }
-    { a2[$1] = $2; t[$1] = 1 }
+    { b[$1] = $2; t[$1] = 1 }
     END {
       printf "%-40s %12s %12s  %s\n", "table", la, lb, ""
       bad = 0; n = 0
@@ -42,18 +30,13 @@ compare_row_counts() {
         k = keys[i]; note = ""
         if (!(k in a)) { note = "MISSING in " la; bad++ }
         else if (!(k in b)) { note = "MISSING in " lb; bad++ }
-        else if (a[k] + 0 != b[k] + 0) {
-          lo = a[k] + 0; hi = lo
-          if (has_after && (k in a2)) { if (a2[k] + 0 < lo) lo = a2[k] + 0; if (a2[k] + 0 > hi) hi = a2[k] + 0 }
-          if (lo != hi && b[k] + 0 >= lo && b[k] + 0 <= hi) note = "ok (written during the dump: " a[k] " -> " a2[k] ")"
-          else { note = "MISMATCH"; bad++ }
-        }
+        else if (a[k] + 0 != b[k] + 0) { note = "MISMATCH"; bad++ }
         printf "%-40s %12s %12s  %s\n", k, (k in a) ? a[k] : "-", (k in b) ? b[k] : "-", note
       }
       if (n == 0) { print "no tables counted"; bad = 1 }
       printf "%d tables, %d mismatched\n", n, bad
       exit bad > 0
-    }' "$2" "$4" "$after"
+    }' "$2" "$4"
 }
 
 # k8s_trim_task_streams <namespace>: empties the task streams (#48) in that namespace's valkey-0, keeping

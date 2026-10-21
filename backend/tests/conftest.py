@@ -1,25 +1,17 @@
 import asyncio
 import os
-from pathlib import Path
-from urllib.parse import quote
 
 import pytest
 import pytest_asyncio
 import sqlalchemy as sa
-from dotenv import dotenv_values
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
-# Needs a reachable Postgres (docker compose up -d db publishes it on :5433).
-# Credentials come from the repo-root .env (the same POSTGRES_* the compose db is created with);
-# TEST_ADMIN_URL overrides everything, and real environment variables win over the file.
-_env = {**dotenv_values(Path(__file__).resolve().parents[2] / ".env"), **os.environ}
-ADMIN_URL = os.environ.get("TEST_ADMIN_URL") or (
-    f"postgresql+asyncpg://{quote(_env.get('POSTGRES_USER') or 'jobfinder', safe='')}"
-    f":{quote(_env.get('POSTGRES_PASSWORD') or 'change-me', safe='')}"
-    f"@localhost:{os.environ.get('TEST_DB_PORT') or _env.get('DB_PORT') or '5433'}/postgres"
-)
+# Needs a reachable Postgres: by default the one `uv run jobfinder dev` port-forwards to :5433 (#53).
+# TEST_ADMIN_URL overrides it (CI points it at its service container).
+DEFAULT_ADMIN_URL = "postgresql+asyncpg://jobfinder:jobfinder@localhost:5433/postgres"
+ADMIN_URL = os.environ.get("TEST_ADMIN_URL") or DEFAULT_ADMIN_URL
 TEST_DB = os.environ.get("TEST_DB", "jobfinder_test")
 # One database per xdist worker ("master" when not distributed), so workers never share rows.
 TEST_DB_NAME = f"{TEST_DB}_{os.environ.get('PYTEST_XDIST_WORKER', 'master')}"

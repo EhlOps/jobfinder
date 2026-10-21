@@ -1,6 +1,5 @@
 # Production: keeps the base namespace `jobfinder`, at https://jobs.ehlops.com (#47).
-# Deploy with deploy/k8s/deploy.sh prod sha-<commit>, by hand on the host (docs/k3s.md, "Production");
-# the first deploy is deploy/k8s/prod-cutover.sh, which restores compose's data first.
+# Deploy with deploy/k8s/deploy.sh prod sha-<commit>, by hand on the host (docs/k3s.md, "Production").
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
@@ -8,7 +7,7 @@ resources:
   - ../../base
   # postgres-credentials (POSTGRES_PASSWORD, random, prod only).
   - sealed-secret-postgres.yaml
-  # jobfinder-env (compose's SECRET_KEY and CLAUDE_CODE_OAUTH_TOKEN, ADMIN_EMAILS).
+  # jobfinder-env (SECRET_KEY, CLAUDE_CODE_OAUTH_TOKEN, ADMIN_EMAILS).
   - sealed-secret-env.yaml
   # smtp-relay (RELAYHOST_USERNAME, RELAYHOST_PASSWORD) for postfix's Gmail relay.
   - sealed-secret-smtp-relay.yaml
@@ -17,7 +16,7 @@ labels:
   - pairs:
       app.kubernetes.io/instance: prod
 
-# The default tag for a bare `kubectl apply -k`: the build compose ran at the cutover (dev at 0f1283d,
+# The default tag for a bare `kubectl apply -k`: the build prod ran at the cutover (dev at 0f1283d,
 # which staging ran). deploy.sh replaces each with sha-<commit> or the newest ancestor that built it
 # (web was last built at b1eb96e).
 images:
@@ -30,7 +29,7 @@ images:
   - name: ghcr.io/ehlops/jobfinder-web
     newTag: sha-b1eb96e
 
-# Compose's backend/.env, where it differs from backend/.env.defaults and from base/app (SMTP_HOST=smtp,
+# Prod's settings, where they differ from backend/.env.defaults and from base/app (SMTP_HOST=smtp,
 # SMTP_PORT=587 and the rest match already). Secrets and ADMIN_EMAILS are in sealed-secret-env.yaml.
 configMapGenerator:
   - name: jobfinder-config
@@ -44,7 +43,7 @@ configMapGenerator:
       - DISCOVERY_MAX_CANDIDATES=50
 
 patches:
-  # Postfix relays through Gmail (compose's root .env: RELAYHOST, ALLOWED_SENDER_DOMAINS), with the
+  # Postfix relays through Gmail (RELAYHOST, ALLOWED_SENDER_DOMAINS), with the
   # account's app password from Secret smtp-relay. Egress is unrestricted (no smtp NetworkPolicy here).
   - target:
       kind: Deployment

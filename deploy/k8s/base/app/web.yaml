@@ -1,4 +1,4 @@
-# Caddy with the built SPA (compose: web): serves the app, proxies /api/* and /healthz to api:8000 and
+# Caddy with the built SPA: serves the app, proxies /api/* and /healthz to api:8000 and
 # sets the security headers (frontend/Caddyfile). Traefik routes every request here (ingress.yaml).
 apiVersion: apps/v1
 kind: Deployment
@@ -40,7 +40,7 @@ spec:
               value: ":8080"
             # The hop before this pod is Traefik, whose IP is in the pod CIDR. Caddy keeps the
             # X-Forwarded-For it receives from there (host Caddy's real client IP) and replaces anyone
-            # else's. Compose keeps the Caddyfile default, the Docker bridge range.
+            # else's. (The Caddyfile default is the Docker bridge range.)
             - name: TRUSTED_PROXIES
               value: 10.42.0.0/16
             # Caddy's storage and autosaved config, on emptyDirs (the root filesystem is read-only).

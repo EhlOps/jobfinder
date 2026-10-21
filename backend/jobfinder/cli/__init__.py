@@ -1,5 +1,5 @@
-"""The admin CLI: `jobfinder <group> <verb>` (`uv run jobfinder --help`; in the containers
-`docker compose exec api jobfinder ...` or `kubectl exec deploy/api -- jobfinder ...`).
+"""The admin CLI: `jobfinder <group> <verb>` (`uv run jobfinder --help`; in the cluster
+`kubectl -n jobfinder exec deploy/api -- jobfinder ...`).
 
 Each group is a module (users, boards, ops); each verb is one transaction over the same services the
 routers use (_common). Exit codes: 0 ok, 1 when the command failed (an AppError's message goes to
