@@ -100,6 +100,32 @@ async def test_the_relay_publishes_due_unsent_rows_once(maker, published, alive_
     assert alive_file.exists()
 
 
+@pytest.mark.parametrize("outcome", ["retry", "deferred"])
+async def test_the_relay_leaves_a_row_claimed_meanwhile_unsent(maker, published, monkeypatch, outcome):
+    """A worker claims what the relay just published and queues it again before the relay marks it sent
+    (a fast failure's retry, or a rerun deferred behind its twin): it stays the relay's to deliver."""
+    async with maker() as db:
+        t = await ledger.add(db, "plan_work")
+        await db.commit()
+    (await published.settle()).clear()
+
+    async def worker_takes_it(queue, kind, task_id):
+        async with maker() as db:
+            row = await db.get(Task, task_id)
+            if outcome == "retry":
+                await ledger.claim(db, task_id)
+                await ledger.fail(db, row, "fast", retry=True)
+            else:  # claim's deferral of a rerun behind a running twin
+                row.run_after, row.sent_at = utcnow() + ledger.TWIN_WAIT, None
+            await db.commit()
+
+    monkeypatch.setattr(brokers, "publish", worker_takes_it)
+    assert await relay.tick(utcnow() + timedelta(seconds=30)) == 1
+    async with maker() as db:
+        row = await db.get(Task, t.id)
+        assert row.status == "queued" and row.sent_at is None
+
+
 async def test_the_relay_survives_valkey_being_down(maker, published, monkeypatch, caplog, alive_file):
     async with maker() as db:
         rows = [await ledger.add(db, "plan_work", {"n": i}) for i in range(3)]

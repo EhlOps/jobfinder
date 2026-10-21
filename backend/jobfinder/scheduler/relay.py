@@ -49,7 +49,7 @@ async def _relay(now: datetime) -> int:
                     "; ".join(f"{q}: {type(e).__name__}: {e}" for q, e in failed.items()), len(rows) - len(sent))
     if sent:
         async with default_context().sessions() as db:
-            await ledger.mark_sent(db, sent, now)
+            await ledger.mark_sent(db, sent, now, relayed=True)
             await db.commit()
         log.info("relay: published %d task(s)", len(sent))
     return len(sent)

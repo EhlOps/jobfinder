@@ -245,13 +245,20 @@ async def due_for_relay(db: AsyncSession, now: datetime, *, limit: int = 500) ->
     return [tuple(r) for r in rows]
 
 
-async def mark_sent(db: AsyncSession, ids: list[int], now: datetime, *, unclaimed_only: bool = False) -> None:
+async def mark_sent(db: AsyncSession, ids: list[int], now: datetime, *, unclaimed_only: bool = False,
+                    relayed: bool = False) -> None:
     """Stamp sent_at on published rows. unclaimed_only (the after-commit publish) only stamps rows still
-    queued, unsent and never claimed, so a fast failure's retry (sent_at reset) isn't hidden from the relay."""
+    queued, unsent and never claimed, so a fast failure's retry (sent_at reset) isn't hidden from the relay.
+    relayed (the relay) only stamps rows still as due_for_relay found them: queued, due at `now`, and unsent
+    or sent before RELAY_RESEND. A row claimed meanwhile and queued again (a retry, or a rerun deferred
+    behind its twin) is due later with sent_at NULL, and stays the relay's to send."""
     if ids:
         where = [Task.id.in_(ids)]
         if unclaimed_only:
             where += [Task.status == "queued", Task.sent_at.is_(None), Task.attempts == 0]
+        if relayed:
+            where += [Task.status == "queued", Task.run_after <= now,
+                      or_(Task.sent_at.is_(None), Task.sent_at < now - RELAY_RESEND)]
         await db.execute(update(Task).where(*where).values(sent_at=now))
 
 
