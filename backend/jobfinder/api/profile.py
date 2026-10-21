@@ -12,18 +12,18 @@ router = APIRouter(prefix="/api/profile", tags=["profile"])
 
 @router.get("", response_model=ProfileOut)
 async def read_profile(user: CurrentUser, db: DbSession):
-    return await service.get_or_create(db, user.id)
+    return service.profile_out(await service.get_or_create(db, user.id))
 
 
 @router.put("/status", response_model=ProfileOut)
 async def put_status(body: Status, user: CurrentUser, db: DbSession):
-    return await service.set_status(db, user.id, body.model_dump())
+    return service.profile_out(await service.set_status(db, user.id, body.model_dump()))
 
 
 @router.put("/background", response_model=ProfileOut)
 async def put_background(body: dict[str, Any], user: CurrentUser, db: DbSession):
     """Free-form for now; milestone 3 defines the extracted schema."""
-    return await service.set_background(db, user.id, body)
+    return service.profile_out(await service.set_background(db, user.id, body))
 
 
 @router.get("/facts", response_model=list[FactOut])

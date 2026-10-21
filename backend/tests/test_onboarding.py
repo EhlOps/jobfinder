@@ -33,13 +33,13 @@ async def test_extract_flow(authed, maker):
 
 
 async def test_extract_ignores_tailored_resumes(authed, maker):
+    from jobfinder.context import default_context
     from jobfinder.resumes.service import match_tags
-    from jobfinder.storage.documents import get_store
 
     await upload(authed, maker, "resume.txt", b"Intern at Acme")
     uid = (await authed.get("/api/auth/me")).json()["id"]
-    get_store().put(uid, "resume", "Tailored resume - x.json", text='{"summary": "reworded"}',
-                    content_type="application/json", tags=match_tags(7))
+    default_context().store.put(uid, "resume", "Tailored resume - x.json", text='{"summary": "reworded"}',
+                                content_type="application/json", tags=match_tags(7))
     tid = (await authed.post("/api/onboarding/extract")).json()["task_id"]
     ai = FakeOnboardingAI()
     await run_task(tid, ai, maker)

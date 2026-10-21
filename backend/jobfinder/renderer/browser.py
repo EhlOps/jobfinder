@@ -18,8 +18,7 @@ from urllib.parse import urljoin, urlsplit
 import httpx
 
 from jobfinder.core.http import FetchError, resolve_public
-from jobfinder.renderer import net
-from jobfinder.renderer.guard import (
+from jobfinder.integrations.render.guard import (
     SKIPPED_TYPES,
     Blocked,
     Guard,
@@ -27,6 +26,7 @@ from jobfinder.renderer.guard import (
     check_selector,
     scheme_reason,
 )
+from jobfinder.renderer import net
 
 log = logging.getLogger("jobfinder.renderer")
 

@@ -12,7 +12,7 @@ import asyncio
 import logging
 import sys
 
-from jobfinder.renderer import CAPTURE, LIST
+from jobfinder.integrations.render import CAPTURE, LIST
 
 log = logging.getLogger("jobfinder.renderer")
 # RENDERER_CONCURRENCY: browser contexts at once; each is capped in time and bytes (fits the 1.5 GB

@@ -251,7 +251,7 @@ async def test_prune_deletes_only_old_finished_rows_in_batches(db):
 
 
 def test_every_handler_kind_has_a_queue():
-    from jobfinder.renderer import KINDS
+    from jobfinder.integrations.render import KINDS
     from jobfinder.scheduling.handlers import HANDLERS
 
     assert set(HANDLERS) | set(KINDS) == set(QUEUES)

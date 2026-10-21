@@ -1,6 +1,6 @@
 """ATS-safe resume export: single column, standard headings, no tables/images/text boxes.
 
-The renderers take a TailoredResume (ai/schemas.py) or any object with the same attributes.
+The renderers take a TailoredResume (integrations/claude/schemas.py) or any object with the same attributes.
 All field access goes through `_sections`.
 """
 

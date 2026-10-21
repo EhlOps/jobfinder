@@ -5,31 +5,25 @@ must count even when the request then fails (a wrong password) goes through `cor
 """
 from datetime import UTC, datetime, timedelta
 
-import sqlalchemy as sa
-from sqlalchemy.ext.asyncio import AsyncSession
+from jobfinder.core.db import AsyncSession
+from jobfinder.repositories import rate_events
 
-from jobfinder.models import RateEvent
+MAX_KEY = 320  # the column's width: a longer key (an email, a URL) is cut to it
 
 
 async def hit(db: AsyncSession, kind: str, key: str) -> None:
-    db.add(RateEvent(kind=kind, key=key[:320]))
+    rate_events.add(db, kind, key[:MAX_KEY])
     await db.flush()
 
 
 async def count_since(db: AsyncSession, kind: str, key: str, seconds: int) -> int:
     since = datetime.now(UTC) - timedelta(seconds=seconds)
-    return await db.scalar(
-        sa.select(sa.func.count()).select_from(RateEvent)
-        .where(RateEvent.kind == kind, RateEvent.key == key[:320], RateEvent.created_at > since)
-    ) or 0
+    return await rate_events.count_since(db, kind, key[:MAX_KEY], since)
 
 
 async def last_at(db: AsyncSession, kind: str, key: str) -> datetime | None:
-    return await db.scalar(
-        sa.select(sa.func.max(RateEvent.created_at)).where(RateEvent.kind == kind, RateEvent.key == key[:320])
-    )
+    return await rate_events.last_at(db, kind, key[:MAX_KEY])
 
 
 async def prune(db: AsyncSession, older_than_seconds: int = 86400) -> None:
-    cutoff = datetime.now(UTC) - timedelta(seconds=older_than_seconds)
-    await db.execute(sa.delete(RateEvent).where(RateEvent.created_at < cutoff))
+    await rate_events.delete_before(db, datetime.now(UTC) - timedelta(seconds=older_than_seconds))

@@ -2,10 +2,9 @@
 
 Nothing here commits except the preview's rate-limit event (a side session); the request commits once.
 """
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from jobfinder.core.config import settings
-from jobfinder.core.db import Sessions, side_session
+from jobfinder.core.db import AsyncSession, Sessions, side_session
 from jobfinder.core.errors import BadGateway, Conflict, RateLimited
 from jobfinder.integrations.smtp import EmailError
 from jobfinder.models import User

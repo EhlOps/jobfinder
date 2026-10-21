@@ -7,21 +7,20 @@ import logging
 import re
 from datetime import UTC, datetime
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from jobfinder.core.config import settings
+from jobfinder.core.db import AsyncSession
 from jobfinder.core.errors import BadRequest, Gone
 from jobfinder.integrations.claude.tasks import AITasks
 from jobfinder.models import ClarifyingQuestion, ProfileFact
 from jobfinder.notify.tokens import InvalidToken, read_token
 from jobfinder.repositories import profiles
 from jobfinder.repositories import questions as repo
+from jobfinder.schemas.questions import MAX_ANSWER_CHARS
 from jobfinder.services import profile as profile_service
 from jobfinder.tasks import ledger
 
 log = logging.getLogger("jobfinder.questions")
 MAX_RAW = 60  # matches reviewed per run
-MAX_ANSWER_CHARS = 2000
 
 
 def _norm(s: str) -> str:

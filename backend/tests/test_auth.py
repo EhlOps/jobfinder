@@ -1,6 +1,6 @@
 import pytest
 
-from jobfinder.auth import security
+from jobfinder.services import auth as security
 
 
 async def test_login_me_logout(client, creds, make_account):

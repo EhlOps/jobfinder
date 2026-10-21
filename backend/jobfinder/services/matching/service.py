@@ -7,19 +7,16 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from jobfinder.ai.schemas import MatchScore, verdict_for
 from jobfinder.core.config import settings
+from jobfinder.core.db import AsyncSession
 from jobfinder.integrations.claude.claude_code import AIError
+from jobfinder.integrations.claude.schemas import MatchScore, verdict_for
 from jobfinder.integrations.claude.tasks import AITasks
-from jobfinder.matching import prefilter as pf
-from jobfinder.matching.scoring import finalize
-from jobfinder.models import ClarifyingQuestion, Company, Job, JobMatch, Profile, ProfileFact, User
+from jobfinder.models import Company, Job, JobMatch, Profile, User
 from jobfinder.repositories import matches as matches_repo
 from jobfinder.services import profile as profile_service
+from jobfinder.services.matching import prefilter as pf
+from jobfinder.services.matching.scoring import finalize
 
 log = logging.getLogger("jobfinder.matching")
 BUDGET_WINDOW = timedelta(hours=24)
@@ -58,12 +55,8 @@ async def remaining_budget(db: AsyncSession, user_id: int) -> int:
     if user is not None and user.match_budget_enabled is False:
         return UNLIMITED
     limit = user.match_budget if user is not None and user.match_budget is not None else settings.match_daily_llm_budget
-    used = await db.scalar(
-        sa.select(sa.func.count()).select_from(JobMatch).where(
-            JobMatch.user_id == user_id, JobMatch.scored_at >= datetime.now(UTC) - BUDGET_WINDOW
-        )
-    )
-    return max(0, limit - (used or 0))
+    used = await matches_repo.scored_since(db, user_id, datetime.now(UTC) - BUDGET_WINDOW)
+    return max(0, limit - used)
 
 
 def _score_batch(rows: list, descriptions: dict[int, str], status: dict, skills: list[str],
@@ -104,33 +97,14 @@ async def find_candidates(db: AsyncSession, user_id: int, profile: Profile) -> l
     needs_sponsorship = status.get("needs_visa_sponsorship") is True
     threshold = settings.match_min_prefilter
 
-    matched_jobs = sa.select(JobMatch.job_id).where(JobMatch.user_id == user_id)
-    matched_hashes = (
-        sa.select(Job.dedupe_hash).join(JobMatch, JobMatch.job_id == Job.id).where(JobMatch.user_id == user_id)
-    )
-    q = (
-        sa.select(
-            Job.id, Job.title, Job.location, Job.workplace_type, Job.salary_max, Job.salary_currency,
-            Job.posted_at, Job.dedupe_hash, Job.seniority,
-            Company.prestige_tier.label("prestige_tier"), Company.size.label("size"), Company.industry.label("industry"),
-            Company.sponsors_visas.label("sponsors_visas"),
-        )
-        .outerjoin(Company, Company.id == Job.company_id)
-        .where(Job.is_active.is_(True), Job.id.not_in(matched_jobs), Job.dedupe_hash.not_in(matched_hashes))
-    )
-    if acceptable is not None:
-        q = q.where(sa.or_(Job.seniority.is_(None), Job.seniority.in_(acceptable)))
-
     light = [
-        r for r in (await db.execute(q)).all()
+        r for r in await matches_repo.unmatched_jobs(db, user_id, acceptable)
         if pf.location_ok(r.location, r.workplace_type, place) and pf.salary_ok(status, r.salary_max, r.salary_currency)
     ]
     scored: list[Candidate] = []
     for i in range(0, len(light), BATCH):
         chunk = light[i : i + BATCH]
-        descriptions = dict(
-            (await db.execute(sa.select(Job.id, Job.description_text).where(Job.id.in_([r.id for r in chunk])))).all()
-        )
+        descriptions = await matches_repo.descriptions(db, [r.id for r in chunk])
         scored += await asyncio.to_thread(
             _score_batch, chunk, descriptions, status, skills, acceptable, needs_sponsorship, threshold, stage
         )
@@ -147,52 +121,15 @@ async def hydrate(db: AsyncSession, candidates: list[Candidate]) -> list[tuple[J
     """Load the full job and company rows for the candidates that will actually be scored (order kept)."""
     if not candidates:
         return []
-    rows = (
-        await db.execute(
-            sa.select(Job, Company).outerjoin(Company, Company.id == Job.company_id)
-            .where(Job.id.in_([c.job_id for c in candidates]))
-        )
-    ).all()
-    by_id = {j.id: (j, c) for j, c in rows}
+    by_id = {j.id: (j, c) for j, c in await matches_repo.jobs_with_companies(db, [c.job_id for c in candidates])}
     return [(*by_id[c.job_id], c.score, False) for c in candidates if c.job_id in by_id]
 
 
 async def find_stale(db: AsyncSession, user_id: int, version: int) -> list[tuple[JobMatch, Job, Company | None]]:
     """Matches scored against an older profile version: ones the user answered questions about first,
     then saved ones, then the rest by score (a low score is often just a gap the answers fill). Closed jobs are skipped."""
-    answered = await _answered_match_ids(db, user_id)
-    rows = (
-        await db.execute(
-            sa.select(JobMatch, Job, Company)
-            .join(Job, Job.id == JobMatch.job_id)
-            .outerjoin(Company, Company.id == Job.company_id)
-            .where(
-                JobMatch.user_id == user_id, JobMatch.profile_version < version,
-                JobMatch.status.in_(STALE_STATUSES), Job.is_active.is_(True),
-            )
-            .order_by(JobMatch.id.in_(answered).desc(), (JobMatch.status == "saved").desc(), JobMatch.llm_score.desc())
-        )
-    ).all()
-    return [(m, j, c) for m, j, c in rows]
-
-
-async def _answered_match_ids(db: AsyncSession, user_id: int) -> list[int]:
-    """Matches linked to clarifying questions the user has answered: re-score these first."""
-    rows = await db.scalars(
-        sa.select(ClarifyingQuestion.match_ids).where(
-            ClarifyingQuestion.user_id == user_id, ClarifyingQuestion.status == "answered"
-        )
-    )
-    ids = {mid for found in rows for mid in found or []}
-    # ...and matches for jobs the user answered a question about directly on the job page
-    ids |= set(
-        await db.scalars(
-            sa.select(JobMatch.id)
-            .join(ProfileFact, ProfileFact.job_id == JobMatch.job_id)
-            .where(JobMatch.user_id == user_id, ProfileFact.user_id == user_id, ProfileFact.source == "job_question")
-        )
-    )
-    return sorted(ids) or [-1]
+    answered = await matches_repo.answered_match_ids(db, user_id)
+    return await matches_repo.stale(db, user_id, version, STALE_STATUSES, sorted(answered) or [-1])
 
 
 def stage_info(status: dict, today=None) -> dict | None:
@@ -258,13 +195,7 @@ async def _save(db: AsyncSession, user_id: int, job_id: int, version: int, prefi
         "recruiter_take": result.recruiter_take[:300],
         "scored_at": datetime.now(UTC), "questions_collected": False,  # new assessment: look at its unknowns again
     }
-    stmt = insert(JobMatch).values(**values)
-    # Re-scoring updates the assessment but keeps the user's status (saved/applied/...).
-    await db.execute(
-        stmt.on_conflict_do_update(
-            constraint="uq_match_user_job", set_={k: stmt.excluded[k] for k in values if k not in ("user_id", "job_id")}
-        )
-    )
+    await matches_repo.upsert(db, values)  # a re-score keeps the user's status (saved/applied/...)
 
 
 Checkpoint = Callable[[], Awaitable[None]]

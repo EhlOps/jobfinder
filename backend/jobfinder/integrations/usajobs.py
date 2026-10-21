@@ -15,6 +15,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jobfinder.core.config import settings
+from jobfinder.core.text import refuses_sponsorship
 from jobfinder.ingest.base import (
     MAX_DESCRIPTION_CHARS,
     JobPosting,
@@ -24,7 +25,6 @@ from jobfinder.ingest.base import (
     infer_workplace,
     safe_http_url,
 )
-from jobfinder.matching.prefilter import refuses_sponsorship
 from jobfinder.models import Profile, User
 
 log = logging.getLogger("jobfinder.ingest.usajobs")

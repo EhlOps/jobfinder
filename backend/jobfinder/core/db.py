@@ -3,6 +3,7 @@
 One transaction per request: `get_db` commits when the handler returns and rolls back when it raises.
 A handler that commits itself still works (the final commit then has nothing to do); those commits go
 away area by area in M4. Use `side_session` for a write that must survive the caller's rollback.
+Services take `AsyncSession` and `IntegrityError` from here: api and services never import sqlalchemy (#53).
 """
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -10,6 +11,7 @@ from typing import Annotated, Protocol
 from urllib.parse import quote
 
 from fastapi import Depends, Request
+from sqlalchemy.exc import IntegrityError  # noqa: F401  (re-exported, see above)
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,

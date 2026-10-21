@@ -5,7 +5,6 @@ from pathlib import Path
 import httpx
 import pytest
 
-from jobfinder import renderer
 from jobfinder.config import get_settings
 from jobfinder.ingest import http_safety
 from jobfinder.ingest.recipes import RecipeError, run_recipe, validate_recipe
@@ -19,6 +18,7 @@ from jobfinder.ingest.resolve.rungs.rendered import (
     listing_url,
     rendered_html_recipe,
 )
+from jobfinder.integrations import render as renderer
 from jobfinder.models import Company, Task
 from tests.fakes import FakeRenderer, fake_resolve_public, handle
 

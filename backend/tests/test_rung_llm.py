@@ -7,7 +7,6 @@ import sqlalchemy as sa
 from security_payloads import SQLI, XSS_TEXT
 
 from jobfinder.ai.claude_code import AIError
-from jobfinder.ai.schemas import InducedRecipe
 from jobfinder.ai.tasks import MAX_PAGE_CHARS, MAX_SAMPLE_CHARS, AITasks, page_excerpt
 from jobfinder.config import get_settings
 from jobfinder.ingest import http_safety
@@ -16,6 +15,7 @@ from jobfinder.ingest.resolve import induce_link, resolve_link
 from jobfinder.ingest.resolve.ladder import RecipeHit, ResolveContext
 from jobfinder.ingest.resolve.rungs import RUNGS
 from jobfinder.ingest.resolve.rungs.llm import LlmRung, endpoint_candidates
+from jobfinder.integrations.claude.schemas import InducedRecipe
 from jobfinder.models import AICall, Company, Job, JobLink, Task
 from jobfinder.scheduling import handlers
 from jobfinder.tasks.ai import INDUCE_RETRIES

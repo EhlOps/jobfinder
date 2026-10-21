@@ -4,14 +4,20 @@
 and resume workers: a match id that isn't the user's reads as missing.
 """
 from dataclasses import dataclass
+from datetime import datetime
 
 import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from jobfinder.matching import prefilter
-from jobfinder.models import Company, Job, JobMatch, ProfileFact
+from jobfinder.models import ClarifyingQuestion, Company, Job, JobMatch, ProfileFact
 
 STATUSES = ("new", "saved", "applied", "dismissed")
+# services/matching/prefilter.py EARLY_CAREER_TITLE for Postgres (\y is its word boundary): keep in step.
+EARLY_CAREER_SQL = (
+    r"\y(new grad(uate)?|recent graduate|graduate (engineer|developer|program(me)?|scheme)s?"
+    r"|university (grad(uate)?|hire|program(me)?|recruit(ing)?)s?|campus (hire|recruit(ing)?)s?|early career|entry[- ]level)\y"
+)
 
 
 @dataclass(frozen=True)
@@ -53,7 +59,7 @@ def _filters(f: FeedQuery) -> list:
         out.append(Job.workplace_type == f.workplace)
     if f.early_career:
         out.append(sa.or_(
-            Job.seniority.in_(("intern", "new_grad")), Job.title.op("~*")(prefilter.EARLY_CAREER_SQL),
+            Job.seniority.in_(("intern", "new_grad")), Job.title.op("~*")(EARLY_CAREER_SQL),
             Job.title.op("~*")(r"\y(intern|internship|co-?op)\y"),
         ))
     if f.q:
@@ -106,3 +112,91 @@ def add_job_answers(db: AsyncSession, user_id: int, job_id: int, answers: list[t
     db.add_all([
         ProfileFact(user_id=user_id, question=q, answer=a, source="job_question", job_id=job_id) for q, a in answers
     ])
+
+
+# ── scoring (services/matching/service.py) ───────────────────────────────
+async def scored_since(db: AsyncSession, user_id: int, since: datetime) -> int:
+    """How many of the user's matches were scored at or after `since` (the daily budget's window)."""
+    return await db.scalar(
+        sa.select(sa.func.count()).select_from(JobMatch).where(JobMatch.user_id == user_id, JobMatch.scored_at >= since)
+    ) or 0
+
+
+async def unmatched_jobs(db: AsyncSession, user_id: int, seniorities: set[str] | None) -> list:
+    """Light rows (no description) for the active jobs not yet matched for the user, by id or by posting
+    (dedupe_hash); with `seniorities`, only jobs at one of them or of unknown seniority."""
+    matched_jobs = sa.select(JobMatch.job_id).where(JobMatch.user_id == user_id)
+    matched_hashes = (
+        sa.select(Job.dedupe_hash).join(JobMatch, JobMatch.job_id == Job.id).where(JobMatch.user_id == user_id)
+    )
+    q = (
+        sa.select(
+            Job.id, Job.title, Job.location, Job.workplace_type, Job.salary_max, Job.salary_currency,
+            Job.posted_at, Job.dedupe_hash, Job.seniority,
+            Company.prestige_tier.label("prestige_tier"), Company.size.label("size"), Company.industry.label("industry"),
+            Company.sponsors_visas.label("sponsors_visas"),
+        )
+        .outerjoin(Company, Company.id == Job.company_id)
+        .where(Job.is_active.is_(True), Job.id.not_in(matched_jobs), Job.dedupe_hash.not_in(matched_hashes))
+    )
+    if seniorities is not None:
+        q = q.where(sa.or_(Job.seniority.is_(None), Job.seniority.in_(seniorities)))
+    return list((await db.execute(q)).all())
+
+
+async def descriptions(db: AsyncSession, job_ids: list[int]) -> dict[int, str]:
+    return dict((await db.execute(sa.select(Job.id, Job.description_text).where(Job.id.in_(job_ids)))).all())
+
+
+async def jobs_with_companies(db: AsyncSession, job_ids: list[int]) -> list[tuple[Job, Company | None]]:
+    rows = await db.execute(
+        sa.select(Job, Company).outerjoin(Company, Company.id == Job.company_id).where(Job.id.in_(job_ids))
+    )
+    return [(j, c) for j, c in rows.all()]
+
+
+async def answered_match_ids(db: AsyncSession, user_id: int) -> set[int]:
+    """Matches linked to clarifying questions the user has answered, and matches for jobs the user answered
+    a question about directly on the job page."""
+    rows = await db.scalars(
+        sa.select(ClarifyingQuestion.match_ids).where(
+            ClarifyingQuestion.user_id == user_id, ClarifyingQuestion.status == "answered"
+        )
+    )
+    ids = {mid for found in rows for mid in found or []}
+    ids |= set(
+        await db.scalars(
+            sa.select(JobMatch.id)
+            .join(ProfileFact, ProfileFact.job_id == JobMatch.job_id)
+            .where(JobMatch.user_id == user_id, ProfileFact.user_id == user_id, ProfileFact.source == "job_question")
+        )
+    )
+    return ids
+
+
+async def stale(
+    db: AsyncSession, user_id: int, version: int, statuses: tuple[str, ...], first: list[int]
+) -> list[tuple[JobMatch, Job, Company | None]]:
+    """Matches at one of `statuses`, scored against a profile older than `version`, on active jobs: the
+    ids in `first` first, then saved ones, then the rest by score."""
+    rows = await db.execute(
+        sa.select(JobMatch, Job, Company)
+        .join(Job, Job.id == JobMatch.job_id)
+        .outerjoin(Company, Company.id == Job.company_id)
+        .where(
+            JobMatch.user_id == user_id, JobMatch.profile_version < version,
+            JobMatch.status.in_(statuses), Job.is_active.is_(True),
+        )
+        .order_by(JobMatch.id.in_(first).desc(), (JobMatch.status == "saved").desc(), JobMatch.llm_score.desc())
+    )
+    return [(m, j, c) for m, j, c in rows.all()]
+
+
+async def upsert(db: AsyncSession, values: dict) -> None:
+    """Insert the match's assessment, or update it in place, leaving its status as it is."""
+    stmt = insert(JobMatch).values(**values)
+    await db.execute(
+        stmt.on_conflict_do_update(
+            constraint="uq_match_user_job", set_={k: stmt.excluded[k] for k in values if k not in ("user_id", "job_id")}
+        )
+    )

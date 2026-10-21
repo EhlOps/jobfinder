@@ -18,9 +18,9 @@ from datetime import UTC, datetime
 from urllib.parse import urljoin
 
 import httpx
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from jobfinder.core.config import settings
+from jobfinder.core.db import AsyncSession
 from jobfinder.core.urls import registrable_domain
 from jobfinder.ingest.base import JobPosting, safe_http_url
 from jobfinder.ingest.http_safety import JSON_TYPES, FetchError, safe_fetch

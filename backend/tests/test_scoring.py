@@ -1,5 +1,5 @@
-from jobfinder.ai.schemas import MatchScore, RequirementCheck
-from jobfinder.matching.scoring import compute_score, finalize
+from jobfinder.integrations.claude.schemas import MatchScore, RequirementCheck
+from jobfinder.services.matching.scoring import compute_score, finalize
 
 
 def req(status, importance="must", question=""):

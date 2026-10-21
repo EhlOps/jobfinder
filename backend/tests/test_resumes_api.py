@@ -4,7 +4,7 @@ import docx
 import sqlalchemy as sa
 
 from jobfinder.ai.claude_code import AIError
-from jobfinder.ai.schemas import Experience, ResumeContact, TailoredResume
+from jobfinder.integrations.claude.schemas import Experience, ResumeContact, TailoredResume
 from jobfinder.models import Job, Task
 from jobfinder.worker import run_task
 from tests.fakes import FakeTailorAI

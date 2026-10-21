@@ -8,16 +8,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from jobfinder.auth.security import (
-    create_session,
-    hash_password_async,
-    hash_session_token,
-    verify_or_dummy,
-)
 from jobfinder.core.config import settings
-from jobfinder.core.db import Sessions, side_session
+from jobfinder.core.db import AsyncSession, Sessions, side_session
 from jobfinder.core.errors import BadRequest, Invalid, NotFound, RateLimited, Unauthorized
 from jobfinder.core.urls import public_link
 from jobfinder.integrations import smtp as mail
@@ -30,6 +22,12 @@ from jobfinder.notify.tokens import (
 )
 from jobfinder.repositories import users
 from jobfinder.services import ratelimit
+from jobfinder.services.auth import (
+    create_session,
+    hash_password_async,
+    hash_session_token,
+    verify_or_dummy,
+)
 
 log = logging.getLogger("jobfinder.auth")
 

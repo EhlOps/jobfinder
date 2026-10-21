@@ -8,15 +8,18 @@
 """
 from typing import Annotated
 
-from fastapi import Depends, Request
+from fastapi import Cookie, Depends, Request
 
-from jobfinder.auth.security import current_user, require_admin
 from jobfinder.context import AppContext
 from jobfinder.core.db import DbSession
+from jobfinder.core.errors import Forbidden, Unauthorized
 from jobfinder.models import User
+from jobfinder.services import auth
 from jobfinder.storage.documents import DocumentStore
 
-__all__ = ["AdminUser", "Ctx", "CurrentUser", "DbSession", "Store"]
+__all__ = ["COOKIE_NAME", "AdminUser", "Ctx", "CurrentUser", "DbSession", "Store"]
+
+COOKIE_NAME = "session"
 
 
 def get_ctx(request: Request) -> AppContext:
@@ -25,6 +28,22 @@ def get_ctx(request: Request) -> AppContext:
 
 def get_ctx_store(request: Request) -> DocumentStore:
     return get_ctx(request).store
+
+
+async def current_user(
+    db: DbSession,
+    session: Annotated[str | None, Cookie(alias=COOKIE_NAME)] = None,
+) -> User:
+    user = await auth.session_user(db, session) if session else None
+    if user is None:
+        raise Unauthorized("Not authenticated")
+    return user
+
+
+async def require_admin(user: Annotated[User, Depends(current_user)]) -> User:
+    if not user.is_admin:
+        raise Forbidden("Admin only")
+    return user
 
 
 CurrentUser = Annotated[User, Depends(current_user)]

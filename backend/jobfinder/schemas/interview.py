@@ -3,7 +3,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from jobfinder.services.interview import MAX_ANSWER_CHARS
+MAX_ANSWER_CHARS = 3000  # longer answers are cut to this when saved (services/interview.py)
 
 
 class InterviewOut(BaseModel):

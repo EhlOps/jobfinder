@@ -69,3 +69,10 @@ async def delete_sessions_of(db: AsyncSession, user_id: int) -> None:
 
 async def delete_expired_sessions(db: AsyncSession, now: datetime) -> None:
     await db.execute(sa.delete(Session).where(Session.expires_at < now))
+
+
+async def refresh_if_expired(db: AsyncSession, user: User) -> None:
+    """Reload a user whose loaded attributes a rollback expired (reading them would lazy-load, which
+    async sessions refuse)."""
+    if sa.inspect(user).expired_attributes:
+        await db.refresh(user)

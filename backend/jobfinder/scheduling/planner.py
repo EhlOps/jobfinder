@@ -15,8 +15,13 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jobfinder.core.config import settings
-from jobfinder.matching.service import BUDGET_WINDOW, STALE_STATUSES, UNLIMITED, sync_career_stage
 from jobfinder.models import AICall, Job, JobMatch, PlannerState, Profile, Task, User
+from jobfinder.services.matching.service import (
+    BUDGET_WINDOW,
+    STALE_STATUSES,
+    UNLIMITED,
+    sync_career_stage,
+)
 from jobfinder.tasks import ledger
 
 log = logging.getLogger("jobfinder.planner")

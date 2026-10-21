@@ -13,9 +13,9 @@ from urllib.robotparser import RobotFileParser
 import httpx
 
 from jobfinder.core.http import USER_AGENT
+from jobfinder.integrations.render.guard import Resolver
 from jobfinder.integrations.robots import ROBOTS_TOKEN, can_fetch
 from jobfinder.profile import web_page
-from jobfinder.renderer.guard import Resolver
 
 ROBOTS_MAX_BYTES = 500_000
 # Hop-by-hop or recomputed headers: never forwarded from the browser, never handed back to it.

@@ -4,7 +4,9 @@ import json
 import re
 from pathlib import Path
 
-from jobfinder.ai.schemas import (
+from jobfinder.core.config import settings
+from jobfinder.integrations.claude.claude_code import AIError, ClaudeCode
+from jobfinder.integrations.claude.schemas import (
     Background,
     Consolidated,
     FollowupQuestion,
@@ -15,8 +17,6 @@ from jobfinder.ai.schemas import (
     ProfileAudit,
     TailoredResume,
 )
-from jobfinder.core.config import settings
-from jobfinder.integrations.claude.claude_code import AIError, ClaudeCode
 
 PROMPTS = Path(__file__).parent / "prompts"
 MAX_PAGE_CHARS = 40_000  # recipe induction: the careers page after stripping scripts and styles

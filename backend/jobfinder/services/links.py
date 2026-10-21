@@ -7,9 +7,8 @@ imported where they run, so the api process doesn't load them.
 """
 from urllib.parse import urlparse
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from jobfinder.core.config import settings
+from jobfinder.core.db import AsyncSession
 from jobfinder.core.errors import NotFound
 from jobfinder.schemas.links import LinkUpload, ProfileLinkOut
 from jobfinder.storage import documents as storage

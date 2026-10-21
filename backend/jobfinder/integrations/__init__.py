@@ -6,7 +6,8 @@
     robots       robots.txt-aware polite fetching, shared by the fetchers above
     usajobs      the USAJOBS search API
     jobspy       the optional python-jobspy scraper
-    claude       the Claude Code CLI client, the typed AI tasks and their prompts
+    claude       the Claude Code CLI client, the typed AI tasks, their prompts and output schemas
+    render       the client for the renderer container (request_render) and the sandbox rules both share
     smtp         outbound email
     github       public GitHub profile summaries
 

@@ -1,9 +1,15 @@
 """The renderer's sandbox decisions, testable without a browser."""
 import pytest
 
+from jobfinder.integrations.render.guard import (
+    Blocked,
+    Guard,
+    check_field,
+    check_selector,
+    scheme_reason,
+)
 from jobfinder.profile.web_page import FetchError
 from jobfinder.renderer.browser import check_top_url, list_spec
-from jobfinder.renderer.guard import Blocked, Guard, check_field, check_selector, scheme_reason
 from tests.fakes import serve
 
 

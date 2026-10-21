@@ -2,8 +2,8 @@
 
 Retry is ledger.requeue: it flushes, and the command commits (the ledger publishes the row after that).
 """
-from sqlalchemy.ext.asyncio import AsyncSession
 
+from jobfinder.core.db import AsyncSession
 from jobfinder.models import Task
 from jobfinder.repositories import tasks
 from jobfinder.tasks import ledger

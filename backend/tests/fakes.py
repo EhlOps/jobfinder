@@ -20,7 +20,8 @@ import respx
 from respx.models import AllMockedAssertionError
 from respx.patterns import M
 
-from jobfinder.ai.schemas import (
+from jobfinder.ingest.http_safety import FetchError
+from jobfinder.integrations.claude.schemas import (
     AuditQuestion,
     Background,
     Consolidated,
@@ -32,7 +33,6 @@ from jobfinder.ai.schemas import (
     ProfileAudit,
     Unknown,
 )
-from jobfinder.ingest.http_safety import FetchError
 from jobfinder.scheduling import queue
 
 _UNSET = object()

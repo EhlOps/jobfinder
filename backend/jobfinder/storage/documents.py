@@ -244,11 +244,3 @@ class DocumentStore:
             out.append(meta)
         return out
 
-
-def get_store() -> DocumentStore:
-    """The process's store (`ctx.store`). Routers declare `store: Store` (api/deps.py) instead."""
-    from jobfinder.context import (
-        default_context,  # cycle: the context builds this module's DocumentStore
-    )
-
-    return default_context().store

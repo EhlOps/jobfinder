@@ -10,7 +10,6 @@ from datetime import UTC, datetime, timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from jobfinder import db as dbmod
-from jobfinder.auth.security import prune_sessions
 from jobfinder.context import default_context
 from jobfinder.core import logging as core_logging
 from jobfinder.core.config import settings
@@ -20,6 +19,7 @@ from jobfinder.models import Task
 from jobfinder.scheduling import queue
 from jobfinder.scheduling.handlers import HANDLERS
 from jobfinder.services import ratelimit
+from jobfinder.services.auth import prune_sessions
 from jobfinder.tasks import ledger
 
 log = logging.getLogger("jobfinder.worker")

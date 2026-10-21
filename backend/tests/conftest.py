@@ -1,5 +1,7 @@
 import asyncio
+import ipaddress
 import os
+import socket
 from pathlib import Path
 from urllib.parse import quote
 
@@ -218,7 +220,7 @@ async def client(maker, isolated_store):
 
 @pytest.fixture(autouse=True)
 def isolated_store(tmp_path, monkeypatch):
-    """Never let a test touch a real document store: the process's (handlers, get_store()) is the test's."""
+    """Never let a test touch a real document store: the process's (`default_context().store`) is the test's."""
     store = DocumentStore(tmp_path / "store")
     monkeypatch.setattr(get_settings(), "store_dir", str(store.root))
     monkeypatch.setattr(default_context(), "store", store)
@@ -249,8 +251,8 @@ def creds():
 @pytest_asyncio.fixture
 async def make_account(client, maker):
     """Insert an active (activated) user + profile directly, then optionally log in through the real endpoint."""
-    from jobfinder.auth.security import hash_password
     from jobfinder.models import Profile, User
+    from jobfinder.services.auth import hash_password
 
     async def make(email="sam@example.com", password="correct-horse-battery", *, admin=False, login=True, pending=False):
         from datetime import UTC, datetime
@@ -330,3 +332,74 @@ def published(request, monkeypatch):
     if not request.node.get_closest_marker("real_commit"):
         monkeypatch.setattr(ledger, "_mark_published", record_marks)
     return out
+
+
+# ── no real network (#53) ────────────────────────────────────────────────
+# A test never reaches past this machine: connecting a socket anywhere but loopback or a unix socket, or
+# resolving a name other than localhost, raises at once (and fails the test even if the code under test
+# swallows the error), so an HTTP call that respx or MockWeb doesn't mock fails loudly instead of fetching.
+# respx intercepts httpx before any socket is opened; Postgres and valkey are on localhost.
+_blocked: list[str] = []
+
+
+class RealNetworkCall(RuntimeError):
+    pass
+
+
+def _loopback(host) -> bool:
+    host = host.decode() if isinstance(host, bytes) else host
+    if host is None or host in ("localhost", "localhost.localdomain"):
+        return True
+    try:
+        return ipaddress.ip_address(str(host).split("%")[0]).is_loopback
+    except ValueError:
+        return False
+
+
+def _ip_literal(host) -> bool:
+    try:
+        ipaddress.ip_address((host.decode() if isinstance(host, bytes) else str(host)).split("%")[0])
+        return True
+    except ValueError:
+        return False
+
+
+def _refuse(what: str):
+    _blocked.append(what)
+    raise RealNetworkCall(f"tests must not reach the network ({what}): mock it with respx or tests.fakes.MockWeb")
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _deny_network():
+    real_connect, real_connect_ex, real_getaddrinfo = socket.socket.connect, socket.socket.connect_ex, socket.getaddrinfo
+
+    def check(sock, address):
+        if sock.family != getattr(socket, "AF_UNIX", None) and not (isinstance(address, tuple) and _loopback(address[0])):
+            _refuse(f"connect to {address!r}")
+
+    def connect(self, address):
+        check(self, address)
+        return real_connect(self, address)
+
+    def connect_ex(self, address):
+        check(self, address)
+        return real_connect_ex(self, address)
+
+    def getaddrinfo(host, *args, **kwargs):
+        if not (_loopback(host) or _ip_literal(host)):  # an IP literal needs no lookup; connect() checks it
+            _refuse(f"DNS lookup of {host!r}")
+        return real_getaddrinfo(host, *args, **kwargs)
+
+    mp = pytest.MonkeyPatch()
+    mp.setattr(socket.socket, "connect", connect)
+    mp.setattr(socket.socket, "connect_ex", connect_ex)
+    mp.setattr(socket, "getaddrinfo", getaddrinfo)
+    yield
+    mp.undo()
+
+
+@pytest.fixture(autouse=True)
+def _no_network_call_was_swallowed():
+    _blocked.clear()
+    yield
+    assert not _blocked, f"the test tried to reach the network: {_blocked}"

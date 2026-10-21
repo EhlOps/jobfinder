@@ -10,7 +10,7 @@ import re
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 
-from jobfinder.core.text import tokens
+from jobfinder.core.text import refuses_sponsorship, tokens
 
 # ── seniority ────────────────────────────────────────────────────────────
 # Levels (as inferred from titles) acceptable for each level the candidate selects. Jobs whose
@@ -162,23 +162,7 @@ def salary_ok(status: dict, salary_max: int | None, currency: str | None) -> boo
 
 
 # ── visa sponsorship ─────────────────────────────────────────────────────
-_NO_SPONSOR = re.compile(
-    r"(?:unable|not able|cannot|can't|can not|do not|don't|does not|will not|won't|not)\s+(?:to\s+|be able to\s+)?"
-    r"(?:provide|offer|sponsor|support)[^.\n]{0,50}(?:visa|sponsorship|work authori[sz]ation)"
-    r"|(?:unable|not able|cannot|can't|can not|do not|don't|does not|will not|won't)\s+(?:to\s+)?sponsor\b(?!\s+(?:events?|conferences?|relocation|meetups?))"
-    r"|sponsorship\s+(?:(?:is|are|will)\s+not\s+(?:be\s+|currently\s+)?|(?:isn't|aren't)\s+(?:currently\s+)?|(?:is\s+)?un)(?:available|provided|offered|supported)"
-    r"|no\s+(?:(?:work\s+)?visa\s+|h-?1-?b\s+|immigration\s+)?sponsorship"
-    r"|without\s+(?:requiring\s+|the need for\s+)?(?:visa\s+)?sponsorship"
-    r"|(?:u\.?s\.?|united states)\s+citizen(?:ship)?\s+(?:is\s+)?required"
-    r"|must\s+be\s+(?:a\s+)?(?:u\.?s\.?|united states)\s+citizen"
-    r"|security clearance|ts/sci",
-    re.IGNORECASE,
-)
-
-
-def refuses_sponsorship(description: str) -> bool:
-    return bool(_NO_SPONSOR.search(description or ""))
-
+# refuses_sponsorship (core/text.py) is shared with the USAJOBS source, which keys its citizenship note on it.
 
 # OPT/CPT are deliberately not in _VISA: they need no employer sponsorship, so "OPT welcome" is no signal.
 # A positive signal needs a visa/immigration term: "sponsor" alone also means events, certifications, 401(k)s.
@@ -298,11 +282,7 @@ EARLY_CAREER_TITLE = re.compile(
     r"|university (?:grad(?:uate)?|hire|program(?:me)?|recruit(?:ing)?)s?|campus (?:hire|recruit(?:ing)?)s?|early career|entry[- ]level)\b",
     re.IGNORECASE,
 )
-# Same words for Postgres (\y is its word boundary); keep in step with EARLY_CAREER_TITLE.
-EARLY_CAREER_SQL = (
-    r"\y(new grad(uate)?|recent graduate|graduate (engineer|developer|program(me)?|scheme)s?"
-    r"|university (grad(uate)?|hire|program(me)?|recruit(ing)?)s?|campus (hire|recruit(ing)?)s?|early career|entry[- ]level)\y"
-)
+# repositories/matches.py EARLY_CAREER_SQL has the same words for Postgres: keep the two in step.
 _INTERN_TITLE = re.compile(r"\b(intern|internship|co-?op)\b", re.IGNORECASE)
 STAGE_BOOST = 10
 
