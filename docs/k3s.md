@@ -241,6 +241,8 @@ What the merge sets off, in order:
 
 Exit status: 0 for `deployed` and `skipped`, 2 for a malformed request, 1 for everything else.
 
+**Run log:** every run also writes its whole output to `~/.local/state/jobfinder/deploy-<env>-<UTC start>-<pid>.log` on the host (mode 0600, newest 50 kept; the last line is the summary). A run ignores SIGHUP/SIGPIPE, so a cancelled or disconnected Actions run still finishes its deploy, checks or rollback: read the outcome there. After a rollback the summary also carries `rollback_smoke`, the re-check's results.
+
 **Outcomes** (`outcome` in the summary line, shown in the run summary and the release PR comment):
 
 | Outcome | What happened | What to do |
