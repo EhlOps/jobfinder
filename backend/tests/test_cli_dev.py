@@ -162,6 +162,46 @@ def test_a_busy_port_is_refused_before_creating(tools, monkeypatch):
     assert r.exit_code == 1 and "5433" in r.stderr and not tools.find("k3d", "cluster", "create")
 
 
+class _Sock:
+    """socket.socket() as port_free uses it, recording the options it sets."""
+
+    def __init__(self, opts):
+        self.opts = opts
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def setsockopt(self, level, name, value):
+        self.opts.append(name)
+
+    def bind(self, address):
+        pass
+
+
+@pytest.mark.parametrize("platform,reuse", [("linux", True), ("darwin", False), ("freebsd14", False)])
+def test_port_free_sets_reuseaddr_only_on_linux(monkeypatch, platform, reuse):
+    """On macOS and the BSDs SO_REUSEADDR lets the bind succeed beside a listener on *:port."""
+    import socket
+
+    opts = []
+    monkeypatch.setattr(dev.sys, "platform", platform)
+    monkeypatch.setattr(dev.socket, "socket", lambda *a: _Sock(opts))
+    assert dev.port_free(5433)
+    assert (socket.SO_REUSEADDR in opts) is reuse
+
+
+def test_port_free_sees_a_listener_on_every_address():
+    import socket
+
+    with socket.socket() as listener:
+        listener.bind(("0.0.0.0", 0))
+        listener.listen()
+        assert not dev.port_free(listener.getsockname()[1])
+
+
 @pytest.mark.parametrize("verb", ["up", "status"])
 def test_missing_k3d_prints_an_install_hint(tools, monkeypatch, verb):
     monkeypatch.setattr(dev.shutil, "which", lambda name: None if name == "k3d" else f"/usr/bin/{name}")

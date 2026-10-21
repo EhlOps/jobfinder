@@ -7,8 +7,10 @@ Handlers are `(db, ai, task, payload) -> dict` like tasks.ai's; `ai` is unused h
 from datetime import timedelta
 from typing import Literal
 
+import httpx
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
+from taskiq import TaskiqEvents, TaskiqState
 
 import jobfinder.tasks.documents  # noqa: F401  (registers parse_document and fetch_link on io, #51)
 from jobfinder.core.context import default_context
@@ -32,6 +34,27 @@ class AuditCoverageArgs(BaseModel):
 
 
 PLAN_COALESCE = timedelta(minutes=1)  # boards finishing within this of each other share one plan_work
+
+
+_http: httpx.AsyncBaseTransport | None = None  # worker-io's connection pool for board fetches
+
+
+def shared_http() -> httpx.AsyncBaseTransport:
+    """The process's board-fetch transport, created on first use: the boards fetched in parallel share its
+    connection pool instead of opening new connections per ingest_board. Each task still gets its own
+    client on it, so one board's cookies never reach another's."""
+    global _http
+    if _http is None:
+        _http = httpx.AsyncHTTPTransport()
+    return _http
+
+
+@io_broker.on_event(TaskiqEvents.WORKER_SHUTDOWN)
+async def close_http(state: TaskiqState | None = None) -> None:
+    global _http
+    if _http is not None:
+        transport, _http = _http, None
+        await transport.aclose()
 
 
 class IngestBoardArgs(BaseModel):
@@ -69,8 +92,9 @@ async def ingest_board(db: AsyncSession, ai, task: Task, p: IngestBoardArgs) -> 
     only the follow-up."""
     from jobfinder.services import ingestion
 
-    async with ingestion.http_client() as client:
-        stats = await ingestion.ingest_board(default_context().sessions, client, p.company_id)
+    # Not closed: that would close the shared transport. The client holds only this board's cookies.
+    client = ingestion.http_client(shared_http())
+    stats = await ingestion.ingest_board(default_context().sessions, client, p.company_id)
     return await _changed(db, stats)
 
 
@@ -156,7 +180,7 @@ async def resolve_job_link(db: AsyncSession, ai, task: Task, p: ResolveLinkArgs)
         out["queued"] = "induce_recipe"
     await db.commit()  # the boundary: the link's outcome, the board and jobs it found, or its induce_recipe
     if out.get("new"):
-        await ledger.add(db, "plan_work", dedupe=True)
+        await _plan(db)
     return out
 
 
@@ -172,5 +196,5 @@ async def audit_coverage(db: AsyncSession, ai, task: Task, p: AuditCoverageArgs)
     )
     await db.commit()
     if out.get("resolved"):
-        await ledger.add(db, "plan_work", dedupe=True)
+        await _plan(db)
     return out

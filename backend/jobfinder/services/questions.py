@@ -138,5 +138,5 @@ async def answer_questions(db: AsyncSession, user_id: int, answers: list[dict]) 
         profile = await profiles.get(db, user_id)
         if profile:
             profile_service.bump_version(profile)
-        await ledger.add(db, "match_user", user_id=user_id, dedupe=True)
+        await ledger.add(db, "match_user", user_id=user_id, rerun=True)  # a running match has the old version
     return {"answered": answered, "skipped": skipped, "remaining": await open_count(db, user_id)}

@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 from jobfinder.core.db import AsyncSession
 from jobfinder.core.errors import NotFound
 from jobfinder.schemas.links import LinkUpload, ProfileLinkOut
+from jobfinder.services.documents import settle
 from jobfinder.storage import documents as storage
 from jobfinder.storage.documents import DocumentMeta, DocumentStore
 from jobfinder.tasks import ledger
@@ -53,8 +54,8 @@ async def _queue(db: AsyncSession, user_id: int, link_id: str) -> int:
     return (await ledger.add(db, "fetch_link", {"doc_id": link_id}, user_id=user_id, rerun=True)).id
 
 
-def list_links(store: DocumentStore, user_id: int) -> list[DocumentMeta]:
-    return store.list(user_id, kind="link")
+async def list_links(db: AsyncSession, store: DocumentStore, user_id: int) -> list[DocumentMeta]:
+    return await settle(db, store, user_id, store.list(user_id, kind="link"))
 
 
 async def add(db: AsyncSession, store: DocumentStore, user_id: int, kind: str, url: str) -> LinkUpload:

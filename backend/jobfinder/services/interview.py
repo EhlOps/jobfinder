@@ -88,8 +88,8 @@ async def run_audit(db: AsyncSession, ai: AITasks, user_id: int) -> dict:
         "version": version,
         "audited_at": datetime.now(UTC).isoformat(),
     }
-    # The dossier feeds scoring, so score again with it.
-    await ledger.add(db, "match_user", user_id=user_id, dedupe=True)
+    # The dossier feeds scoring, so score again with it (a running match has the old one).
+    await ledger.add(db, "match_user", user_id=user_id, rerun=True)
     return {"readiness": result.readiness, "questions": len(added)}
 
 
