@@ -45,29 +45,11 @@ def extract_text(data: bytes, ext: str) -> str:
     return text.strip()[:MAX_CHARS]
 
 
-class ParserBusy(Exception):
-    """Both parser slots are taken (possibly by parses that already timed out but haven't finished)."""
-
-
-async def extract_text_async(data: bytes, ext: str) -> str:
-    """extract_text on a dedicated two-thread pool with a time limit, so a heavy or crafted file can't stall the API.
-    A thread can't be killed, so a slot is released only when its parse really finishes (not on timeout):
-    repeated slow files make later uploads wait for a 503 instead of piling up more threads, and the
-    event loop's default executor (used for DNS lookups) is never touched."""
-    if not _slots.acquire(blocking=False):
-        raise ParserBusy
-    try:
-        fut = asyncio.get_running_loop().run_in_executor(_pool, _run, data, ext)
-    except BaseException:
-        _slots.release()
-        raise
-    return await asyncio.wait_for(fut, PARSE_TIMEOUT_S)
-
-
 async def extract_text_in_worker(data: bytes, ext: str) -> str:
-    """The same pool, slots and time limit for worker-io's parse_document (#51), which waits for a free
-    slot instead of answering busy: a task can wait, and ingestion's DNS lookups and to_thread calls on
-    the default executor never queue behind a stuck parse."""
+    """extract_text for worker-io's parse_document (#51) on a dedicated two-thread pool with a time limit,
+    waiting for a free slot. A thread can't be killed, so a slot is released only when its parse really
+    finishes (not on timeout): slow files make later parses wait instead of piling up more threads, and
+    ingestion's DNS lookups and to_thread calls on the default executor never queue behind a stuck parse."""
     while not _slots.acquire(blocking=False):
         await asyncio.sleep(SLOT_POLL_S)
     try:

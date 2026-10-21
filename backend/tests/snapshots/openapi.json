@@ -440,7 +440,7 @@
         "type": "object"
       },
       "DocumentUpload": {
-        "description": "An accepted upload: the document, and the parse_document task reading it while it is processing.\nPoll GET /api/tasks/{task_id}, then GET the document. task_id is null when there is nothing left to\nwait for (SYNC_UPLOADS, or a duplicate of a file already read).",
+        "description": "An accepted upload: the document, and the parse_document task reading it while it is processing.\nPoll GET /api/tasks/{task_id}, then GET the document. task_id is null when there is nothing left to\nwait for: a duplicate of a file already read.",
         "properties": {
           "document": {
             "$ref": "#/components/schemas/DocumentOut"
@@ -1414,7 +1414,7 @@
         "type": "object"
       },
       "LinkUpload": {
-        "description": "An added or refreshed link, and the fetch_link task fetching it while it is processing. task_id is\nnull when nothing is fetched: LinkedIn and X links are only saved, and SYNC_UPLOADS fetches in the request.",
+        "description": "An added or refreshed link, and the fetch_link task fetching it while it is processing. task_id is\nnull when nothing is fetched: LinkedIn and X links are only saved.",
         "properties": {
           "link": {
             "$ref": "#/components/schemas/ProfileLinkOut"
