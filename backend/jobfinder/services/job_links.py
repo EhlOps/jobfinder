@@ -3,10 +3,8 @@
 The rules: one link per URL per user, a daily limit, refused sites answered at once, known boards
 resolved at once (rung 1 is free), and everything else queued for the resolver ladder.
 """
-import sqlalchemy as sa
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from jobfinder.core.config import settings
+from jobfinder.core.db import AsyncSession
 from jobfinder.core.errors import Invalid, NotFound, RateLimited
 from jobfinder.integrations.directories import board_from_url
 from jobfinder.integrations.site_terms import refusal_for_url, refusal_message
@@ -82,7 +80,7 @@ async def add(db: AsyncSession, user: User, raw_url: str) -> tuple[JobLinkOut, i
     refused = refusal_for_url(url)
     if refused is not None:  # terms/robots review said no: answer now, nothing is fetched
         link = await repo.add(db, JobLink(user_id=user.id, url=url, status="unresolved", rung="terms_refused",
-                                          error=refusal_message(refused)[:500], resolved_at=sa.func.now()))
+                                          error=refusal_message(refused)[:500], resolved_at=repo.db_now()))
         return await _one(db, link), 201
 
     link = JobLink(user_id=user.id, url=url, status="resolving")
@@ -92,7 +90,7 @@ async def add(db: AsyncSession, user: User, raw_url: str) -> tuple[JobLinkOut, i
         known = await existing_board(db, *board)
         if known is not None:  # already polled on schedule: nothing to fetch
             link.status, link.company_id, link.rung = "resolved", known.id, "url_pattern"
-            link.resolved_at = sa.func.now()
+            link.resolved_at = repo.db_now()
     link = await repo.add(db, link)  # flushed: the task payload needs its id
     if link.status != "resolving":
         return await _one(db, link), 201

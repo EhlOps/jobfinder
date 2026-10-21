@@ -4,12 +4,10 @@
 """
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from jobfinder.core.config import settings
+from jobfinder.core.db import AsyncSession
 from jobfinder.core.errors import Invalid, NotFound
 from jobfinder.integrations.claude import credentials
-from jobfinder.matching.service import BUDGET_WINDOW, UNLIMITED
 from jobfinder.models import Company, CovetedTarget, User
 from jobfinder.repositories import admin as repo
 from jobfinder.repositories import companies, coverage
@@ -26,6 +24,7 @@ from jobfinder.schemas.ai_admin import (
 from jobfinder.schemas.coverage import Coverage, CoverageRow, PinIn, PinOut, TargetRow, UnpinIn
 from jobfinder.services import coverage as coverage_service
 from jobfinder.services import planner
+from jobfinder.services.matching.service import BUDGET_WINDOW, UNLIMITED
 from jobfinder.tasks import ledger
 
 BAD_DOMAIN = "Enter the employer's bare domain, like acme.com (no https://, path or port)."

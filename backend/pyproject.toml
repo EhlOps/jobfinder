@@ -68,84 +68,43 @@ line-length = 100
 # Deliberate broad catches: a bad upload/URL/task must not take down a request or the worker.
 ignore = ["BLE001"]
 
-# Report-only architecture contracts: CI runs lint-imports with continue-on-error until #53 makes
-# them blocking. They describe the package as it is today; #53 replaces them with the layer rules.
+[tool.ruff.lint.isort]
+# The ingest/sources, recipes and discovery shims (#42) have no module files left for ruff to find.
+known-first-party = ["jobfinder"]
+
+# Architecture contracts, blocking in CI since #53 (tests/test_architecture.py checks what these can't:
+# commits, core's size, no BaseModel in api/). Each failure names the rule a change broke.
 [tool.importlinter]
 root_package = "jobfinder"
+include_external_packages = true  # so "api and services never import sqlalchemy" can be stated
 
 [[tool.importlinter.contracts]]
-name = "Only the app factory (api.app) imports the HTTP routers"
-type = "forbidden"
-source_modules = [
-  "jobfinder.ai",
-  "jobfinder.auth",
-  "jobfinder.cli",
-  "jobfinder.context",
-  "jobfinder.core",
-  "jobfinder.integrations",
-  "jobfinder.matching",
-  "jobfinder.models",
-  "jobfinder.profile",
-  "jobfinder.renderer",
-  "jobfinder.repositories",
-  "jobfinder.resumes",
-  "jobfinder.scheduler",
-  "jobfinder.services",
-  "jobfinder.schemas",
-  "jobfinder.storage",
-  "jobfinder.tasks",
-]
-forbidden_modules = ["jobfinder.api"]
-
-[[tool.importlinter.contracts]]
-name = "The api package does not import the Claude CLI client directly"
-type = "forbidden"
-source_modules = ["jobfinder.api"]
-forbidden_modules = ["jobfinder.integrations.claude.claude_code"]
-allow_indirect_imports = true
-
-[[tool.importlinter.contracts]]
-name = "The API schemas do not import the AI layer (its output schemas are not the API contract)"
-type = "forbidden"
-source_modules = ["jobfinder.schemas"]
-forbidden_modules = ["jobfinder.ai"]
-allow_indirect_imports = true
-
-[[tool.importlinter.contracts]]
-name = "core imports nothing else from jobfinder"
-type = "forbidden"
-source_modules = ["jobfinder.core"]
-forbidden_modules = [
-  "jobfinder.ai",
+name = "Layers (#53): entrypoints > api > services | context > schemas > repositories | integrations > task ledger > models > core"
+type = "layers"
+# Top to bottom; a module may import only from layers below its own. "|" siblings are independent of
+# each other, ":" siblings may import each other.
+#   entrypoints  the CLI, the scheduler, the task workers and their runtime, the renderer container
+#   context      the app context: core's infrastructure plus Claude and the document store
+#   task ledger  where services queue work (ledger.add) and the brokers that deliver it
+layers = [
+  "jobfinder.cli : jobfinder.scheduler : jobfinder.renderer : jobfinder.tasks.__main__ : jobfinder.tasks.ai : jobfinder.tasks.io : jobfinder.tasks.documents : jobfinder.tasks.render : jobfinder.tasks.runtime",
   "jobfinder.api",
-  "jobfinder.auth",
-  "jobfinder.cli",
-  "jobfinder.context",
-  "jobfinder.integrations",
-  "jobfinder.matching",
-  "jobfinder.models",
-  "jobfinder.profile",
-  "jobfinder.renderer",
-  "jobfinder.repositories",
-  "jobfinder.resumes",
-  "jobfinder.scheduler",
-  "jobfinder.services",
+  "jobfinder.services | jobfinder.context",
   "jobfinder.schemas",
-  "jobfinder.storage",
-  "jobfinder.tasks",
+  "jobfinder.repositories | jobfinder.integrations | jobfinder.storage | jobfinder.profile | jobfinder.resumes",
+  "jobfinder.tasks.ledger : jobfinder.tasks.kinds : jobfinder.tasks.brokers",
+  "jobfinder.models",
+  "jobfinder.core",
 ]
 
+# Queries live in repositories. Typing and catching a unique-key race need no sqlalchemy import:
+# core.db re-exports AsyncSession and IntegrityError.
 [[tool.importlinter.contracts]]
-name = "integrations do not import services (#42)"
+name = "No SQL in api or services: they never import sqlalchemy (#53)"
 type = "forbidden"
-source_modules = ["jobfinder.integrations"]
-forbidden_modules = ["jobfinder.services"]
-
-[[tool.importlinter.contracts]]
-name = "repositories hold SQL only: they import no services, integrations or HTTP code (#44-#46)"
-type = "forbidden"
-source_modules = ["jobfinder.repositories"]
-forbidden_modules = ["jobfinder.api", "jobfinder.integrations", "jobfinder.services"]
+source_modules = ["jobfinder.api", "jobfinder.services"]
+forbidden_modules = ["sqlalchemy"]
+allow_indirect_imports = true  # services -> repositories -> sqlalchemy is the layering
 
 [[tool.importlinter.contracts]]
 name = "Routers call services, not repositories (#44-#46)"
@@ -155,7 +114,26 @@ forbidden_modules = ["jobfinder.repositories"]
 allow_indirect_imports = true  # api -> services -> repositories is the layering
 
 [[tool.importlinter.contracts]]
-name = "Requests and services queue tasks through the ledger; only workers import the task runtime (#48)"
+name = "The api does not import the Claude CLI client directly"
 type = "forbidden"
-source_modules = ["jobfinder.api", "jobfinder.services", "jobfinder.repositories"]
-forbidden_modules = ["jobfinder.tasks.runtime"]
+source_modules = ["jobfinder.api"]
+forbidden_modules = ["jobfinder.integrations.claude.claude_code"]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "The API schemas import no integrations (the Claude task schemas are not the API contract)"
+type = "forbidden"
+source_modules = ["jobfinder.schemas"]
+forbidden_modules = ["jobfinder.integrations"]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "Only uvicorn loads the HTTP app: no other entrypoint imports the api"
+type = "forbidden"
+source_modules = ["jobfinder.cli", "jobfinder.renderer", "jobfinder.scheduler", "jobfinder.tasks"]
+forbidden_modules = ["jobfinder.api"]
+
+[[tool.importlinter.contracts]]
+name = "The entrypoints are independent: the CLI, the scheduler and the renderer share code only through lower layers"
+type = "independence"
+modules = ["jobfinder.cli", "jobfinder.scheduler", "jobfinder.renderer"]

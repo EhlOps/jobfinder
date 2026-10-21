@@ -175,8 +175,8 @@ async def test_schedule_queries_do_not_grow_with_users(client, maker, make_accou
 async def test_batched_budget_matches_the_per_user_rule(maker, monkeypatch):
     from datetime import UTC, datetime
 
-    from jobfinder.matching.service import UNLIMITED, remaining_budget
     from jobfinder.models import Job
+    from jobfinder.services.matching.service import UNLIMITED, remaining_budget
 
     monkeypatch.setattr(get_settings(), "match_daily_llm_budget", 3)
     async with maker() as db:

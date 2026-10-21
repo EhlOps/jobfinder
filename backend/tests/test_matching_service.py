@@ -3,12 +3,12 @@ from datetime import UTC, datetime, timedelta
 import pytest
 import sqlalchemy as sa
 
-from jobfinder.ai.schemas import MatchScore
 from jobfinder.core.config import get_settings
 from jobfinder.integrations.claude.claude_code import AIError
-from jobfinder.matching import service
+from jobfinder.integrations.claude.schemas import MatchScore
 from jobfinder.models import Company, Job, JobMatch, Profile, User
 from jobfinder.models.posting import dedupe_hash
+from jobfinder.services.matching import service
 from tests.fakes import FakeScoringAI
 
 STATUS = {"target_roles": ["Backend Engineer"], "target_locations": ["Boston"], "is_new_grad": True,
@@ -277,7 +277,7 @@ async def test_candidates_are_light_batched_and_hydrated_in_order(maker, monkeyp
 
 
 async def test_requirement_checks_drive_the_stored_score_and_persist(maker):
-    from jobfinder.ai.schemas import RequirementCheck
+    from jobfinder.integrations.claude.schemas import RequirementCheck
 
     class ReqAI(FakeScoringAI):
         async def score_match(self, status, background, facts, job, dossier=None, stage_info=None):
@@ -305,7 +305,7 @@ def _status(**kw):
 
 
 async def test_student_sees_internships_not_new_grad_roles_until_final_year(maker):
-    from jobfinder.matching import prefilter
+    from jobfinder.services.matching import prefilter
 
     today = datetime.now(UTC).date()
     far = f"{today.year + 2}-{today.month:02d}"

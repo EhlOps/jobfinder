@@ -1,6 +1,6 @@
 """ATS-safe resume export: single column, standard headings, no tables/images/text boxes.
 
-The renderers take a TailoredResume (ai/schemas.py) or any object with the same attributes.
+The renderers take a TailoredResume (integrations/claude/schemas.py) or any object with the same attributes.
 All field access goes through `_sections`.
 """
 
@@ -18,8 +18,8 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import ListFlowable, ListItem, Paragraph, SimpleDocTemplate, Spacer
 
-from jobfinder.integrations.docx_export import clean_text as _clean
-from jobfinder.integrations.docx_export import new_document, to_bytes
+from jobfinder.resumes.docx_export import clean_text as _clean
+from jobfinder.resumes.docx_export import new_document, to_bytes
 
 # The built-in Helvetica is Latin-1 only, so names like "Łukasz" or Cyrillic/Greek text would render
 # as blanks. DejaVu Sans (bundled, see fonts/LICENSE-DejaVu.txt) covers Latin Extended, Vietnamese,

@@ -3,8 +3,8 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from jobfinder.ai.schemas import ResumeContact, TailoredResume
 from jobfinder.core.errors import NotFound
+from jobfinder.integrations.claude.schemas import ResumeContact, TailoredResume
 from jobfinder.integrations.claude.tasks import AITasks
 from jobfinder.models import Profile, ProfileFact
 from jobfinder.services import resumes as service

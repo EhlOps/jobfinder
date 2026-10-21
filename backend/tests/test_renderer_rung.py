@@ -5,9 +5,9 @@ from pathlib import Path
 import httpx
 import pytest
 
-from jobfinder import renderer
 from jobfinder.core.config import get_settings
 from jobfinder.integrations import http_safety
+from jobfinder.integrations import render as renderer
 from jobfinder.integrations.recipes import RecipeError, run_recipe, validate_recipe
 from jobfinder.integrations.recipes.rendered import item_id
 from jobfinder.integrations.recipes.sniff import explain_json_sample, pagination_for

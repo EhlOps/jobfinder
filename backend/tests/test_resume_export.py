@@ -3,7 +3,13 @@ import io
 import docx
 import pdfplumber
 
-from jobfinder.ai.schemas import Education, Experience, Project, ResumeContact, TailoredResume
+from jobfinder.integrations.claude.schemas import (
+    Education,
+    Experience,
+    Project,
+    ResumeContact,
+    TailoredResume,
+)
 from jobfinder.resumes.export import HEADINGS, render_docx, render_pdf, resume_to_text
 
 

@@ -15,8 +15,8 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jobfinder.core.config import settings
+from jobfinder.core.text import refuses_sponsorship
 from jobfinder.core.urls import safe_http_url
-from jobfinder.matching.prefilter import refuses_sponsorship
 from jobfinder.models import Profile, User
 from jobfinder.models.posting import (
     MAX_DESCRIPTION_CHARS,

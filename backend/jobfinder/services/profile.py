@@ -2,11 +2,12 @@
 version rule every area shares (`bump_version`)."""
 from typing import Any
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
+from jobfinder.core.db import AsyncSession
 from jobfinder.core.errors import Conflict, Invalid, NotFound
 from jobfinder.models import Profile, ProfileFact, Task
 from jobfinder.repositories import profiles
+from jobfinder.schemas.profile import ProfileOut
+from jobfinder.services.matching.prefilter import career_stage
 from jobfinder.storage.documents import DocumentStore, is_tailored
 from jobfinder.tasks import ledger
 
@@ -24,6 +25,13 @@ class StillReading(Conflict):
 def bump_version(profile: Profile) -> None:
     """The profile changed in a way scoring reads: matches and letters scored before are now stale."""
     profile.version += 1
+
+
+def profile_out(profile: Profile) -> ProfileOut:
+    """The profile as the api returns it, with the career stage its status implies (as the matches summary)."""
+    status = profile.status or {}
+    return ProfileOut(status=status, background=profile.background, version=profile.version,
+                      career_stage=career_stage(status))
 
 
 async def get_or_create(db: AsyncSession, user_id: int) -> Profile:

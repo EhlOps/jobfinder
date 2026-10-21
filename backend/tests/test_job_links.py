@@ -192,7 +192,8 @@ async def _link(db, url=GH, user_id=None):
     return link
 
 
-async def test_resolve_records_unreadable_board(maker, web):
+async def test_resolve_records_unreadable_board(maker, web, monkeypatch):
+    monkeypatch.setattr(resolver, "RUNGS", [UrlPatternRung()])  # the later rungs would fetch the page for real
     async with maker() as db:
         link = await _link(db)
         async with board_json(web, {"error": "nope"}, status=404) as c:

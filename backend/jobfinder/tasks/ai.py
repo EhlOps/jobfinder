@@ -106,7 +106,7 @@ async def audit_profile(db: AsyncSession, ai: AITasks, task: Task, _: None) -> d
 
 @ledger_task(ai_broker, "match_user")
 async def match_user(db: AsyncSession, ai: AITasks, task: Task, _: None) -> dict:
-    from jobfinder.matching import service
+    from jobfinder.services.matching import service
 
     # Commit after each scored job: a rate limit mid-run keeps what was scored (the runtime rolls back the rest).
     summary = await service.match_user(db, ai, task.user_id, checkpoint=db.commit)

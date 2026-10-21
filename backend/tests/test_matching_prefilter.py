@@ -3,7 +3,8 @@ from datetime import UTC, date, datetime, timedelta
 
 import pytest
 
-from jobfinder.matching import prefilter as pf
+from jobfinder.repositories.matches import EARLY_CAREER_SQL
+from jobfinder.services.matching import prefilter as pf
 
 
 # ── seniority ────────────────────────────────────────────────────────────
@@ -367,7 +368,7 @@ def test_bare_university_campus_graduate_not_early_career(title):
 ])
 def test_early_career_compound_titles(title):
     assert pf.is_early_career(title, None)
-    assert re.search(pf.EARLY_CAREER_SQL.replace(r"\y", r"\b"), title, re.IGNORECASE)
+    assert re.search(EARLY_CAREER_SQL.replace(r"\y", r"\b"), title, re.IGNORECASE)
 
 
 def test_unrelated_dates_do_not_drop_jobs():

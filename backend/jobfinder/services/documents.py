@@ -8,9 +8,8 @@ import logging
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from jobfinder.core.config import settings
+from jobfinder.core.db import AsyncSession
 from jobfinder.core.errors import Invalid, NotFound, TooLarge, Unsupported
 from jobfinder.profile.formats import ALLOWED_EXTENSIONS, CONTENT_TYPES
 from jobfinder.schemas.documents import DocumentOut, DocumentUpload

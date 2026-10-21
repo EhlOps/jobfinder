@@ -17,11 +17,12 @@ from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
 
-import sqlalchemy as sa
 from alembic.config import Config
 from alembic.script import ScriptDirectory
 from fastapi import Request
 from fastapi.responses import JSONResponse
+
+from jobfinder.services import health as service
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 # Well under the probe's 3s timeout, so a hung database can't pile up checks holding pool slots.
@@ -62,10 +63,7 @@ def _not_ready(reason: str) -> JSONResponse:
 async def _db_revisions(request: Request) -> frozenset[str] | None:
     """The database's alembic revisions; None when it has no alembic_version table."""
     async with request.app.state.ctx.sessions() as s:
-        # to_regclass instead of selecting straight away: a missing table is an answer, not an error.
-        if await s.scalar(sa.text("select to_regclass('alembic_version')")) is None:
-            return None
-        return frozenset((await s.scalars(sa.text("select version_num from alembic_version"))).all())
+        return await service.schema_revisions(s)
 
 
 async def readyz(request: Request) -> JSONResponse:

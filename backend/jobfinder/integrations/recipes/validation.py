@@ -1,6 +1,6 @@
-"""Validation of a recipe the LLM induced (resolver rung 5): turn ai.schemas.InducedRecipe into a Recipe.
+"""Validation of a recipe the LLM induced (resolver rung 5): turn claude.schemas.InducedRecipe into a Recipe.
 
-The model's output is deliberately permissive (ai/schemas.py), so a near miss can be explained to it on the
+The model's output is deliberately permissive (claude/schemas.py), so a near miss can be explained to it on the
 retry. This is where it becomes a real Recipe: every URL must be on the board's own domain, and paths and
 selectors are compiled before anything is fetched.
 """
@@ -15,8 +15,8 @@ from jobfinder.integrations.recipes import Recipe, RecipeError, fill_template
 from jobfinder.integrations.recipes.html import _is_template, compile_recipe
 from jobfinder.integrations.recipes.json_api import compile_path
 
-if TYPE_CHECKING:  # ai.schemas imports this module for InducedRecipe.to_recipe
-    from jobfinder.ai.schemas import InducedRecipe
+if TYPE_CHECKING:  # claude.schemas imports this module for InducedRecipe.to_recipe
+    from jobfinder.integrations.claude.schemas import InducedRecipe
 
 _URL_IN_TEXT = re.compile(r"https?://[^\s\"'<>\\]+", re.IGNORECASE)  # explicit URLs only: 'a//b' is no URL
 

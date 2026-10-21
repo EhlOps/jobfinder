@@ -3,8 +3,8 @@
 Adding a board goes through services.board_validation.add_board (it validates with a live fetch); re-enabling goes
 through admin.enable_source, the same rule as Admin › Sources. Nothing here commits.
 """
-from sqlalchemy.ext.asyncio import AsyncSession
 
+from jobfinder.core.db import AsyncSession
 from jobfinder.core.errors import Invalid, NotFound
 from jobfinder.models import Company
 from jobfinder.repositories import companies

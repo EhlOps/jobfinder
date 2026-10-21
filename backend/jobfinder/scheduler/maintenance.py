@@ -3,10 +3,10 @@ TASK_PRUNE_DAYS, old rate-limit events and expired sessions. One transaction per
 and the next tick tries again."""
 import logging
 
-from jobfinder.auth.security import prune_sessions
 from jobfinder.core.config import settings
 from jobfinder.core.context import default_context
 from jobfinder.services import ratelimit
+from jobfinder.services.auth import prune_sessions
 from jobfinder.tasks import ledger
 
 log = logging.getLogger("jobfinder.scheduler")

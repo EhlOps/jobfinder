@@ -4,11 +4,11 @@ from datetime import UTC, datetime
 import pytest
 import sqlalchemy as sa
 
-from jobfinder.auth.security import hash_session_token
 from jobfinder.core.config import Settings, get_settings
 from jobfinder.core.db import database_url
 from jobfinder.models import Profile, Session, User
 from jobfinder.services import tokens
+from jobfinder.services.auth import hash_session_token
 from jobfinder.services.tokens import make_password_token, make_token
 
 REQ = "/api/auth/password-reset/request"

@@ -1,8 +1,8 @@
 """A match's tailored resume as the API shows and accepts it, with its keyword coverage.
 
-TailoredResumeOut has the same fields as the AI's ai.schemas.TailoredResume but is defined here, so a change to
+TailoredResumeOut has the same fields as the AI's claude.schemas.TailoredResume but is defined here, so a change to
 the prompt's schema cannot silently change the API. The router reads the AI-written file straight into it, so
-the two must stay field-for-field identical (tests/test_api_architecture.py checks).
+the two must stay field-for-field identical (tests/test_architecture.py checks).
 """
 from datetime import datetime
 from typing import Literal

@@ -245,7 +245,7 @@ async def test_prune_deletes_only_old_finished_rows_in_batches(db):
 def test_every_handler_kind_has_a_queue():
     import jobfinder.tasks.ai
     import jobfinder.tasks.io  # noqa: F401  (registers their handlers)
-    from jobfinder.renderer import KINDS
+    from jobfinder.integrations.render import KINDS
 
     assert set(runtime.REGISTRY) | set(KINDS) == set(QUEUES)
     with pytest.raises(ValueError):

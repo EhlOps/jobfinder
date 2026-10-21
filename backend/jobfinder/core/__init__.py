@@ -11,7 +11,7 @@
     urls      hostname and link helpers
     text      tokenizing and whitespace helpers
 
-The rules (tests/test_core_architecture.py enforces the first two):
+The rules (tests/test_architecture.py enforces the first two):
   1. At most 150 lines per file.
   2. Import nothing from jobfinder outside core/.
   3. No I/O at import time: nothing connects, reads a file or loads settings until it is called.

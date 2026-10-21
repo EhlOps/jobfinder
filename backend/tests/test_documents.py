@@ -136,12 +136,12 @@ async def test_an_unreadable_file_uploaded_again_is_read_again(authed, maker, mo
 
 # ── unchanged behaviour ────────────────────────────────────────────────
 async def test_list_hides_tailored_resumes(authed, maker):
+    from jobfinder.context import default_context
     from jobfinder.services.resumes import match_tags
-    from jobfinder.storage.documents import get_store
 
     up = await upload(authed, maker, "a.txt", b"aaa")
     uid = (await authed.get("/api/auth/me")).json()["id"]
-    get_store().put(uid, "resume", "Tailored.json", text="{}", content_type="application/json", tags=match_tags(3))
+    default_context().store.put(uid, "resume", "Tailored.json", text="{}", content_type="application/json", tags=match_tags(3))
     for params in ({}, {"kind": "resume"}):
         assert [d["id"] for d in (await authed.get("/api/documents", params=params)).json()] == [up["id"]]
     by_tag = (await authed.get("/api/documents", params={"tag": "match:3"})).json()

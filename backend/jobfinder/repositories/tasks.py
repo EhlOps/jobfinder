@@ -1,4 +1,6 @@
 """Task-ledger reads: the newest unfinished task of a kind for a match (API), recent tasks (CLI)."""
+from datetime import datetime
+
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -34,3 +36,10 @@ async def recent(db: AsyncSession, *, status: str | None = None, kind: str | Non
     if kind:
         q = q.where(Task.kind == kind)
     return list((await db.scalars(q)).all())
+
+
+async def any_since(db: AsyncSession, user_id: int, kind: str, since: datetime) -> bool:
+    """Whether the user has a task of `kind` due (run_after) at or after `since`, in any state."""
+    return bool(await db.scalar(sa.select(sa.exists().where(
+        Task.user_id == user_id, Task.kind == kind, Task.run_after >= since,
+    ))))

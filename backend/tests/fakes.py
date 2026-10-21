@@ -22,7 +22,8 @@ from respx.models import AllMockedAssertionError
 from respx.patterns import M
 from sqlalchemy import select
 
-from jobfinder.ai.schemas import (
+from jobfinder.core.clock import utcnow
+from jobfinder.integrations.claude.schemas import (
     AuditQuestion,
     Background,
     Consolidated,
@@ -34,10 +35,9 @@ from jobfinder.ai.schemas import (
     ProfileAudit,
     Unknown,
 )
-from jobfinder.core.clock import utcnow
 from jobfinder.integrations.http_safety import FetchError
+from jobfinder.integrations.render import KINDS as RENDER_KINDS
 from jobfinder.models import Task
-from jobfinder.renderer import KINDS as RENDER_KINDS
 from jobfinder.tasks import ledger
 
 _UNSET = object()

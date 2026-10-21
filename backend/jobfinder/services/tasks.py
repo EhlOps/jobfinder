@@ -1,6 +1,6 @@
 """Reading the user's own background tasks (the SPA polls these)."""
-from sqlalchemy.ext.asyncio import AsyncSession
 
+from jobfinder.core.db import AsyncSession
 from jobfinder.core.errors import NotFound
 from jobfinder.models import Task
 from jobfinder.repositories import tasks

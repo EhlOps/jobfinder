@@ -23,8 +23,8 @@ from jobfinder.integrations.http_safety import JSON_TYPES, FetchError, safe_fetc
 from jobfinder.integrations.recipes import Recipe, RecipeError, run_recipe, validate_recipe
 from jobfinder.integrations.recipes.rendered import count_rendered_boards, run_rendered
 from jobfinder.integrations.recipes.sniff import explain_json_sample
-from jobfinder.renderer import CAPTURE, RenderError, RenderUnavailable, request_render
-from jobfinder.renderer.guard import check_selector
+from jobfinder.integrations.render import CAPTURE, RenderError, RenderUnavailable, request_render
+from jobfinder.integrations.render.guard import check_selector
 from jobfinder.services.resolver.ladder import RecipeHit, ResolveContext
 from jobfinder.services.resolver.names import name_from_domain
 from jobfinder.services.resolver.rungs.listing import MAX_SAMPLE_CHARS, job_pattern

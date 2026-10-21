@@ -17,9 +17,9 @@ from datetime import UTC, datetime, timedelta
 from functools import partial
 
 import httpx
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from jobfinder.core.config import settings
+from jobfinder.core.db import AsyncSession
 from jobfinder.core.http import USER_AGENT
 from jobfinder.integrations import jobspy as jobspy_source
 from jobfinder.integrations import usajobs

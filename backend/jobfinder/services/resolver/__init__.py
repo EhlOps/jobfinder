@@ -19,9 +19,8 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 import httpx
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
 
+from jobfinder.core.db import AsyncSession, IntegrityError
 from jobfinder.core.http import USER_AGENT
 from jobfinder.core.urls import (  # noqa: F401  (re-exported: the API and tests import them from here)
     MAX_URL_CHARS,

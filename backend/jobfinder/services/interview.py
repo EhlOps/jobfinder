@@ -5,15 +5,14 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import UTC, datetime
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
+from jobfinder.core.db import AsyncSession
 from jobfinder.integrations.claude.tasks import AITasks
 from jobfinder.models import Profile, ProfileFact, Task
 from jobfinder.repositories import profiles
+from jobfinder.schemas.interview import MAX_ANSWER_CHARS
 from jobfinder.services import profile as profile_service
 from jobfinder.tasks import ledger
 
-MAX_ANSWER_CHARS = 3000
 DEMAND_LIMIT = 15
 SKIPPED_LIMIT = 20
 QUEUE_LIMIT = 12

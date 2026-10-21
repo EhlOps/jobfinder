@@ -3,7 +3,7 @@ the model's own gut number. 'Unknown' (the profile is silent) is neutral, so a t
 mid-range with low confidence instead of looking like a poor fit; 'unmet' is what lowers the score."""
 from __future__ import annotations
 
-from jobfinder.ai.schemas import MatchScore, RequirementCheck
+from jobfinder.integrations.claude.schemas import MatchScore, RequirementCheck
 
 IMPORTANCE_WEIGHT = {"must": 3.0, "nice": 1.0}
 STATUS_CREDIT = {"met": 1.0, "partial": 0.6, "unknown": 0.5, "unmet": 0.0}
@@ -27,7 +27,7 @@ def compute_score(reqs: list[RequirementCheck], preference_fit: int) -> tuple[in
 def finalize(result: MatchScore) -> MatchScore:
     """Replace the model's gut score/confidence with the computed ones and derive `unknowns` and `gaps`
     from the requirement checks (kept in the old shape for the email and match list)."""
-    from jobfinder.ai.schemas import Unknown
+    from jobfinder.integrations.claude.schemas import Unknown
 
     if not result.requirements:  # the model gave no checklist: keep its own judgement
         return result

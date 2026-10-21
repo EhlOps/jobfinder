@@ -11,7 +11,8 @@ from typing import Any
 from pydantic import BaseModel, Field
 from taskiq import TaskiqEvents, TaskiqState
 
-from jobfinder.renderer import CAPTURE, LIST, browser
+from jobfinder.integrations.render import CAPTURE, LIST
+from jobfinder.renderer import browser
 from jobfinder.tasks.brokers import render_broker
 from jobfinder.tasks.runtime import ledger_task
 

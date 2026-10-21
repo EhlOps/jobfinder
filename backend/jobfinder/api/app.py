@@ -24,8 +24,8 @@ from jobfinder.api import (
     resumes,
     tasks,
 )
+from jobfinder.api import auth as auth_routes
 from jobfinder.api import settings as settings_api
-from jobfinder.auth import routes as auth_routes
 from jobfinder.context import AppContext, build_context, default_context
 from jobfinder.core import errors
 from jobfinder.core.config import Settings

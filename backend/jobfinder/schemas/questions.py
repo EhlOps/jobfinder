@@ -1,7 +1,7 @@
 """Clarifying questions: the open ones with the jobs that raised them, and the answers to them."""
 from pydantic import BaseModel, Field
 
-from jobfinder.services.questions import MAX_ANSWER_CHARS
+MAX_ANSWER_CHARS = 2000  # longer answers are cut to this when saved (services/questions.py)
 
 
 class QuestionJob(BaseModel):

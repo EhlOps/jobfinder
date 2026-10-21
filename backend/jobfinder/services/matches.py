@@ -3,16 +3,16 @@
 Also the two checks the cover letter and resume services share: the match must be the user's
 (`owned`), and their profile must have a background to write from (`require_background`).
 """
-from sqlalchemy.ext.asyncio import AsyncSession
 
+from jobfinder.core.db import AsyncSession
 from jobfinder.core.errors import Invalid, NotFound
-from jobfinder.matching import prefilter
 from jobfinder.models import Company, Job, JobMatch, Profile
 from jobfinder.repositories import letters as letters_repo
 from jobfinder.repositories import matches as repo
 from jobfinder.schemas.common import TaskRef
 from jobfinder.schemas.matches import JobOut, MatchDetail, MatchList, MatchOut
 from jobfinder.services import profile as profile_service
+from jobfinder.services.matching import prefilter
 from jobfinder.tasks import ledger
 
 FeedQuery = repo.FeedQuery  # the router builds one from the query string

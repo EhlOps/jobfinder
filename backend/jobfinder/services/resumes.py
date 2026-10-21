@@ -8,12 +8,11 @@ import re
 from datetime import datetime
 
 from pydantic import ValidationError
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from jobfinder.ai.schemas import TailoredResume
+from jobfinder.core.db import AsyncSession
 from jobfinder.core.errors import Conflict, NotFound
+from jobfinder.integrations.claude.schemas import TailoredResume
 from jobfinder.integrations.claude.tasks import AITasks
-from jobfinder.matching.service import job_payload
 from jobfinder.models import Job, Profile
 from jobfinder.repositories import matches as matches_repo
 from jobfinder.repositories import tasks as tasks_repo
@@ -22,6 +21,7 @@ from jobfinder.resumes.export import render_docx, render_pdf, resume_to_text
 from jobfinder.schemas.common import DOCX, PDF, TaskRef
 from jobfinder.schemas.resumes import CoverageOut, ResumeOut, ResumeState, TailoredResumeOut
 from jobfinder.services.matches import owned, require_background
+from jobfinder.services.matching.service import job_payload
 from jobfinder.storage.documents import MATCH_TAG, DocumentMeta, DocumentStore, is_tailored
 from jobfinder.storage.documents import NotFound as FileGone
 from jobfinder.tasks import ledger
@@ -62,7 +62,7 @@ def _current(store: DocumentStore, user_id: int, match_id: int) -> tuple[Documen
     if not metas:
         return None
     meta = max(metas, key=lambda m: m.created_at)
-    try:  # the file holds ai.schemas.TailoredResume JSON, which has the same fields (test_api_architecture checks)
+    try:  # the file holds claude.schemas.TailoredResume JSON, which has the same fields (test_architecture checks)
         return meta, TailoredResumeOut.model_validate(json.loads(store.read_text(user_id, meta.id)))
     except (ValueError, ValidationError, FileGone):
         return None  # unreadable file: treat as no resume so the user can regenerate

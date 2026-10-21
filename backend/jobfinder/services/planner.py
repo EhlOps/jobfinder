@@ -10,13 +10,16 @@ import logging
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
-import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from jobfinder.core.config import settings
-from jobfinder.matching.service import BUDGET_WINDOW, STALE_STATUSES, UNLIMITED, sync_career_stage
-from jobfinder.models import AICall, Job, JobMatch, PlannerState, Profile, Task, User
+from jobfinder.core.db import AsyncSession
+from jobfinder.models import Profile, User
+from jobfinder.repositories import planner as repo
+from jobfinder.services.matching.service import (
+    BUDGET_WINDOW,
+    STALE_STATUSES,
+    UNLIMITED,
+    sync_career_stage,
+)
 from jobfinder.tasks import ledger
 
 log = logging.getLogger("jobfinder.planner")
@@ -28,7 +31,6 @@ STALE_AFTER = timedelta(hours=24)
 RECENT_GAP = timedelta(hours=24)  # users seen within ACTIVE_WITHIN..IDLE_AFTER
 IDLE_GAP = timedelta(days=7)
 NEW_JOBS_CAP = 50
-STATE_CHUNK = 1000
 AUDIT_RETRY_AFTER = timedelta(hours=6)  # after a failed audit, match instead of retrying it every tick
 
 
@@ -67,7 +69,7 @@ def min_gap(seen_ago: timedelta) -> timedelta:
 
 async def backoff_until(db: AsyncSession, now: datetime) -> datetime | None:
     """While Claude's latest call failed with a rate limit or auth error, everything waits."""
-    last = (await db.execute(sa.select(AICall).order_by(AICall.id.desc()).limit(1))).scalar_one_or_none()
+    last = await repo.latest_ai_call(db)
     if last is None or last.error_kind not in BACKOFF_ERRORS:
         return None
     until = last.created_at + timedelta(minutes=settings.planner_backoff_minutes)
@@ -75,22 +77,11 @@ async def backoff_until(db: AsyncSession, now: datetime) -> datetime | None:
 
 
 async def in_flight_users(db: AsyncSession) -> set[int]:
-    rows = await db.scalars(
-        sa.select(Task.user_id).where(Task.kind.in_(WORK_KINDS), Task.status.in_(ledger.ACTIVE), Task.user_id.is_not(None))
-    )
-    return set(rows)
+    return await repo.users_with_tasks(db, WORK_KINDS, ledger.ACTIVE)
 
 
 async def _views(db: AsyncSession, now: datetime) -> list[UserView]:
-    rows = (
-        await db.execute(
-            sa.select(User, Profile, PlannerState)
-            .join(Profile, Profile.user_id == User.id)
-            .outerjoin(PlannerState, PlannerState.user_id == User.id)
-            .where(User.password_hash.is_not(None), Profile.status != {})
-            .order_by(User.id)
-        )
-    ).all()
+    rows = await repo.candidates(db)
     # A graduation date that has passed changes what the user should see: bump the version before looking
     # for stale matches so the re-score is planned like any other profile change.
     bumped = []
@@ -103,51 +94,15 @@ async def _views(db: AsyncSession, now: datetime) -> list[UserView]:
         bumped.append(stage_changed)
     if any(bumped):
         await db.commit()
-    used = dict(
-        (
-            await db.execute(
-                sa.select(JobMatch.user_id, sa.func.count()).where(JobMatch.scored_at >= now - BUDGET_WINDOW).group_by(JobMatch.user_id)
-            )
-        ).all()
-    )
-    changed = set(
-        await db.scalars(
-            sa.select(JobMatch.user_id).join(Job, Job.id == JobMatch.job_id).join(Profile, Profile.user_id == JobMatch.user_id)
-            .where(JobMatch.status.in_(STALE_STATUSES), JobMatch.profile_version < Profile.version, Job.is_active.is_(True))
-            .distinct()
-        )
-    )
-    uncollected = set(
-        await db.scalars(
-            sa.select(JobMatch.user_id).join(Job, Job.id == JobMatch.job_id)
-            .where(JobMatch.questions_collected.is_(False), Job.is_active.is_(True)).distinct()
-        )
-    )
-    audit_failed = dict(
-        (
-            await db.execute(
-                sa.select(Task.user_id, sa.func.max(Task.finished_at))
-                .where(Task.kind == "audit_profile", Task.status == "failed", Task.finished_at >= now - AUDIT_RETRY_AFTER, Task.user_id.is_not(None))
-                .group_by(Task.user_id)
-            )
-        ).all()
-    )
+    used = await repo.scored_counts(db, now - BUDGET_WINDOW)
+    changed = await repo.users_with_stale_matches(db, STALE_STATUSES)
+    uncollected = await repo.users_with_uncollected(db)
+    audit_failed = await repo.last_failed(db, "audit_profile", now - AUDIT_RETRY_AFTER)
     last_runs = {profile.user_id: _parse((profile.match_summary or {}).get("last_run_at")) for _, profile, _ in rows}
-    total_jobs = await db.scalar(sa.select(sa.func.count()).select_from(Job).where(Job.is_active.is_(True))) or 0
-    before_run: dict[int, int] = {}
-    if runs := [(uid, ts) for uid, ts in last_runs.items() if ts]:
-        # Jobs first seen at or before a user's last run are old news to them; the rest are new. Users with no
-        # last run have no row here and see every active job as new.
-        seen_runs = sa.values(sa.column("user_id", sa.Integer), sa.column("last_run", sa.DateTime(timezone=True)), name="runs").data(runs)
-        before_run = dict(
-            (
-                await db.execute(
-                    sa.select(seen_runs.c.user_id, sa.func.count(Job.id))
-                    .select_from(seen_runs.join(Job, sa.and_(Job.first_seen_at <= seen_runs.c.last_run, Job.is_active.is_(True))))
-                    .group_by(seen_runs.c.user_id)
-                )
-            ).all()
-        )
+    total_jobs = await repo.active_jobs(db)
+    # Jobs first seen at or before a user's last run are old news to them; the rest are new. Users with no
+    # last run have no row here and see every active job as new.
+    before_run = await repo.active_jobs_seen_by(db, [(uid, ts) for uid, ts in last_runs.items() if ts])
     defaults = settings.match_daily_llm_budget
     out = []
     for user, profile, state in rows:
@@ -212,15 +167,7 @@ async def _save_state(db: AsyncSession, views: list[UserView], now: datetime, pl
         }
         for v in views
     ]
-    for i in range(0, len(rows), STATE_CHUNK):  # keeps the bind-parameter count under the driver limit
-        stmt = insert(PlannerState).values(rows[i : i + STATE_CHUNK])
-        await db.execute(stmt.on_conflict_do_update(
-            index_elements=["user_id"],
-            set_={
-                "next_due_at": stmt.excluded.next_due_at, "last_reason": stmt.excluded.last_reason, "last_skip": stmt.excluded.last_skip,
-                "last_planned_at": sa.func.coalesce(stmt.excluded.last_planned_at, PlannerState.last_planned_at),
-            },
-        ))
+    await repo.save_states(db, rows)
     await db.commit()
 
 

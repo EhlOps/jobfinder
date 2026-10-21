@@ -6,10 +6,10 @@ import pytest
 import sqlalchemy as sa
 from security_payloads import SQLI, XSS_TEXT
 
-from jobfinder.ai.schemas import InducedRecipe
 from jobfinder.core.config import get_settings
 from jobfinder.integrations import http_safety
 from jobfinder.integrations.claude.claude_code import AIError
+from jobfinder.integrations.claude.schemas import InducedRecipe
 from jobfinder.integrations.claude.tasks import (
     MAX_PAGE_CHARS,
     MAX_SAMPLE_CHARS,

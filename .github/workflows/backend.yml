@@ -67,7 +67,7 @@ jobs:
       - name: Tests
         run: uv run pytest -n auto
 
-      # Report-only until #53 makes the import contracts blocking.
+      # The layers and the no-SQL-in-api/services rule (backend/pyproject.toml [tool.importlinter]).
+      # tests/test_architecture.py, run above, holds the rules import-linter can't state (#53).
       - name: Import contracts
-        continue-on-error: true
         run: uv run lint-imports

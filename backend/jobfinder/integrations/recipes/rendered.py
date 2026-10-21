@@ -17,9 +17,9 @@ from jobfinder.integrations.recipes import (
     fill_template,
 )
 from jobfinder.integrations.recipes.json_api import make_posting, parse_date
+from jobfinder.integrations.render import LIST, RenderError, RenderUnavailable, request_render
 from jobfinder.models import Company
 from jobfinder.models.posting import JobPosting
-from jobfinder.renderer import LIST, RenderError, RenderUnavailable, request_render
 
 LIST_WAIT_S = 150.0  # ingest runs boards concurrently and the renderer takes two at a time, 30 s each
 _FIELDS = ("external_id", "title", "url", "location", "posted_at", "description")

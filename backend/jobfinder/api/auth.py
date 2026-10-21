@@ -1,11 +1,10 @@
+"""Sign-in: password login, password-reset links, logout, and who is signed in."""
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Cookie, Depends, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Cookie, Request, Response
 
-from jobfinder.auth.security import COOKIE_NAME, current_user
+from jobfinder.api.deps import COOKIE_NAME, CurrentUser, DbSession
 from jobfinder.core.config import settings
-from jobfinder.core.db import DbSession
-from jobfinder.models import User
 from jobfinder.schemas.auth import ConfirmBody, LinkRequest, LoginBody, UserOut
 from jobfinder.services import accounts
 
@@ -67,5 +66,5 @@ async def logout(
 
 
 @router.get("/me", response_model=UserOut)
-async def me(user: Annotated[User, Depends(current_user)]):
+async def me(user: CurrentUser):
     return user

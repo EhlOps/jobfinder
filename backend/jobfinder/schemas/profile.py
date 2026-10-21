@@ -3,8 +3,6 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-from jobfinder.matching.prefilter import career_stage
-
 WorkAuth = Literal["citizen", "permanent_resident", "f1_opt", "stem_opt", "h1b_transfer", "other"]
 # Whether each authorization means the person will need an employer to sponsor them (None = can't tell)
 SPONSORSHIP_NEEDED: dict[str, bool | None] = {
@@ -47,17 +45,7 @@ class ProfileOut(BaseModel):
     status: dict[str, Any]
     background: dict[str, Any]
     version: int
-    career_stage: str | None = None  # derived from the status (graduation date), same as the matches summary
-
-    model_config = {"from_attributes": True}
-
-    @model_validator(mode="before")
-    @classmethod
-    def _derive_stage(cls, data: Any):
-        if isinstance(data, dict):
-            return data
-        status = data.status or {}
-        return {"status": status, "background": data.background, "version": data.version, "career_stage": career_stage(status)}
+    career_stage: str | None = None  # derived from the status (services/profile.py `profile_out`)
 
 
 class FactIn(BaseModel):

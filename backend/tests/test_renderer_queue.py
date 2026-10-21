@@ -2,9 +2,9 @@
 a bounded time for them."""
 import pytest
 
-from jobfinder import renderer
+from jobfinder.integrations import render as renderer
+from jobfinder.integrations.render import RenderError, request_render
 from jobfinder.models import Task
-from jobfinder.renderer import RenderError, request_render
 from jobfinder.tasks.kinds import QUEUES
 from tests.fakes import FakeRenderer
 

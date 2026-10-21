@@ -39,10 +39,9 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 import httpx
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from jobfinder.core.config import settings
+from jobfinder.core.db import AsyncSession, IntegrityError
 from jobfinder.core.urls import clean_domain, registrable_domain
 from jobfinder.integrations.http_safety import TEXT_TYPES, FetchError, safe_fetch
 from jobfinder.integrations.robots import PoliteFetcher
