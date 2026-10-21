@@ -15,14 +15,14 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jobfinder.core.config import settings
-from jobfinder.ingest.base import (
+from jobfinder.models import Profile
+from jobfinder.models.posting import (
     JobPosting,
     clip,
     infer_seniority,
     infer_workplace,
     parse_salary_range,
 )
-from jobfinder.models import Profile
 
 log = logging.getLogger("jobfinder.ingest.jobspy")
 SOURCE = "jobspy"

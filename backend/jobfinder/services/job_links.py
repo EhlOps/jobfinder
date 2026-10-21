@@ -8,8 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from jobfinder.core.config import settings
 from jobfinder.core.errors import Invalid, NotFound, RateLimited
-from jobfinder.integrations.ats.custom import refusal_for_url, refusal_message
 from jobfinder.integrations.directories import board_from_url
+from jobfinder.integrations.site_terms import refusal_for_url, refusal_message
 from jobfinder.models import JobLink, User
 from jobfinder.repositories import job_links as repo
 from jobfinder.repositories.job_links import LinkFacts

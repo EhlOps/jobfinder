@@ -7,7 +7,7 @@ import sqlalchemy as sa
 from factories import make_user
 from security_payloads import PRIVATE_URLS
 
-from jobfinder.ingest import http_safety
+from jobfinder.integrations import http_safety
 from jobfinder.integrations.recipes import Recipe, run_recipe
 from jobfinder.integrations.recipes.sniff import json_recipe_from_sample, pagination_for
 from jobfinder.models import Company, Job, JobLink

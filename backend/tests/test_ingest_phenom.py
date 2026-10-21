@@ -7,8 +7,7 @@ import httpx
 import pytest
 from security_payloads import PRIVATE_URLS, SCRIPT_URLS, SQLI, XSS_TEXT
 
-from jobfinder.ingest import http_safety
-from jobfinder.ingest.http_safety import FetchError
+from jobfinder.integrations import http_safety
 from jobfinder.integrations.ats import SLUG_RE, phenom
 from jobfinder.integrations.ats.detect import HTML_DETECTORS, detect_board
 from jobfinder.integrations.ats.phenom import (
@@ -19,6 +18,7 @@ from jobfinder.integrations.ats.phenom import (
     parse_slug,
 )
 from jobfinder.integrations.ats.registry import ATS_FETCHERS, PROBE_FETCHERS
+from jobfinder.integrations.http_safety import FetchError
 from tests.fakes import PUBLIC_IP, fake_resolve_public, handle
 
 FIX = Path(__file__).parent / "fixtures"

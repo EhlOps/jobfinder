@@ -5,8 +5,8 @@ import pytest
 import sqlalchemy as sa
 
 from jobfinder import worker
-from jobfinder.config import get_settings
-from jobfinder.ingest import http_safety
+from jobfinder.core.config import get_settings
+from jobfinder.integrations import http_safety
 from jobfinder.integrations.directories import (
     board_from_url,
     boards_from_text,

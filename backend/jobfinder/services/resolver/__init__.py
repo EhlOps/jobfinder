@@ -29,12 +29,12 @@ from jobfinder.core.urls import (  # noqa: F401  (re-exported: the API and tests
     clean_url,
     registrable_domain,
 )
-from jobfinder.ingest.base import JobPosting
-from jobfinder.ingest.http_safety import SafeResponse
 from jobfinder.integrations.ats import SLUG_RE
-from jobfinder.integrations.ats.custom import refusal_for_url, refusal_message, site_for_url
+from jobfinder.integrations.http_safety import SafeResponse
 from jobfinder.integrations.robots import PoliteFetcher
+from jobfinder.integrations.site_terms import refusal_for_url, refusal_message, site_for_url
 from jobfinder.models import Company, JobLink
+from jobfinder.models.posting import JobPosting
 from jobfinder.repositories import boards as boards_repo
 from jobfinder.repositories import postings as postings_repo
 from jobfinder.services.board_validation import add_board

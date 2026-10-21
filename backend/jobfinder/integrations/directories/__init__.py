@@ -6,12 +6,12 @@ from dataclasses import dataclass
 from urllib.parse import parse_qs, urlsplit
 
 from jobfinder.integrations.ats import SLUG_RE
-from jobfinder.integrations.ats.custom import board_for_url as custom_board_for_url
 from jobfinder.integrations.ats.eightfold import board_from_url as eightfold_board
 from jobfinder.integrations.ats.icims import slug_from_host as icims_slug_from_host
 from jobfinder.integrations.ats.oracle_hcm import board_from_ce_url
 from jobfinder.integrations.ats.taleo import taleo_board
 from jobfinder.integrations.robots import PoliteFetcher
+from jobfinder.integrations.site_terms import board_for_url as custom_board_for_url
 
 URL_RE = re.compile(r"https?://[^\s<>\"'()\[\]\\]+")
 _RESERVED = {"www", "api", "app", "apply", "careers", "jobs", "support", "help", "blog", "static", "assets"}

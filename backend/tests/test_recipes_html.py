@@ -4,8 +4,8 @@ import httpx
 import pytest
 from security_payloads import SCRIPT_URLS, SQLI, XSS_TEXT
 
-from jobfinder.ingest import http_safety
-from jobfinder.ingest.http_safety import FetchError
+from jobfinder.integrations import http_safety
+from jobfinder.integrations.http_safety import FetchError
 from jobfinder.integrations.recipes import RecipeError, run_recipe
 from jobfinder.integrations.recipes.html import (
     compile_field,
@@ -129,7 +129,7 @@ def test_description_excludes_following_text():
 
 
 def test_page_charset_is_honoured():
-    from jobfinder.ingest.http_safety import SafeResponse
+    from jobfinder.integrations.http_safety import SafeResponse
     from jobfinder.integrations.recipes.html import page_text
 
     body = '<meta charset="windows-1252"><p>Café</p>'.encode("cp1252")

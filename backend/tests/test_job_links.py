@@ -5,7 +5,7 @@ import pytest
 import sqlalchemy as sa
 from security_payloads import SQLI
 
-from jobfinder.config import get_settings
+from jobfinder.core.config import get_settings
 from jobfinder.models import Company, Job, JobLink, Task
 from jobfinder.scheduling import handlers
 from jobfinder.services import resolver

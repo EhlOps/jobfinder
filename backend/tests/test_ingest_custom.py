@@ -7,17 +7,17 @@ import sqlalchemy as sa
 from factories import make_user
 from security_payloads import PRIVATE_URLS, SCRIPT_URLS, SQLI
 
-from jobfinder.ingest import http_safety
-from jobfinder.ingest.http_safety import FetchError, safe_fetch
+from jobfinder.integrations import http_safety
 from jobfinder.integrations.ats import SLUG_RE
-from jobfinder.integrations.ats.custom import (
+from jobfinder.integrations.ats.registry import ATS_FETCHERS, PROBE_FETCHERS
+from jobfinder.integrations.directories import board_from_url, boards_from_text
+from jobfinder.integrations.http_safety import FetchError, safe_fetch
+from jobfinder.integrations.site_terms import (
     CUSTOM_SITES,
     board_for_url,
     refusal_for_url,
     site_for_url,
 )
-from jobfinder.integrations.ats.registry import ATS_FETCHERS, PROBE_FETCHERS
-from jobfinder.integrations.directories import board_from_url, boards_from_text
 from jobfinder.models import JobLink, Task
 from jobfinder.services import resolver
 from jobfinder.services.resolver import resolve_link
@@ -25,7 +25,7 @@ from jobfinder.services.resolver.ladder import BoardHit, ResolveContext
 from jobfinder.services.resolver.rungs.url_pattern import UrlPatternRung
 from tests.fakes import fake_resolve_public, handle, serve
 
-TERMS = Path(__file__).parents[1] / "jobfinder/integrations/ats/custom/TERMS.md"
+TERMS = Path(__file__).parents[1] / "jobfinder/integrations/site_terms/TERMS.md"
 
 REFUSED_URLS = {
     "Google": [

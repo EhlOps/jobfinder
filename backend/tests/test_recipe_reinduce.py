@@ -6,10 +6,10 @@ import httpx
 import pytest
 import sqlalchemy as sa
 
-from jobfinder.ai.claude_code import AIError
-from jobfinder.ai.tasks import AITasks
-from jobfinder.config import get_settings
-from jobfinder.ingest import http_safety
+from jobfinder.core.config import get_settings
+from jobfinder.integrations import http_safety
+from jobfinder.integrations.claude.claude_code import AIError
+from jobfinder.integrations.claude.tasks import AITasks
 from jobfinder.integrations.recipes import health
 from jobfinder.models import AICall, Company, Job, Task
 from jobfinder.scheduling import handlers

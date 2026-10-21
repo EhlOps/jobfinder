@@ -51,7 +51,7 @@ async def test_login_is_rate_limited_per_email(client, make_account):
 
 @pytest.mark.real_commit  # the failures are side_session writes; savepoint mode drops them
 async def test_login_is_rate_limited_per_ip(client, monkeypatch):
-    from jobfinder.config import get_settings
+    from jobfinder.core.config import get_settings
 
     monkeypatch.setattr(get_settings(), "login_failures_per_ip", 3)
     for i in range(3):

@@ -3,7 +3,7 @@ import httpx
 import pytest
 from security_payloads import PRIVATE_URLS
 
-from jobfinder.ingest import http_safety
+from jobfinder.integrations import http_safety
 from jobfinder.integrations.robots import ROBOTS_MAX_BYTES, USER_AGENT, PoliteFetcher
 from jobfinder.services.resolver.ladder import ResolveContext
 from tests.fakes import PUBLIC_IP, fake_resolve_public, handle, serve

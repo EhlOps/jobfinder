@@ -3,16 +3,16 @@ from pathlib import Path
 
 import pytest
 
-from jobfinder.ingest.base import (
+from jobfinder.integrations.ats.ashby import parse_ashby
+from jobfinder.integrations.ats.greenhouse import parse_greenhouse
+from jobfinder.integrations.ats.lever import parse_lever
+from jobfinder.models.posting import (
     dedupe_hash,
     html_to_text,
     infer_seniority,
     infer_workplace,
     parse_salary_range,
 )
-from jobfinder.integrations.ats.ashby import parse_ashby
-from jobfinder.integrations.ats.greenhouse import parse_greenhouse
-from jobfinder.integrations.ats.lever import parse_lever
 
 FIX = Path(__file__).parent / "fixtures"
 

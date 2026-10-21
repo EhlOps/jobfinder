@@ -5,7 +5,7 @@ import pytest
 import sqlalchemy as sa
 from factories import make_match, make_user
 
-from jobfinder.ingest import http_safety
+from jobfinder.integrations import http_safety
 from jobfinder.integrations.directories import Source
 from jobfinder.models import Company, CovetedTarget, Job, JobLink, Task
 from jobfinder.scheduling import handlers

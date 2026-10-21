@@ -3,11 +3,11 @@ import pytest
 import sqlalchemy as sa
 from factories import make_user
 
-from jobfinder.ingest import http_safety
-from jobfinder.ingest.base import JobPosting
+from jobfinder.integrations import http_safety
 from jobfinder.integrations.ats.detect import HTML_DETECTORS, detect_board
 from jobfinder.integrations.recipes import Recipe
 from jobfinder.models import Company, Job, JobLink
+from jobfinder.models.posting import JobPosting
 from jobfinder.services import resolver
 from jobfinder.services.ingestion import ingest_company
 from jobfinder.services.resolver import registrable_domain, resolve_link

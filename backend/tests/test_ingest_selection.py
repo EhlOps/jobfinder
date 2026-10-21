@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from jobfinder.config import get_settings
+from jobfinder.core.config import get_settings
 from jobfinder.models import Company, Profile, User
 from jobfinder.services import ingestion
 from jobfinder.services.board_selection import Target, board_score, select_boards

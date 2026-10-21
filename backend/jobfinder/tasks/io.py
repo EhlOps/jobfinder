@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import jobfinder.tasks.documents  # noqa: F401  (registers parse_document and fetch_link on io, #51)
+from jobfinder.core.context import default_context
 from jobfinder.models import Task
 from jobfinder.tasks import ledger
 from jobfinder.tasks.brokers import io_broker
@@ -52,11 +53,10 @@ async def ingest_tick(db: AsyncSession, ai, task: Task, _: None) -> dict:
     The legacy poll-loop worker runs AI_MAX_CONCURRENCY tasks at a time, so there the tick runs the
     whole thing inline, INGEST_CONCURRENCY boards at a time, as ingest_jobs did."""
     from jobfinder.core.config import settings
-    from jobfinder.db import SessionLocal
     from jobfinder.services import ingestion
 
     if settings.tasks_backend != "ledger":
-        summary = await ingestion.run_ingest(SessionLocal)
+        summary = await ingestion.run_ingest(default_context().sessions)
         # Adaptive ticks come every few minutes and often fetch nothing: plan only when jobs changed.
         if not settings.adaptive_schedule_enabled or summary.get("new") or summary.get("deactivated"):
             await _plan(db)
@@ -66,7 +66,7 @@ async def ingest_tick(db: AsyncSession, ai, task: Task, _: None) -> dict:
         await ledger.add(db, "ingest_board", {"company_id": company_id}, dedupe=True)
     # not recorded as run here: the ingest_source task records its run, so a tick that rolls back
     # doesn't skip the source for a whole interval
-    sources = await ingestion.due_extras(SessionLocal, record=False)
+    sources = await ingestion.due_extras(default_context().sessions, record=False)
     for source in sources:
         await ledger.add(db, "ingest_source", {"source": source}, dedupe=True)
     return {"due": len(ids), "sources": sources}
@@ -83,11 +83,10 @@ async def ingest_board(db: AsyncSession, ai, task: Task, p: IngestBoardArgs) -> 
     """Fetch one board. The board commits in its own session (services.ingestion.ingest_board), which
     records a failed fetch on the board (its backoff is the board's retry); this task's session holds
     only the follow-up."""
-    from jobfinder.db import SessionLocal
     from jobfinder.services import ingestion
 
     async with ingestion.http_client() as client:
-        stats = await ingestion.ingest_board(SessionLocal, client, p.company_id)
+        stats = await ingestion.ingest_board(default_context().sessions, client, p.company_id)
     return await _changed(db, stats)
 
 
@@ -95,11 +94,10 @@ async def ingest_board(db: AsyncSession, ai, task: Task, p: IngestBoardArgs) -> 
 async def ingest_source(db: AsyncSession, ai, task: Task, p: IngestSourceArgs) -> dict:
     """Fetch jobspy or usajobs (the sources without boards), on their own so a long scrape never holds
     a board up. Like ingest_board, it commits in its own sessions (services.ingestion)."""
-    from jobfinder.db import SessionLocal
     from jobfinder.services import ingestion, ratelimit
 
     await ratelimit.hit(db, ingestion.EXTRA_KIND, p.source)  # its cadence (ingestion._extra_due), kept with the result
-    return await _changed(db, await ingestion.ingest_extra(SessionLocal, p.source))
+    return await _changed(db, await ingestion.ingest_extra(default_context().sessions, p.source))
 
 
 async def _changed(db: AsyncSession, stats) -> dict:

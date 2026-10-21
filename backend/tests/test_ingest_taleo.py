@@ -7,7 +7,7 @@ import httpx
 import pytest
 from security_payloads import PRIVATE_URLS, SCRIPT_URLS, SQLI, XSS_TEXT
 
-from jobfinder.ingest import http_safety
+from jobfinder.integrations import http_safety
 from jobfinder.integrations.ats import SLUG_RE, taleo
 from jobfinder.integrations.ats.registry import ATS_FETCHERS, PROBE_FETCHERS
 from jobfinder.integrations.ats.taleo import (

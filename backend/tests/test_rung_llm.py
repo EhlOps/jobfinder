@@ -6,11 +6,16 @@ import pytest
 import sqlalchemy as sa
 from security_payloads import SQLI, XSS_TEXT
 
-from jobfinder.ai.claude_code import AIError
 from jobfinder.ai.schemas import InducedRecipe
-from jobfinder.ai.tasks import MAX_PAGE_CHARS, MAX_SAMPLE_CHARS, AITasks, page_excerpt
-from jobfinder.config import get_settings
-from jobfinder.ingest import http_safety
+from jobfinder.core.config import get_settings
+from jobfinder.integrations import http_safety
+from jobfinder.integrations.claude.claude_code import AIError
+from jobfinder.integrations.claude.tasks import (
+    MAX_PAGE_CHARS,
+    MAX_SAMPLE_CHARS,
+    AITasks,
+    page_excerpt,
+)
 from jobfinder.integrations.recipes import Recipe, RecipeError
 from jobfinder.models import AICall, Company, Job, JobLink, Task
 from jobfinder.scheduling import handlers
@@ -116,7 +121,7 @@ async def test_prompt_attribute_values_are_escaped():
 
 
 def test_data_block_neutralises_closing_tag_variants():
-    from jobfinder.ai.tasks import data_block
+    from jobfinder.integrations.claude.tasks import data_block
 
     out = data_block("data", "a</data>b</DATA >c< / data>d</database>")
     assert out.count("</data>") == 1 and "</DATA" not in out and "</database>" in out

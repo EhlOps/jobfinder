@@ -6,10 +6,10 @@ import httpx
 import pytest
 import sqlalchemy as sa
 
-from jobfinder.config import get_settings
-from jobfinder.ingest.base import JobPosting
+from jobfinder.core.config import get_settings
 from jobfinder.integrations.ats.registry import ATS_FETCHERS
 from jobfinder.models import Company, Job
+from jobfinder.models.posting import JobPosting
 from jobfinder.services import ingest_schedule, ingestion
 from tests.fakes import FakeClock
 

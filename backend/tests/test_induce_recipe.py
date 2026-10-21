@@ -18,7 +18,7 @@ RECIPE = induced(list={"method": "POST", "url": "https://careers.acme.com/api/se
 
 @pytest.fixture(autouse=True)
 def public_dns(monkeypatch):
-    from jobfinder.ingest import http_safety
+    from jobfinder.integrations import http_safety
     from tests.fakes import fake_resolve_public
 
     monkeypatch.setattr(http_safety, "resolve_public", fake_resolve_public())

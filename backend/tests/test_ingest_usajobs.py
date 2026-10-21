@@ -6,10 +6,10 @@ import httpx
 import pytest
 import sqlalchemy as sa
 
-from jobfinder.config import get_settings
-from jobfinder.ingest.base import JobPosting
+from jobfinder.core.config import get_settings
 from jobfinder.integrations import usajobs
 from jobfinder.models import Job, Profile, User
+from jobfinder.models.posting import JobPosting
 from jobfinder.services import ingestion
 from tests.fakes import handle, serve
 

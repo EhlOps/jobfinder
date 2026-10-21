@@ -5,7 +5,7 @@ import pytest
 import sqlalchemy as sa
 from security_payloads import PRIVATE_URLS, SCRIPT_URLS, SQLI
 
-from jobfinder.ingest import http_safety
+from jobfinder.integrations import http_safety
 from jobfinder.models import Company, Job, JobLink, Task
 from jobfinder.services.resolver import resolve_link
 from jobfinder.services.resolver.ladder import BoardHit, ResolveContext

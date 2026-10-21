@@ -7,8 +7,8 @@ test_matches_api, test_cover_letters_api and test_resumes_api.
 """
 import pytest
 
-from jobfinder.ai.claude_code import AIError
-from jobfinder.config import get_settings
+from jobfinder.core.config import get_settings
+from jobfinder.integrations.claude.claude_code import AIError
 from jobfinder.models import CoverLetter, JobMatch, Profile, ProfileFact, Task
 from jobfinder.repositories import letters as letters_repo
 from jobfinder.scheduling import queue

@@ -17,17 +17,17 @@ from urllib.parse import parse_qs, quote, urlsplit
 
 import httpx
 
-from jobfinder.ingest import http_safety
-from jobfinder.ingest.base import (
+from jobfinder.core.urls import safe_http_url
+from jobfinder.integrations import http_safety
+from jobfinder.integrations.robots import PoliteFetcher
+from jobfinder.models.posting import (
     JobPosting,
     clip,
     html_to_text,
     infer_seniority,
     infer_workplace,
     parse_salary_range,
-    safe_http_url,
 )
-from jobfinder.integrations.robots import PoliteFetcher
 
 PCSX_LIST = "https://{host}/api/pcsx/search?domain={domain}&query=&location=&start={start}&sort_by=timestamp"
 PCSX_DETAIL = "https://{host}/api/pcsx/position_details?position_id={id}&domain={domain}&hl=en"

@@ -8,8 +8,9 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import ARRAY, insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from jobfinder.ingest.base import JobPosting, safe_http_url
+from jobfinder.core.urls import safe_http_url
 from jobfinder.models import Job
+from jobfinder.models.posting import JobPosting
 
 UPSERT_CHUNK = 200
 _DETAIL_COLUMNS = (

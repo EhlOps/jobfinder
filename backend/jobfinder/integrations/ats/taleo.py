@@ -13,16 +13,16 @@ from urllib.parse import unquote
 
 import httpx
 
-from jobfinder.ingest.base import (
+from jobfinder.core.urls import safe_http_url
+from jobfinder.integrations.robots import PoliteFetcher
+from jobfinder.models.posting import (
     JobPosting,
     clip,
     html_to_text,
     infer_seniority,
     infer_workplace,
     parse_salary_range,
-    safe_http_url,
 )
-from jobfinder.integrations.robots import PoliteFetcher
 
 BASE = "https://{tenant}.taleo.net/careersection"
 SEARCH_PAGE = BASE + "/{cs}/jobsearch.ftl?lang=en"

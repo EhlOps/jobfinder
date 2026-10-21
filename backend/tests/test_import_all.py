@@ -15,11 +15,7 @@ import pytest
 import jobfinder
 
 MODULES = sorted(m.name for m in pkgutil.walk_packages(jobfinder.__path__, "jobfinder."))
-# Old paths the #42 shims keep working. walk_packages cannot list them: they are aliases, not files.
-OLD_PATHS = [
-    "jobfinder.auth.ratelimit",
-]
-NAMES = MODULES + OLD_PATHS
+NAMES = MODULES
 SHARDS = 4  # one interpreter per shard, so xdist can run them side by side
 
 _IMPORT_EACH_ALONE = """
@@ -48,10 +44,3 @@ def test_every_module_imports_on_its_own(shard):
     assert r.returncode == 0, r.stderr[-2000:]
     assert r.stdout.splitlines() == []
 
-
-def test_old_paths_are_the_moved_modules():
-    """A test that monkeypatches the old path must patch the module the code runs."""
-    from jobfinder.auth import ratelimit as old_ratelimit
-    from jobfinder.services import ratelimit
-
-    assert old_ratelimit is ratelimit

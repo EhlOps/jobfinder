@@ -4,7 +4,7 @@ import httpx
 import pytest
 import sqlalchemy as sa
 
-from jobfinder.ingest import http_safety
+from jobfinder.integrations import http_safety
 from jobfinder.integrations.recipes.health import (
     ACTIVE,
     DEGRADED,
