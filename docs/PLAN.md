@@ -1,5 +1,8 @@
 # JobFinder: implementation plan
 
+> Historical: the original design and milestone plan, not kept up to date. The current architecture is in the
+> [README](../README.md) and the runbook in [docs/k3s.md](k3s.md).
+
 ## Context
 You want a multi-user web app that:
 1. Learns who you are through an onboarding questionnaire and your uploads (resume, portfolio, GitHub, socials).
