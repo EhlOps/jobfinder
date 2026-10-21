@@ -29,6 +29,7 @@ from jobfinder.api import settings as settings_api
 from jobfinder.context import AppContext, build_context, default_context
 from jobfinder.core import errors
 from jobfinder.core.config import Settings
+from jobfinder.services import health as health_service
 
 ROUTERS = (
     auth_routes.router,
@@ -66,7 +67,7 @@ def create_app(settings: Settings | None = None, ctx: AppContext | None = None) 
 
     app = FastAPI(title="JobFinder", lifespan=lifespan)
     app.state.ctx = context
-    app.state.alembic = health.alembic_revisions()
+    app.state.alembic = health_service.alembic_revisions()
     errors.install(app)
     for router in ROUTERS:
         app.include_router(router)
