@@ -1,9 +1,9 @@
 # Deploys dev to staging (k3s namespace jobfinder-staging, https://staging.ehlops.com) once `images`
 # has published that commit's images (#43): images.yml calls this workflow as its last job, on pushes
 # to dev only. (A workflow_run trigger would only fire once this file is on the default branch, main.)
-# The runner only SSHes in: the key's forced command (deploy/k8s/deploy-staging-ssh.sh, installed on
-# the host) validates the tag, exports that commit's manifests and runs
-# deploy/k8s/deploy.sh staging sha-<short>. No cluster credentials leave the host.
+# The runner only SSHes in: the key's forced command (deploy/k8s/deploy-ssh.sh staging, installed on
+# the host; #118) validates the tag, exports that commit's manifests, runs
+# deploy/k8s/deploy.sh staging sha-<short> and smoke-checks staging. No cluster credentials leave the host.
 #
 # Images that the commit didn't rebuild (images.yml filters by path) keep the image staging already
 # runs; deploy.sh explains the rule. A manifest-only change on dev builds no images, so deploy it with
