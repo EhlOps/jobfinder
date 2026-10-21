@@ -307,19 +307,33 @@ worker-ai runs at most `AI_MAX_CONCURRENCY` Claude calls at once (it is never sc
 
 ## Deploy
 
-Staging deploys itself from every push to `dev` (GitHub Actions `images` → `deploy-staging`). Production is
-deployed by hand on the host:
+**Staging** deploys itself from every push to `dev` (GitHub Actions `images` → `deploy-staging`).
 
-```sh
-deploy/k8s/deploy.sh prod sha-<commit>     # from a checkout of that commit; see docs/k3s.md first
-```
+**Production** deploys itself from every push to `main` (`images` → `deploy-prod`). There is no approval
+step: **a release is a dev → main PR merged with "Create a merge commit"**, which is the only merge method
+main's ruleset allows. Nobody pushes to main directly. Hotfixes land on dev first, reach staging, and are then
+released the same way.
 
-`deploy.sh` pins the images, runs the migrate Job and only then rolls the Deployments. Take a backup first
-(`kubectl -n jobfinder create job --from=cronjob/backup backup-pre-<tag>`). Deploying, rolling back, scaling, logs and
-troubleshooting are in [docs/k3s.md](docs/k3s.md).
+Both workflows SSH to the host, where a root-owned forced command (`deploy-ssh.sh staging|prod`) checks the
+commit and runs `deploy.sh`. `deploy.sh` pins the images, runs the migrate Job and only then rolls the
+Deployments. HTTP smoke checks then go through Traefik (`/readyz`, `/`, `/api/auth/me`, pods Ready, no
+restarts). For prod, the wrapper adds three things:
+
+- It refuses a release whose dev side isn't running on staging yet.
+- It takes a pre-deploy backup first (`pre-db-<ts>.dump`, newest 5 kept).
+- If the rollout or a smoke check fails, it rolls the images back automatically. Migrations are never
+  rolled back, so they stay backward compatible for one release.
+
+Each run posts a step summary and comments "Deployed to staging" or "Released to prod" on every PR it
+shipped. A prod run also posts one summary comment on the release PR: the outcome, the pinned images, the
+smoke results, the backup and the shipped PRs.
+
+The manual `deploy/k8s/deploy.sh` commands remain as a fallback. Releasing, the outcomes, rolling back,
+the one-time setup, scaling, logs and troubleshooting are in [docs/k3s.md](docs/k3s.md#releasing-118).
 
 ### Backups
 
 A CronJob in each namespace backs up nightly at 03:15 UTC (a Postgres dump plus the `store` and `claude-auth`
-files, newest 14 kept) to the node-local `backups` PVC. `deploy/k8s/backup-restore.sh <namespace>` proves a dump
+files, newest 14 kept) to the node-local `backups` PVC; every prod release also takes a pre-deploy backup
+(`pre-*`, newest 5 kept). `deploy/k8s/backup-restore.sh <namespace>` proves a dump
 restores. Copy them off the box regularly. See [docs/k3s.md, "Backups"](docs/k3s.md#backups-47).
