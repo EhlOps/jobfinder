@@ -6,11 +6,12 @@ other task and never piles up behind a slow previous one. This is the only copy 
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.interval import IntervalTrigger
 
-from jobfinder.core.clock import GRID_ANCHOR, next_on_grid, utcnow
+from jobfinder.core.clock import GRID_ANCHOR, next_on_grid, planner_interval, utcnow
 from jobfinder.core.config import Settings, settings
 from jobfinder.core.context import default_context
 from jobfinder.tasks import ledger
@@ -31,7 +32,9 @@ class Cron:
     trigger: str  # an APScheduler trigger alias: "interval" or "cron"
     when: Callable[[Settings], dict]  # the trigger's arguments, read from settings when the jobs are added
     first_run: timedelta | None = None  # interval jobs: first run this long after start, not one interval
-    anchor: datetime | None = None  # interval jobs: fire on anchor + k * interval (next_on_grid), not from start
+    # interval jobs: fire on GRID_ANCHOR + k * interval (next_on_grid) instead of counting from the start;
+    # the first run is then the first grid point at least first_run after start
+    on_grid: bool = False
     enabled: Callable[[Settings], bool] = _always
 
 
@@ -42,9 +45,10 @@ def _ingest_every(s: Settings) -> dict:
 
 TABLE = [
     Cron("ingest_tick", "interval", _ingest_every, first_run=timedelta(minutes=2)),
-    # on the grid, so the admin schedule page can say when the next tick is (services/admin.py)
-    Cron("plan_work", "interval", lambda s: {"minutes": s.planner_interval_minutes}, first_run=timedelta(minutes=5),
-         anchor=GRID_ANCHOR),
+    # on the grid, so the admin schedule page can say when the next tick is (services/admin.py); after a
+    # restart the first ingest_tick's follow-up plan_work covers the wait for the first grid point
+    Cron("plan_work", "interval", lambda s: {"seconds": planner_interval(s).total_seconds()},
+         first_run=timedelta(minutes=5), on_grid=True),
     # hourly; each user's lands at their own hour, and it queues question collection ahead of it (#50)
     Cron("daily_emails", "cron", lambda s: {"minute": 5}),
     Cron("discover_boards", "cron", lambda s: {"day_of_week": "sun", "hour": 4, "minute": 30},
@@ -77,12 +81,13 @@ def add_jobs(scheduler: AsyncIOScheduler) -> AsyncIOScheduler:
     for c in TABLE:
         if not c.enabled(s):
             continue
-        when, first = c.when(s), utcnow() + c.first_run if c.first_run else None
-        if c.anchor is not None:  # the first grid point after the delay; later runs stay on the grid
-            first = next_on_grid(first or utcnow(), timedelta(**when), c.anchor)
-            when = {**when, "start_date": c.anchor}
+        trigger, when = c.trigger, c.when(s)
+        first = utcnow() + c.first_run if c.first_run else None
+        if c.on_grid:  # later runs are previous + interval, so they stay on the grid too
+            trigger, when = IntervalTrigger(**when, start_date=GRID_ANCHOR, timezone="UTC"), {}
+            first = next_on_grid(first or utcnow(), trigger.interval)
         start = {"next_run_time": first} if first else {}
-        scheduler.add_job(run, c.trigger, **when, **start, args=[c.kind], id=c.kind)
+        scheduler.add_job(run, trigger, **when, **start, args=[c.kind], id=c.kind)
     return scheduler
 
 

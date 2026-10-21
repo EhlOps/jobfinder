@@ -38,6 +38,7 @@ def test_the_cron_table(monkeypatch, adaptive, discovery, coverage):
                         ("coverage_enabled", coverage), ("ingest_interval_hours", 3), ("ingest_tick_minutes", 15),
                         ("planner_interval_minutes", 20)]:
         monkeypatch.setattr(s, name, value)
+    before = utcnow()
     scheduler = cron.make_scheduler()
     jobs = _jobs(scheduler)
     assert set(jobs) == {"ingest_tick", "plan_work", "daily_emails"} | ({"discover_boards"} if discovery else set()) \
@@ -47,10 +48,10 @@ def test_the_cron_table(monkeypatch, adaptive, discovery, coverage):
     assert jobs["plan_work"][1] == "interval[0:20:00]"
     now = utcnow()
     for job in scheduler.get_jobs():  # the interval jobs first run a few minutes after start
-        first = {"ingest_tick": now + timedelta(minutes=2),
-                 "plan_work": next_on_grid(now + timedelta(minutes=5), timedelta(minutes=20))}.get(job.id)
-        if first:
-            assert abs(job.next_run_time - first) < timedelta(seconds=5)
+        if job.id == "ingest_tick":
+            assert abs(job.next_run_time - (now + timedelta(minutes=2))) < timedelta(seconds=5)
+        if job.id == "plan_work":  # the first grid point after start + 5 minutes (either side of a boundary)
+            assert job.next_run_time in {next_on_grid(t + timedelta(minutes=5), timedelta(minutes=20)) for t in (before, now)}
     plan = scheduler.get_job("plan_work").trigger  # then every 20 minutes on the grid, from wherever it ran
     later = next_on_grid(now, timedelta(minutes=20)) + timedelta(seconds=1)
     assert plan.get_next_fire_time(None, later) == next_on_grid(later, timedelta(minutes=20))

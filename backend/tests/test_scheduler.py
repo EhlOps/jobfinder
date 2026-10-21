@@ -230,9 +230,14 @@ async def test_admin_schedule_endpoint(authed, maker, monkeypatch):
     assert [u["email"] for u in body["users"]] == ["sam@example.com"]
     assert {"last_run_at", "next_due_at", "budget_left", "reason", "skip", "active"} <= set(body["users"][0])
     assert body["ingest"]["adaptive"] is True and body["ingest"]["tick_minutes"] == 15
+    assert body["next_tick"] is None  # no planner has ever been queued: no scheduler running yet
+    async with maker() as db:  # a follow-up plan_work, queued well off the grid
+        await ledger.add(db, "plan_work", run_after=datetime.now(UTC) + timedelta(minutes=7))
+        await db.commit()
     # the planner cron's next fire on its grid, whatever queued plan_work last
     every = timedelta(minutes=get_settings().planner_interval_minutes)
-    assert datetime.fromisoformat(body["next_tick"]) in {next_on_grid(datetime.now(UTC), every) - d for d in (timedelta(0), every)}
+    next_tick = (await authed.get("/api/admin/schedule")).json()["next_tick"]
+    assert datetime.fromisoformat(next_tick) in {next_on_grid(datetime.now(UTC), every) - d for d in (timedelta(0), every)}
 
 
 def test_next_on_grid_rounds_up_like_the_interval_trigger():

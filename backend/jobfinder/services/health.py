@@ -12,8 +12,6 @@ The scripts are read once per process, from the alembic files shipped next to th
 (backend/alembic.ini and backend/alembic/ in the repo, /app/ in the api image).
 """
 import asyncio
-from collections.abc import Callable
-from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
@@ -21,14 +19,12 @@ from pathlib import Path
 from alembic.config import Config
 from alembic.script import ScriptDirectory
 
-from jobfinder.core.db import AsyncSession
+from jobfinder.core.db import Sessions
 from jobfinder.repositories import migrations
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 # Well under the probe's 3s timeout, so a hung database can't pile up checks holding pool slots.
 CHECK_TIMEOUT_SECONDS = 2.0
-
-Sessions = Callable[[], AbstractAsyncContextManager[AsyncSession]]
 
 
 @dataclass(frozen=True)

@@ -38,3 +38,6 @@ async def scored_since(db: AsyncSession, user_ids: list[int], since: datetime) -
         .group_by(JobMatch.user_id)
     )).all())
 
+
+async def last_task_created(db: AsyncSession, kind: str) -> datetime | None:
+    return await db.scalar(sa.select(Task.created_at).where(Task.kind == kind).order_by(Task.id.desc()).limit(1))
