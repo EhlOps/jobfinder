@@ -37,6 +37,11 @@ def test_defaults_file_holds_no_secret():
         assert values[key] == "", key
 
 
+def test_email_links_default_to_the_dev_web_server():
+    """The Vite dev server, as `jobfinder dev` sets it (tests/test_cli_dev.py), not the old compose web port."""
+    assert dotenv_values(DEFAULTS)["PUBLIC_BASE_URL"] == "http://localhost:5173"
+
+
 def _isolated(tmp_path, monkeypatch, defaults: str, dotenv: str | None = None) -> None:
     """Run in a directory holding only these env files, with no setting in the environment."""
     (tmp_path / ".env.defaults").write_text(defaults)
