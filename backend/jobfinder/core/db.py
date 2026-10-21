@@ -36,7 +36,7 @@ class DbSettings(Protocol):
 
 def database_url(s: DbSettings) -> str:
     """DATABASE_URL when set, else a URL built from the POSTGRES_* parts (user and password encoded,
-    because compose passes parts: it can't percent-encode a password with @ / %)."""
+    because k8s passes parts: the password comes from its own Secret and may hold @ / %)."""
     if s.database_url:
         return s.database_url
     auth = quote(s.postgres_user, safe="") + ":" + quote(s.postgres_password, safe="")

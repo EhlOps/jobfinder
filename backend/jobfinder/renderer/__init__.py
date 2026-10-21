@@ -1,8 +1,8 @@
 """Rung 4.5: the opt-in Playwright render worker (.plans/2026-10-13-adaptive-job-scraping).
 
-A separate container (backend/Dockerfile.renderer, compose profile "renderer") claims only `render_*` tasks
-from the shared queue; the main worker skips them. The api and worker never import Playwright: they enqueue a
-task with `request_render` and wait a bounded time for its result.
+A separate container (backend/Dockerfile.renderer; k8s Deployment `renderer`, off by default) claims
+only `render_*` tasks from the shared queue; the main worker skips them. The api and worker never
+import Playwright: they enqueue a task with `request_render` and wait a bounded time for its result.
 
   render_capture {url}     -> {final_url, json_responses: [{url, method, status, content_type, body_preview,
                                truncated, size, request_body}], html}

@@ -1,4 +1,4 @@
-# worker-io (#48; compose: worker-io, profile "ledger"): the taskiq worker on stream `jobfinder:io`:
+# worker-io (#48): the taskiq worker on stream `jobfinder:io`:
 # the ingest kinds (ingest_tick fans out one ingest_board per board), plan_work, discover_boards,
 # score_coveted, resolve_job_link and audit_coverage, daily_emails, which sends mail over SMTP (#50), and
 # parse_document and fetch_link, which read uploads and profile links off the api into the document store

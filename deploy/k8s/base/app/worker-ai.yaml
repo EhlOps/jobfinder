@@ -1,4 +1,4 @@
-# worker-ai (#48; compose: worker-ai, profile "ledger"): the taskiq worker on stream `jobfinder:ai`,
+# worker-ai (#48): the taskiq worker on stream `jobfinder:ai`,
 # which carries every kind that may call Claude (tasks/kinds.py: profile, matching, letters, resumes,
 # questions, daily emails, the resolver and the coverage audit). The only task worker with the claude
 # CLI, so the worker image, the claude-auth volume and a $HOME for the CLI's state.

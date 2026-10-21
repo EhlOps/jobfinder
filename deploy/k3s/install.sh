@@ -4,7 +4,7 @@
 # - Host systemd Caddy keeps 80/443; Traefik answers on 127.0.0.1:8280 only (manifests/traefik-config.yaml).
 # - SELinux stays enforcing: the k3s-selinux policy is installed first.
 # - firewalld trusts the pod/service CIDRs so pod-to-service traffic isn't dropped. Nothing is opened publicly,
-#   and firewalld is never reloaded (a reload can drop Docker's rules for the running compose stack).
+#   and firewalld is never reloaded (a reload can drop Docker's rules for the running canvas container).
 # - sealed-secrets is deployed by k3s itself from manifests/sealed-secrets.yaml; kubeseal is installed for sealing.
 # - KEDA (#52, autoscales worker-io) likewise, from manifests/keda.yaml; its chart version is pinned there.
 #
@@ -24,10 +24,8 @@ code() { curl -s -o /dev/null -m 10 -w '%{http_code}' "$1" || true; }
 
 [[ $EUID -eq 0 ]] || { echo "run as root: sudo bash $0" >&2; exit 1; }
 
-# What must keep working on this host: the compose stack behind host Caddy, and the canvas.
+# What must keep working on this host: the canvas behind host Caddy (#53: the app itself is on k3s).
 check_host() {
-    printf '  jobfinder 127.0.0.1:8180  %s\n' "$(code http://127.0.0.1:8180/)"
-    printf '  api       127.0.0.1:8100  %s\n' "$(code http://127.0.0.1:8100/api/health)"
     printf '  canvas    draw.ehlops.com %s\n' "$(code https://draw.ehlops.com/)"
 }
 log "Host services before"
