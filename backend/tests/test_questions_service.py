@@ -160,3 +160,18 @@ async def test_list_open_includes_related_jobs_only_for_the_owner(maker):
         await make_question(db, u.id, "Answered one", status="answered")
         (item,) = await service.list_open(db, u.id)
         assert item["question"] == "Kafka?" and item["jobs"] == [{"match_id": m.id, "title": job.title, "company": "Acme"}]
+
+
+
+async def test_answering_while_a_match_runs_queues_another(maker):
+    """The running match scores the old profile version: answering queues a rerun, not a dedupe onto it."""
+    from jobfinder.tasks import ledger
+
+    async with maker() as db:
+        u = await make_user(db, version=3)
+        q = await make_question(db, u.id)
+        running = await ledger.add(db, "match_user", user_id=u.id, dedupe=True)
+        await ledger.claim(db, running.id)
+        await service.answer_questions(db, u.id, [{"id": q.id, "answer": "Yes"}])
+        tasks = (await db.scalars(sa.select(Task).where(Task.kind == "match_user"))).all()
+        assert sorted(t.status for t in tasks) == ["queued", "running"]

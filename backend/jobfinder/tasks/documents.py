@@ -1,6 +1,7 @@
 """worker-io's document handlers (#51): parse_document reads an upload, fetch_link fetches a profile link,
 off the api. Both write the text and the document's status (ready or error) into the store; a file that
-can't be read or a link that can't be fetched is recorded there, so the task itself still finishes.
+can't be read or a link that can't be fetched is recorded there, so the task itself still finishes. If the
+task fails for good anyway, tasks.failures marks the item error.
 tasks.io imports this module, so worker-io registers them."""
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession

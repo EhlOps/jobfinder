@@ -100,6 +100,32 @@ async def test_the_relay_publishes_due_unsent_rows_once(maker, published, alive_
     assert alive_file.exists()
 
 
+@pytest.mark.parametrize("outcome", ["retry", "deferred"])
+async def test_the_relay_leaves_a_row_claimed_meanwhile_unsent(maker, published, monkeypatch, outcome):
+    """A worker claims what the relay just published and queues it again before the relay marks it sent
+    (a fast failure's retry, or a rerun deferred behind its twin): it stays the relay's to deliver."""
+    async with maker() as db:
+        t = await ledger.add(db, "plan_work")
+        await db.commit()
+    (await published.settle()).clear()
+
+    async def worker_takes_it(queue, kind, task_id):
+        async with maker() as db:
+            row = await db.get(Task, task_id)
+            if outcome == "retry":
+                await ledger.claim(db, task_id)
+                await ledger.fail(db, row, "fast", retry=True)
+            else:  # claim's deferral of a rerun behind a running twin
+                row.run_after, row.sent_at = utcnow() + ledger.TWIN_WAIT, None
+            await db.commit()
+
+    monkeypatch.setattr(brokers, "publish", worker_takes_it)
+    assert await relay.tick(utcnow() + timedelta(seconds=30)) == 1
+    async with maker() as db:
+        row = await db.get(Task, t.id)
+        assert row.status == "queued" and row.sent_at is None
+
+
 async def test_the_relay_survives_valkey_being_down(maker, published, monkeypatch, caplog, alive_file):
     async with maker() as db:
         rows = [await ledger.add(db, "plan_work", {"n": i}) for i in range(3)]
@@ -129,8 +155,6 @@ async def test_one_queue_down_does_not_hold_up_the_others(maker, published, monk
     async with maker() as db:
         ai = await ledger.add(db, "cover_letter", {"match_id": 1})
         io = await ledger.add(db, "plan_work")
-        moved = await ledger.add(db, "match_user")
-        moved.queue = "io"  # a row queued before its kind moved keeps the old column
         await db.commit()
     (await published.settle()).clear()
 
@@ -141,10 +165,10 @@ async def test_one_queue_down_does_not_hold_up_the_others(maker, published, monk
 
     monkeypatch.setattr(brokers, "publish", ai_down)
     assert await relay.tick(utcnow() + timedelta(seconds=30)) == 1
-    assert published == [("io", "plan_work", io.id)]  # match_user goes to its kind's stream, not 'io'
+    assert published == [("io", "plan_work", io.id)]
     assert sum("relay: publish failed" in r.message for r in caplog.records) == 1
     async with maker() as db:
-        assert (await db.get(Task, ai.id)).sent_at is None and (await db.get(Task, moved.id)).sent_at is None
+        assert (await db.get(Task, ai.id)).sent_at is None
 
 
 async def test_a_failing_relay_tick_is_logged_not_raised(monkeypatch, caplog, alive_file):

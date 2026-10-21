@@ -12,7 +12,6 @@ from jobfinder import scheduler as pkg
 from jobfinder.core.clock import utcnow
 from jobfinder.core.context import default_context
 from jobfinder.tasks import brokers, ledger
-from jobfinder.tasks.kinds import QUEUES
 
 log = logging.getLogger("jobfinder.scheduler")
 
@@ -34,8 +33,6 @@ async def _relay(now: datetime) -> int:
     sent: list[int] = []
     failed: dict[str, Exception] = {}  # queue -> its first error; that queue's other rows wait a tick
     for task_id, queue, kind in rows:
-        # The kind decides the stream: a row queued before its kind moved keeps the old column.
-        queue = QUEUES.get(kind, queue)
         if queue in failed:
             continue
         try:  # within brokers.PUBLISH_TIMEOUT, so a valkey that hangs cannot stall the tick
@@ -49,7 +46,7 @@ async def _relay(now: datetime) -> int:
                     "; ".join(f"{q}: {type(e).__name__}: {e}" for q, e in failed.items()), len(rows) - len(sent))
     if sent:
         async with default_context().sessions() as db:
-            await ledger.mark_sent(db, sent, now)
+            await ledger.mark_sent(db, sent, now, relayed=True)
             await db.commit()
         log.info("relay: published %d task(s)", len(sent))
     return len(sent)

@@ -42,13 +42,14 @@ import httpx
 
 from jobfinder.core.config import settings
 from jobfinder.core.db import AsyncSession, IntegrityError
+from jobfinder.core.http import new_client
 from jobfinder.core.urls import clean_domain, registrable_domain
 from jobfinder.integrations.http_safety import TEXT_TYPES, FetchError, safe_fetch
 from jobfinder.integrations.robots import PoliteFetcher
 from jobfinder.integrations.site_terms import refusal_for_url, refusal_message, site_for_url
 from jobfinder.models import Company, CovetedTarget
 from jobfinder.repositories import boards as boards_repo
-from jobfinder.services.resolver import _HEADERS, resolve_url
+from jobfinder.services.resolver import resolve_url
 from jobfinder.services.resolver.ladder import PAGE_MAX_BYTES
 
 log = logging.getLogger("jobfinder.coveted")
@@ -293,7 +294,7 @@ async def audit_coverage(db: AsyncSession, limit: int | None = None, client: htt
     await checkpoint()
     own = client is None
     if client is None:
-        client = httpx.AsyncClient(timeout=30, follow_redirects=True, headers=_HEADERS)
+        client = new_client(timeout_s=30, follow_redirects=True)
     results = []
     try:
         for tid in ids:

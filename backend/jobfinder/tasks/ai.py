@@ -177,7 +177,7 @@ async def induce_recipe(db: AsyncSession, ai: AITasks, task: Task, p: InduceReci
                          user_id=task.user_id, run_after=later, dedupe=True)
         out["requeued"] = later.isoformat()
     if out.get("new"):
-        await ledger.add(db, "plan_work", dedupe=True)
+        await ledger.add(db, "plan_work", rerun=True)  # a running plan missed these jobs
     return out
 
 

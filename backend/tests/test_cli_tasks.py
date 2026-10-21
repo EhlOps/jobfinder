@@ -46,3 +46,26 @@ async def test_retry_requeues_and_publishes(maker, published):
     r = await invoke("tasks", "retry", "999999")
     assert r.exit_code == 1 and "No task 999999" in r.stderr
     assert (await invoke("tasks", "retry", "abc")).exit_code == 2
+
+
+async def test_retry_moves_a_task_to_its_kinds_queue(maker, published):
+    """A row that ran before its kind moved queues (#50) is retried on the kind's queue, and says so."""
+    task_id = await _failed_task(maker, "resolve_job_link")
+    async with maker() as db:
+        (await db.get(Task, task_id)).queue = "ai"  # as 0022 backfilled it
+        await db.commit()
+    published.clear()
+    r = await invoke("tasks", "retry", str(task_id))
+    assert r.exit_code == 0 and f"Requeued task {task_id} (resolve_job_link) on the io queue" in r.stdout
+    async with maker() as db:
+        assert (await db.get(Task, task_id)).queue == "io"
+    assert published == [("io", "resolve_job_link", task_id)]
+
+
+async def test_retry_refuses_a_kind_that_no_longer_exists(maker):
+    task_id = await _failed_task(maker)
+    async with maker() as db:
+        (await db.get(Task, task_id)).kind = "ingest_jobs"
+        await db.commit()
+    r = await invoke("tasks", "retry", str(task_id))
+    assert r.exit_code == 1 and "no longer a task kind" in r.stderr

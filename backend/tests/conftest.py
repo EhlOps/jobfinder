@@ -2,6 +2,8 @@ import asyncio
 import ipaddress
 import os
 import socket
+import sys
+from urllib.parse import urlsplit
 
 import pytest
 import pytest_asyncio
@@ -222,6 +224,15 @@ def isolated_store(tmp_path, monkeypatch):
     return store
 
 
+@pytest_asyncio.fixture(autouse=True)
+async def _close_shared_http():
+    """worker-io's shared board-fetch transport (tasks.io.shared_http) belongs to one test's event loop."""
+    yield
+    io = sys.modules.get("jobfinder.tasks.io")
+    if io is not None:
+        await io.close_http()
+
+
 @pytest.fixture(autouse=True)
 def isolated_claude_auth(tmp_path, monkeypatch):
     """Never let a test read or write a real credentials directory."""
@@ -345,7 +356,8 @@ def published(request, monkeypatch, no_publish):
 # A test never reaches past this machine: connecting a socket anywhere but loopback or a unix socket, or
 # resolving a name other than localhost, raises at once (and fails the test even if the code under test
 # swallows the error), so an HTTP call that respx or MockWeb doesn't mock fails loudly instead of fetching.
-# respx intercepts httpx before any socket is opened; Postgres and valkey are on localhost.
+# respx intercepts httpx before any socket is opened. Postgres and valkey are on localhost, or on the hosts
+# TEST_ADMIN_URL and VALKEY_URL name, which are let through too.
 _blocked: list[str] = []
 
 
@@ -371,6 +383,30 @@ def _ip_literal(host) -> bool:
         return False
 
 
+def _service_hosts(urls) -> set[str]:
+    """The hosts of the test's own services (Postgres from TEST_ADMIN_URL, valkey from VALKEY_URL) that
+    aren't loopback: CI or a developer may point them at another machine."""
+    return {h for h in (urlsplit(u).hostname for u in urls if u) if h and not _loopback(h)}
+
+
+def _addresses(hosts: set[str], getaddrinfo) -> set[str]:
+    """`hosts` and the addresses they resolve to, which is what connect() is then called with."""
+    out = set(hosts)
+    for host in hosts:
+        try:
+            out |= {info[4][0] for info in getaddrinfo(host, None)}
+        except OSError:
+            pass  # unresolvable now: connecting to it fails on its own
+    return out
+
+
+def _permitted(host, allowed: set[str]) -> bool:
+    if _loopback(host):
+        return True
+    host = host.decode() if isinstance(host, bytes) else str(host)
+    return host in allowed or host.split("%")[0] in allowed
+
+
 def _refuse(what: str):
     _blocked.append(what)
     raise RealNetworkCall(f"tests must not reach the network ({what}): mock it with respx or tests.fakes.MockWeb")
@@ -379,9 +415,12 @@ def _refuse(what: str):
 @pytest.fixture(scope="session", autouse=True)
 def _deny_network():
     real_connect, real_connect_ex, real_getaddrinfo = socket.socket.connect, socket.socket.connect_ex, socket.getaddrinfo
+    allowed = _addresses(_service_hosts([ADMIN_URL, get_settings().valkey_url]), real_getaddrinfo)
 
     def check(sock, address):
-        if sock.family != getattr(socket, "AF_UNIX", None) and not (isinstance(address, tuple) and _loopback(address[0])):
+        if sock.family != getattr(socket, "AF_UNIX", None) and not (
+            isinstance(address, tuple) and _permitted(address[0], allowed)
+        ):
             _refuse(f"connect to {address!r}")
 
     def connect(self, address):
@@ -393,7 +432,7 @@ def _deny_network():
         return real_connect_ex(self, address)
 
     def getaddrinfo(host, *args, **kwargs):
-        if not (_loopback(host) or _ip_literal(host)):  # an IP literal needs no lookup; connect() checks it
+        if not (_permitted(host, allowed) or _ip_literal(host)):  # an IP literal needs no lookup; connect() checks it
             _refuse(f"DNS lookup of {host!r}")
         return real_getaddrinfo(host, *args, **kwargs)
 

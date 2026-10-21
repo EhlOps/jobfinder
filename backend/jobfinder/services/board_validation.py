@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 import httpx
 
 from jobfinder.core.db import AsyncSession, IntegrityError
+from jobfinder.core.http import new_client
 from jobfinder.integrations.ats import SLUG_RE
 from jobfinder.integrations.ats.registry import ATS_FETCHERS, PROBE_FETCHERS
 from jobfinder.models import Company
@@ -34,7 +35,7 @@ async def validate_board(
     if not SLUG_RE.match(slug or ""):
         return ValidationResult(False, f"invalid slug '{slug}'")
     own = client is None
-    client = client or httpx.AsyncClient(timeout=20, follow_redirects=True)
+    client = client or new_client(timeout_s=20, follow_redirects=True)
     try:
         postings = await fetcher(client, slug, slug)
     except httpx.HTTPStatusError as e:

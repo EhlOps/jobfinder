@@ -87,7 +87,7 @@ type = "layers"
 #   context      the app context: core's infrastructure plus Claude and the document store
 #   task ledger  where services queue work (ledger.add) and the brokers that deliver it
 layers = [
-  "jobfinder.cli : jobfinder.scheduler : jobfinder.renderer : jobfinder.tasks.__main__ : jobfinder.tasks.ai : jobfinder.tasks.io : jobfinder.tasks.documents : jobfinder.tasks.render : jobfinder.tasks.runtime",
+  "jobfinder.cli : jobfinder.scheduler : jobfinder.renderer : jobfinder.tasks.__main__ : jobfinder.tasks.ai : jobfinder.tasks.io : jobfinder.tasks.documents : jobfinder.tasks.render : jobfinder.tasks.runtime : jobfinder.tasks.failures",
   "jobfinder.api",
   "jobfinder.services | jobfinder.context",
   "jobfinder.schemas",
