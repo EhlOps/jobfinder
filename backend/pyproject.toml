@@ -68,10 +68,6 @@ line-length = 100
 # Deliberate broad catches: a bad upload/URL/task must not take down a request or the worker.
 ignore = ["BLE001"]
 
-[tool.ruff.lint.isort]
-# The ingest/sources, recipes and discovery shims (#42) have no module files left for ruff to find.
-known-first-party = ["jobfinder"]
-
 # Report-only architecture contracts: CI runs lint-imports with continue-on-error until #53 makes
 # them blocking. They describe the package as it is today; #53 replaces them with the layer rules.
 [tool.importlinter]
@@ -86,7 +82,6 @@ source_modules = [
   "jobfinder.cli",
   "jobfinder.context",
   "jobfinder.core",
-  "jobfinder.ingest",
   "jobfinder.integrations",
   "jobfinder.matching",
   "jobfinder.models",
@@ -128,7 +123,6 @@ forbidden_modules = [
   "jobfinder.auth",
   "jobfinder.cli",
   "jobfinder.context",
-  "jobfinder.ingest",
   "jobfinder.integrations",
   "jobfinder.matching",
   "jobfinder.models",

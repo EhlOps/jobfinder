@@ -10,7 +10,6 @@ import sqlalchemy as sa
 
 from jobfinder import worker
 from jobfinder.core.config import get_settings
-from jobfinder.ingest import runner
 from jobfinder.models import Company, Job, Task
 from jobfinder.services import ingestion
 from jobfinder.tasks import io as io_tasks
@@ -71,7 +70,7 @@ async def _extra_runs(maker) -> int:
     from jobfinder.models import RateEvent
 
     async with maker() as db:
-        return await db.scalar(sa.select(sa.func.count()).where(RateEvent.kind == runner.EXTRA_KIND))
+        return await db.scalar(sa.select(sa.func.count()).where(RateEvent.kind == ingestion.EXTRA_KIND))
 
 
 @pytest.mark.real_commit
@@ -86,7 +85,7 @@ async def test_the_tick_fans_out_and_one_failing_board_fails_nothing_else(maker,
         extras.append(source)
         return ingestion.IngestStats(source=source, company="(usajobs.gov)", fetched=0)
 
-    monkeypatch.setattr(runner, "ingest_extra", fake_extra)
+    monkeypatch.setattr(ingestion, "ingest_extra", fake_extra)
 
     tick = await _queued(maker, "ingest_tick")
     await _run("ingest_tick", tick)

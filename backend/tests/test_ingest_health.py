@@ -3,8 +3,8 @@ import pytest
 import sqlalchemy as sa
 
 from jobfinder.core.config import get_settings
-from jobfinder.ingest import service
 from jobfinder.models import Company, Job
+from jobfinder.services import ingestion
 from tests.test_ingest_service import fake_fetcher, make_company, posting, status_error
 
 
@@ -16,25 +16,25 @@ def limit3(monkeypatch):
 async def test_counters_reset_on_success(maker, monkeypatch):
     async with maker() as db, httpx.AsyncClient() as client:
         c = await make_company(db)
-        monkeypatch.setitem(service.ATS_FETCHERS, "greenhouse", fake_fetcher(exc=status_error(404)))
-        await service.ingest_company(db, client, c)
-        await service.ingest_company(db, client, c)
+        monkeypatch.setitem(ingestion.ATS_FETCHERS, "greenhouse", fake_fetcher(exc=status_error(404)))
+        await ingestion.ingest_company(db, client, c)
+        await ingestion.ingest_company(db, client, c)
         assert c.consecutive_failures == 2 and c.enabled and c.last_success_at is None
 
-        monkeypatch.setitem(service.ATS_FETCHERS, "greenhouse", fake_fetcher([posting(1)]))
-        await service.ingest_company(db, client, c)
+        monkeypatch.setitem(ingestion.ATS_FETCHERS, "greenhouse", fake_fetcher([posting(1)]))
+        await ingestion.ingest_company(db, client, c)
         assert c.consecutive_failures == 0 and c.last_error is None
         assert c.last_success_at is not None and c.enabled and c.disabled_reason is None
 
 
 async def test_board_disabled_after_n_failures(maker, monkeypatch):
-    monkeypatch.setitem(service.ATS_FETCHERS, "greenhouse", fake_fetcher(exc=status_error(404)))
+    monkeypatch.setitem(ingestion.ATS_FETCHERS, "greenhouse", fake_fetcher(exc=status_error(404)))
     async with maker() as db, httpx.AsyncClient() as client:
         c = await make_company(db)
         for _ in range(2):
-            await service.ingest_company(db, client, c)
+            await ingestion.ingest_company(db, client, c)
         assert c.enabled and c.disabled_reason is None
-        await service.ingest_company(db, client, c)
+        await ingestion.ingest_company(db, client, c)
         assert c.enabled is False and c.consecutive_failures == 3
         assert "3 consecutive failures" in c.disabled_reason and "not found" in c.disabled_reason
         await db.commit()  # the boundary (a task or ingest_boards) commits the run
@@ -48,9 +48,9 @@ async def test_raising_fetcher_does_not_stop_the_run(maker, monkeypatch):
     async def boom(client, slug, name):
         raise RuntimeError("kaboom")
 
-    monkeypatch.setitem(service.ATS_FETCHERS, "greenhouse", boom)
-    monkeypatch.setitem(service.ATS_FETCHERS, "lever", fake_fetcher([posting(1, source="lever")]))
-    monkeypatch.setitem(service.ATS_FETCHERS, "ashby", fake_fetcher([posting(2, source="ashby")]))
+    monkeypatch.setitem(ingestion.ATS_FETCHERS, "greenhouse", boom)
+    monkeypatch.setitem(ingestion.ATS_FETCHERS, "lever", fake_fetcher([posting(1, source="lever")]))
+    monkeypatch.setitem(ingestion.ATS_FETCHERS, "ashby", fake_fetcher([posting(2, source="ashby")]))
     async with maker() as db:
         db.add_all([
             Company(name="A", ats="greenhouse", slug="a"),
@@ -58,7 +58,7 @@ async def test_raising_fetcher_does_not_stop_the_run(maker, monkeypatch):
             Company(name="C", ats="ashby", slug="c"),
         ])
         await db.commit()
-    results = {r.company: r for r in await service.ingest_boards(maker)}
+    results = {r.company: r for r in await ingestion.ingest_boards(maker)}
     assert "kaboom" in results["A"].error
     assert results["B"].error is None and results["C"].error is None
     assert results["B"].fetched == 1 and results["C"].fetched == 1
@@ -70,22 +70,22 @@ async def test_raising_fetcher_does_not_stop_the_run(maker, monkeypatch):
 
 @pytest.mark.real_commit
 async def test_unexpected_ingest_company_error_isolated(maker, monkeypatch):
-    real = service.ingest_company
+    real = ingestion.ingest_company
 
     async def flaky(db, client, company):
         if company.name == "A":
             raise RuntimeError("db exploded")
         return await real(db, client, company)
 
-    monkeypatch.setattr(service, "ingest_company", flaky)
-    monkeypatch.setitem(service.ATS_FETCHERS, "lever", fake_fetcher([posting(1, source="lever")]))
+    monkeypatch.setattr(ingestion, "ingest_company", flaky)
+    monkeypatch.setitem(ingestion.ATS_FETCHERS, "lever", fake_fetcher([posting(1, source="lever")]))
     async with maker() as db:
         db.add_all([
             Company(name="A", ats="greenhouse", slug="a"),
             Company(name="B", ats="lever", slug="b"),
         ])
         await db.commit()
-    results = {r.company: r for r in await service.ingest_boards(maker)}
+    results = {r.company: r for r in await ingestion.ingest_boards(maker)}
     assert "db exploded" in results["A"].error and results["A"].source == "greenhouse"
     assert results["B"].error is None and results["B"].fetched == 1
     async with maker() as db:
@@ -97,39 +97,39 @@ async def test_unexpected_ingest_company_error_isolated(maker, monkeypatch):
 async def test_auto_disabled_board_jobs_deactivated(maker, monkeypatch):
     async with maker() as db, httpx.AsyncClient() as client:
         c = await make_company(db)
-        monkeypatch.setitem(service.ATS_FETCHERS, "greenhouse", fake_fetcher([posting(1), posting(2)]))
-        await service.ingest_company(db, client, c)
+        monkeypatch.setitem(ingestion.ATS_FETCHERS, "greenhouse", fake_fetcher([posting(1), posting(2)]))
+        await ingestion.ingest_company(db, client, c)
 
         async def active():
             return await db.scalar(sa.select(sa.func.count()).select_from(Job).where(
                 Job.company_id == c.id, Job.is_active.is_(True)))
 
         assert await active() == 2
-        monkeypatch.setitem(service.ATS_FETCHERS, "greenhouse", fake_fetcher(exc=status_error(404)))
+        monkeypatch.setitem(ingestion.ATS_FETCHERS, "greenhouse", fake_fetcher(exc=status_error(404)))
         for _ in range(2):
-            await service.ingest_company(db, client, c)
+            await ingestion.ingest_company(db, client, c)
         assert c.enabled and await active() == 2  # not disabled yet: jobs untouched
-        await service.ingest_company(db, client, c)
+        await ingestion.ingest_company(db, client, c)
         assert c.enabled is False and await active() == 0
 
 
 async def test_empty_responses_never_disable_and_confirm_closure(maker, monkeypatch):
     async with maker() as db, httpx.AsyncClient() as client:
         c = await make_company(db)
-        n = service.EMPTY_GUARD_MIN_ACTIVE + 2
-        monkeypatch.setitem(service.ATS_FETCHERS, "greenhouse", fake_fetcher([posting(i) for i in range(n)]))
-        await service.ingest_company(db, client, c)
+        n = ingestion.EMPTY_GUARD_MIN_ACTIVE + 2
+        monkeypatch.setitem(ingestion.ATS_FETCHERS, "greenhouse", fake_fetcher([posting(i) for i in range(n)]))
+        await ingestion.ingest_company(db, client, c)
 
         async def active():
             return await db.scalar(sa.select(sa.func.count()).select_from(Job).where(
                 Job.company_id == c.id, Job.is_active.is_(True)))
 
-        monkeypatch.setitem(service.ATS_FETCHERS, "greenhouse", fake_fetcher([]))
-        for _ in range(service.EMPTY_CONFIRM_RUNS - 1):
-            stats = await service.ingest_company(db, client, c)
+        monkeypatch.setitem(ingestion.ATS_FETCHERS, "greenhouse", fake_fetcher([]))
+        for _ in range(ingestion.EMPTY_CONFIRM_RUNS - 1):
+            stats = await ingestion.ingest_company(db, client, c)
             assert stats.error.startswith("empty response") and await active() == n
             assert c.enabled and c.consecutive_failures == 0 and c.last_error.startswith("empty response")
-        stats = await service.ingest_company(db, client, c)
+        stats = await ingestion.ingest_company(db, client, c)
         assert stats.error is None and stats.deactivated == n and await active() == 0
         assert c.enabled and c.disabled_reason is None
         assert c.consecutive_failures == 0 and c.last_error is None and c.last_success_at is not None
@@ -138,16 +138,16 @@ async def test_empty_responses_never_disable_and_confirm_closure(maker, monkeypa
 async def test_empty_run_does_not_reset_or_add_failures(maker, monkeypatch):
     async with maker() as db, httpx.AsyncClient() as client:
         c = await make_company(db)
-        n = service.EMPTY_GUARD_MIN_ACTIVE + 2
-        monkeypatch.setitem(service.ATS_FETCHERS, "greenhouse", fake_fetcher([posting(i) for i in range(n)]))
-        await service.ingest_company(db, client, c)
-        monkeypatch.setitem(service.ATS_FETCHERS, "greenhouse", fake_fetcher([]))
-        monkeypatch.setitem(service.ATS_FETCHERS, "greenhouse", fake_fetcher(exc=status_error(404)))
-        await service.ingest_company(db, client, c)
-        await service.ingest_company(db, client, c)
-        monkeypatch.setitem(service.ATS_FETCHERS, "greenhouse", fake_fetcher([]))
-        await service.ingest_company(db, client, c)  # an empty run neither erases nor adds failures
+        n = ingestion.EMPTY_GUARD_MIN_ACTIVE + 2
+        monkeypatch.setitem(ingestion.ATS_FETCHERS, "greenhouse", fake_fetcher([posting(i) for i in range(n)]))
+        await ingestion.ingest_company(db, client, c)
+        monkeypatch.setitem(ingestion.ATS_FETCHERS, "greenhouse", fake_fetcher([]))
+        monkeypatch.setitem(ingestion.ATS_FETCHERS, "greenhouse", fake_fetcher(exc=status_error(404)))
+        await ingestion.ingest_company(db, client, c)
+        await ingestion.ingest_company(db, client, c)
+        monkeypatch.setitem(ingestion.ATS_FETCHERS, "greenhouse", fake_fetcher([]))
+        await ingestion.ingest_company(db, client, c)  # an empty run neither erases nor adds failures
         assert c.enabled and c.consecutive_failures == 2
-        monkeypatch.setitem(service.ATS_FETCHERS, "greenhouse", fake_fetcher(exc=status_error(404)))
-        await service.ingest_company(db, client, c)
+        monkeypatch.setitem(ingestion.ATS_FETCHERS, "greenhouse", fake_fetcher(exc=status_error(404)))
+        await ingestion.ingest_company(db, client, c)
         assert c.enabled is False and c.consecutive_failures == 3

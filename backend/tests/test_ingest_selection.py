@@ -4,9 +4,9 @@ from types import SimpleNamespace
 import pytest
 
 from jobfinder.core.config import get_settings
-from jobfinder.ingest import service
-from jobfinder.ingest.selection import Target, board_score, select_boards
 from jobfinder.models import Company, Profile, User
+from jobfinder.services import ingestion
+from jobfinder.services.board_selection import Target, board_score, select_boards
 from tests.test_ingest_service import fake_fetcher, posting
 
 T0 = datetime(2026, 1, 1, tzinfo=UTC)
@@ -84,7 +84,7 @@ def test_never_fetched_come_before_stale():
 @pytest.mark.real_commit
 async def test_ingest_boards_uses_selection(maker, monkeypatch):
     monkeypatch.setattr(get_settings(), "ingest_max_discovered_boards_per_run", 1)
-    monkeypatch.setitem(service.ATS_FETCHERS, "greenhouse", fake_fetcher([posting(1)]))
+    monkeypatch.setitem(ingestion.ATS_FETCHERS, "greenhouse", fake_fetcher([posting(1)]))
     async with maker() as db:
         u = User(email="a@x.io", activated_at=datetime.now(UTC))
         db.add(u)
@@ -96,8 +96,8 @@ async def test_ingest_boards_uses_selection(maker, monkeypatch):
             Company(name="Shop", ats="greenhouse", slug="shop", origin="discovered", industry="retail"),
         ])
         await db.commit()
-    results = await service.ingest_boards(maker)
+    results = await ingestion.ingest_boards(maker)
     assert sorted(r.company for r in results) == ["Bank", "Seed"]
     # an explicitly requested board is never capped away
-    results = await service.ingest_boards(maker, slug="shop")
+    results = await ingestion.ingest_boards(maker, slug="shop")
     assert [r.company for r in results] == ["Shop"]

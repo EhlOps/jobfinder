@@ -3,9 +3,9 @@ from pathlib import Path
 
 import pytest
 
-from jobfinder.ingest.sources.ashby import parse_ashby
-from jobfinder.ingest.sources.greenhouse import parse_greenhouse
-from jobfinder.ingest.sources.lever import parse_lever
+from jobfinder.integrations.ats.ashby import parse_ashby
+from jobfinder.integrations.ats.greenhouse import parse_greenhouse
+from jobfinder.integrations.ats.lever import parse_lever
 from jobfinder.models.posting import (
     dedupe_hash,
     html_to_text,

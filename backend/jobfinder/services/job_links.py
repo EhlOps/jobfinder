@@ -8,7 +8,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from jobfinder.core.config import settings
 from jobfinder.core.errors import Invalid, NotFound, RateLimited
-from jobfinder.ingest.resolve import BadLink, clean_url, existing_board
 from jobfinder.integrations.directories import board_from_url
 from jobfinder.integrations.site_terms import refusal_for_url, refusal_message
 from jobfinder.models import JobLink, User
@@ -16,6 +15,7 @@ from jobfinder.repositories import job_links as repo
 from jobfinder.repositories.job_links import LinkFacts
 from jobfinder.schemas.job_links import JobLinkOut, LinkDetail, LinkJob
 from jobfinder.services import ratelimit
+from jobfinder.services.resolver import BadLink, clean_url, existing_board
 from jobfinder.tasks import ledger
 
 RATE_KIND = "job_link"

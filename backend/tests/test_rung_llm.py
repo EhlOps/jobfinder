@@ -8,11 +8,6 @@ from security_payloads import SQLI, XSS_TEXT
 
 from jobfinder.ai.schemas import InducedRecipe
 from jobfinder.core.config import get_settings
-from jobfinder.ingest.recipes import Recipe, RecipeError
-from jobfinder.ingest.resolve import induce_link, resolve_link
-from jobfinder.ingest.resolve.ladder import RecipeHit, ResolveContext
-from jobfinder.ingest.resolve.rungs import RUNGS
-from jobfinder.ingest.resolve.rungs.llm import LlmRung, endpoint_candidates
 from jobfinder.integrations import http_safety
 from jobfinder.integrations.claude.claude_code import AIError
 from jobfinder.integrations.claude.tasks import (
@@ -21,8 +16,13 @@ from jobfinder.integrations.claude.tasks import (
     AITasks,
     page_excerpt,
 )
+from jobfinder.integrations.recipes import Recipe, RecipeError
 from jobfinder.models import AICall, Company, Job, JobLink, Task
 from jobfinder.scheduling import handlers
+from jobfinder.services.resolver import induce_link, resolve_link
+from jobfinder.services.resolver.ladder import RecipeHit, ResolveContext
+from jobfinder.services.resolver.rungs import RUNGS
+from jobfinder.services.resolver.rungs.llm import LlmRung, endpoint_candidates
 from jobfinder.tasks.ai import INDUCE_RETRIES
 from tests.factories import make_user
 from tests.fakes import FakeClaude, fake_resolve_public, handle
@@ -361,7 +361,7 @@ async def test_induce_link_does_not_ask_claude_while_backing_off(maker, web):
 
 
 async def test_resolve_job_link_handler_queues_induce_recipe_only_when_the_llm_is_allowed(maker, monkeypatch):
-    from jobfinder.ingest import resolve
+    from jobfinder.services import resolver
 
     got = {}
     hints = {"samples": [], "tried": [], "notes": [], "single_job": None, "board_error": None}
@@ -373,7 +373,7 @@ async def test_resolve_job_link_handler_queues_induce_recipe_only_when_the_llm_i
     async def induce_rows(db):
         return (await db.scalars(sa.select(Task).where(Task.kind == "induce_recipe"))).all()
 
-    monkeypatch.setattr(resolve, "resolve_link", fake_resolve)
+    monkeypatch.setattr(resolver, "resolve_link", fake_resolve)
     async with maker() as db:
         out = await handlers.resolve_job_link(db, None, Task(kind="resolve_job_link", payload={"link_id": 7}))
         assert got == {"link_id": 7, "allow_llm": True}
@@ -396,7 +396,7 @@ async def test_resolve_job_link_handler_queues_induce_recipe_only_when_the_llm_i
 
 
 async def test_induce_recipe_handler_hands_the_rung_its_ai(maker, monkeypatch):
-    from jobfinder.ingest import resolve
+    from jobfinder.services import resolver
 
     got = {}
 
@@ -407,7 +407,7 @@ async def test_induce_recipe_handler_hands_the_rung_its_ai(maker, monkeypatch):
     async def rows(db, kind):
         return (await db.scalars(sa.select(Task).where(Task.kind == kind))).all()
 
-    monkeypatch.setattr(resolve, "induce_link", fake_induce)
+    monkeypatch.setattr(resolver, "induce_link", fake_induce)
     ai = AITasks(FakeClaude())
     async with maker() as db:
         task = Task(kind="induce_recipe", payload={"link_id": 7, "notes": ["n"], "samples": [["u", "{}"]]})

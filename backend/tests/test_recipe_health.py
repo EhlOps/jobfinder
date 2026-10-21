@@ -4,7 +4,8 @@ import httpx
 import pytest
 import sqlalchemy as sa
 
-from jobfinder.ingest.recipes.health import (
+from jobfinder.integrations import http_safety
+from jobfinder.integrations.recipes.health import (
     ACTIVE,
     DEGRADED,
     DISABLED,
@@ -13,9 +14,8 @@ from jobfinder.ingest.recipes.health import (
     record_reinduce,
     record_run,
 )
-from jobfinder.ingest.service import ingest_company
-from jobfinder.integrations import http_safety
 from jobfinder.models import Company, Job
+from jobfinder.services.ingestion import ingest_company
 from tests.fakes import fake_resolve_public, handle
 
 T0 = datetime(2026, 10, 1, tzinfo=UTC)

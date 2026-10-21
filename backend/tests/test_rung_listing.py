@@ -7,15 +7,15 @@ import sqlalchemy as sa
 from factories import make_user
 from security_payloads import PRIVATE_URLS
 
-from jobfinder.ingest.recipes import Recipe, run_recipe
-from jobfinder.ingest.recipes.sniff import json_recipe_from_sample, pagination_for
-from jobfinder.ingest.resolve import resolve_link
-from jobfinder.ingest.resolve.ladder import RecipeHit, ResolveContext
-from jobfinder.ingest.resolve.rungs import RUNGS
-from jobfinder.ingest.resolve.rungs.listing import MAX_FETCHES, ListingRung, job_pattern
-from jobfinder.ingest.service import ingest_company
 from jobfinder.integrations import http_safety
+from jobfinder.integrations.recipes import Recipe, run_recipe
+from jobfinder.integrations.recipes.sniff import json_recipe_from_sample, pagination_for
 from jobfinder.models import Company, Job, JobLink
+from jobfinder.services.ingestion import ingest_company
+from jobfinder.services.resolver import resolve_link
+from jobfinder.services.resolver.ladder import RecipeHit, ResolveContext
+from jobfinder.services.resolver.rungs import RUNGS
+from jobfinder.services.resolver.rungs.listing import MAX_FETCHES, ListingRung, job_pattern
 from tests.fakes import fake_resolve_public, handle
 
 FIXTURES = Path(__file__).parent / "fixtures"

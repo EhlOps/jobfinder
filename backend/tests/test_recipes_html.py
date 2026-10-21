@@ -4,16 +4,16 @@ import httpx
 import pytest
 from security_payloads import SCRIPT_URLS, SQLI, XSS_TEXT
 
-from jobfinder.ingest.recipes import RecipeError, run_recipe
-from jobfinder.ingest.recipes.html import (
+from jobfinder.integrations import http_safety
+from jobfinder.integrations.http_safety import FetchError
+from jobfinder.integrations.recipes import RecipeError, run_recipe
+from jobfinder.integrations.recipes.html import (
     compile_field,
     compile_selector,
     field_value,
     parse_document,
     select,
 )
-from jobfinder.integrations import http_safety
-from jobfinder.integrations.http_safety import FetchError
 from tests.fakes import fake_resolve_public, handle
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -129,8 +129,8 @@ def test_description_excludes_following_text():
 
 
 def test_page_charset_is_honoured():
-    from jobfinder.ingest.recipes.html import page_text
     from jobfinder.integrations.http_safety import SafeResponse
+    from jobfinder.integrations.recipes.html import page_text
 
     body = '<meta charset="windows-1252"><p>Café</p>'.encode("cp1252")
     assert "Café" in page_text(SafeResponse("https://x/", 200, "text/html", body, "utf-8", httpx.Headers()))

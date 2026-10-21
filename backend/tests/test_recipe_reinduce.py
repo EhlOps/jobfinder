@@ -7,14 +7,14 @@ import pytest
 import sqlalchemy as sa
 
 from jobfinder.core.config import get_settings
-from jobfinder.ingest.recipes import health
-from jobfinder.ingest.resolve.rungs.llm import reinduce_company
-from jobfinder.ingest.service import ingest_company
 from jobfinder.integrations import http_safety
 from jobfinder.integrations.claude.claude_code import AIError
 from jobfinder.integrations.claude.tasks import AITasks
+from jobfinder.integrations.recipes import health
 from jobfinder.models import AICall, Company, Job, Task
 from jobfinder.scheduling import handlers
+from jobfinder.services.ingestion import ingest_company
+from jobfinder.services.resolver.rungs.llm import reinduce_company
 from tests.fakes import FakeClaude, fake_resolve_public, handle
 from tests.test_rung_llm import induced
 
@@ -132,7 +132,7 @@ async def test_reinduce_skips_boards_that_are_not_recipes_or_when_disabled(maker
 
 
 async def test_handler_runs_the_heal_and_honours_backoff(maker, monkeypatch):
-    from jobfinder.ingest.resolve.rungs import llm
+    from jobfinder.services.resolver.rungs import llm
 
     got = []
 

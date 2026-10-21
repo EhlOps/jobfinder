@@ -3,16 +3,16 @@ import pytest
 import sqlalchemy as sa
 from factories import make_user
 
-from jobfinder.ingest import resolve
-from jobfinder.ingest.recipes import Recipe
-from jobfinder.ingest.resolve import registrable_domain, resolve_link
-from jobfinder.ingest.resolve.ladder import BoardHit, RecipeHit, ResolveContext, SingleJob
-from jobfinder.ingest.resolve.rungs import RUNGS
-from jobfinder.ingest.service import ingest_company
-from jobfinder.ingest.sources.detect import HTML_DETECTORS, detect_board
 from jobfinder.integrations import http_safety
+from jobfinder.integrations.ats.detect import HTML_DETECTORS, detect_board
+from jobfinder.integrations.recipes import Recipe
 from jobfinder.models import Company, Job, JobLink
 from jobfinder.models.posting import JobPosting
+from jobfinder.services import resolver
+from jobfinder.services.ingestion import ingest_company
+from jobfinder.services.resolver import registrable_domain, resolve_link
+from jobfinder.services.resolver.ladder import BoardHit, RecipeHit, ResolveContext, SingleJob
+from jobfinder.services.resolver.rungs import RUNGS
 from tests.fakes import fake_resolve_public, handle, serve
 
 URL = "https://careers.acme.com/jobs/4021"
@@ -68,7 +68,7 @@ async def test_recipe_hit_becomes_a_recipe_board(maker, monkeypatch, web):
     hit = RecipeHit(Recipe.model_validate(RECIPE), domain="acme.com", name="Acme Robotics", postings=[posting])
     broken, passes, wins = Fixed("broken", 2, boom=True), Fixed("passes", 3), Fixed("wins", 4, hit)
     never = Fixed("never", 9, BoardHit("greenhouse", "acme"))
-    monkeypatch.setattr(resolve, "RUNGS", [broken, passes, wins, never])
+    monkeypatch.setattr(resolver, "RUNGS", [broken, passes, wins, never])
     async with maker() as db, api_client(web) as c:
         link = await make_link(db)
         out = await resolve_link(db, link.id, client=c)
@@ -85,7 +85,7 @@ async def test_recipe_hit_becomes_a_recipe_board(maker, monkeypatch, web):
 
 async def test_single_job_is_kept_when_no_board(maker, monkeypatch, web):
     posting = JobPosting(source="jsonld", external_id="x", company_name="Acme", title="Robotics Engineer", url="")
-    monkeypatch.setattr(resolve, "RUNGS", [Fixed("jsonld", 3, SingleJob(posting)), Fixed("later", 4)])
+    monkeypatch.setattr(resolver, "RUNGS", [Fixed("jsonld", 3, SingleJob(posting)), Fixed("later", 4)])
     async with maker() as db:
         link = await make_link(db)
         out = await resolve_link(db, link.id, client=api_client(web))
@@ -100,7 +100,7 @@ async def test_failed_board_falls_through_to_next_rung(maker, monkeypatch, web):
     posting = JobPosting(source="recipe", external_id="acme.com:4021", company_name="Acme", title="R", url=URL)
     bad = Fixed("bad", 1, BoardHit("greenhouse", "nope"))
     good = Fixed("good", 2, RecipeHit(Recipe.model_validate(RECIPE), domain="acme.com", postings=[posting]))
-    monkeypatch.setattr(resolve, "RUNGS", [bad, good])
+    monkeypatch.setattr(resolver, "RUNGS", [bad, good])
 
     def handler(request):
         if "greenhouse" in request.url.host or request.headers.get("host", "").startswith("boards-api"):
@@ -115,7 +115,7 @@ async def test_failed_board_falls_through_to_next_rung(maker, monkeypatch, web):
 
 
 async def test_board_error_reported_when_nothing_else_works(maker, monkeypatch, web):
-    monkeypatch.setattr(resolve, "RUNGS", [Fixed("bad", 1, BoardHit("greenhouse", "nope"))])
+    monkeypatch.setattr(resolver, "RUNGS", [Fixed("bad", 1, BoardHit("greenhouse", "nope"))])
     serve(web, status=404, json={})
     client = httpx.AsyncClient()
     async with maker() as db:
@@ -173,7 +173,7 @@ def test_detect_board_skips_broken_detectors(monkeypatch):
     def boom(url, html):
         raise ValueError("bad detector")
 
-    monkeypatch.setattr("jobfinder.ingest.sources.detect.HTML_DETECTORS",
+    monkeypatch.setattr("jobfinder.integrations.ats.detect.HTML_DETECTORS",
                         [boom, lambda u, h: ("phenom", "x") if "phenompeople" in h else None])
     assert detect_board("https://careers.x.com", "<script src='//cdn.phenompeople.com'>") == ("phenom", "x")
     assert detect_board("https://careers.x.com", "<html/>") is None
