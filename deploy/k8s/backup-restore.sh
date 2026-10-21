@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# Restore drill for the nightly backups (#47):
+# Restore drill for the nightly and pre-deploy backups (#47, #118):
 #
-#   deploy/k8s/backup-restore.sh <namespace> [db-<timestamp>.dump]
+#   deploy/k8s/backup-restore.sh <namespace> [[pre-]db-<timestamp>.dump]
 #
-# Restores the newest dump on PVC `backups` (or the one named) into a scratch database next to the
-# live one in that namespace's postgres-0, compares every table's row count with the live database,
-# checks that the matching files-<timestamp>.tar.gz reads back, and drops the scratch database. The
-# live database and the app are never touched.
+# Restores the newest nightly dump on PVC `backups` (or the one named, e.g. a pre-deploy
+# pre-db-<timestamp>.dump) into a scratch database next to the live one in that namespace's
+# postgres-0, compares every table's row count with the live database, checks that the matching
+# [pre-]files-<timestamp>.tar.gz reads back, and drops the scratch database. The live database and
+# the app are never touched.
 #
 # Exit status 0 when every count matches. The live database keeps changing after 03:15, so run it
 # right after a backup (kubectl -n <ns> create job --from=cronjob/backup backup-now) for an exact
@@ -17,10 +18,10 @@ here=$(cd "$(dirname "$0")" && pwd)
 # shellcheck source=deploy/k8s/pg-lib.sh
 . "$here/pg-lib.sh"
 
-usage() { echo "usage: $0 <namespace> [db-<timestamp>.dump]" >&2; exit 2; }
+usage() { echo "usage: $0 <namespace> [[pre-]db-<timestamp>.dump]" >&2; exit 2; }
 if [ $# -lt 1 ] || [ $# -gt 2 ]; then usage; fi
 NS=$1 dump=${2-}
-[ -z "$dump" ] || [[ $dump =~ ^db-[0-9]{8}-[0-9]{6}\.dump$ ]] || usage
+[ -z "$dump" ] || [[ $dump =~ ^(pre-)?db-[0-9]{8}-[0-9]{6}\.dump$ ]] || usage
 HELPER=backup-restore-drill
 scratch="restore_drill_$(date -u +%Y%m%d%H%M%S)"
 
@@ -88,6 +89,7 @@ spec:
 EOF
 kubectl -n "$NS" wait --for=condition=Ready "pod/$HELPER" --timeout=180s >/dev/null
 
+# With no argument, the newest nightly dump ('db-*' doesn't match the pre-deploy 'pre-db-*').
 if [ -z "$dump" ]; then
   dump=$(kubectl -n "$NS" exec "$HELPER" -- sh -c 'cd /backups && ls -1 db-*.dump 2>/dev/null | sort | tail -n 1')
   [ -n "$dump" ] || die "no db-*.dump on PVC backups"
@@ -110,7 +112,8 @@ k8s_row_counts "$NS" jobfinder > "$work/live"
 rc=0
 compare_row_counts restored "$work/restored" live "$work/live" >&2 || rc=1
 
-files="files-${dump#db-}"
+# [pre-]db-<ts>.dump pairs with [pre-]files-<ts>.tar.gz.
+files="${dump/db-/files-}"
 files="${files%.dump}.tar.gz"
 # Listed to a file first: sh has no pipefail, so `tar | wc` would hide a corrupt archive.
 if n=$(kubectl -n "$NS" exec "$HELPER" -- sh -c "tar -tzf '/backups/$files' > /tmp/list && wc -l < /tmp/list"); then

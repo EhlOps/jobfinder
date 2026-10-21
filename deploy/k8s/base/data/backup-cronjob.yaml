@@ -4,6 +4,9 @@
 # on PVC `backups` (deploy/k8s/backup-restore.sh restores the newest dump into a scratch database).
 # Each file is written as .part and renamed when complete; the newest BACKUP_KEEP of each kind
 # are kept. Run one now: kubectl -n <ns> create job --from=cronjob/backup backup-manual.
+# Pre-deploy backups (#118): the deploy wrapper runs a Job from this CronJob with BACKUP_PREFIX=pre-,
+# writing pre-db-<ts>.dump and pre-files-<ts>.tar.gz. They are a separate pool, the newest
+# BACKUP_PRE_KEEP of each kind, so several releases in a day can't push out the nightly dumps.
 # local-path volumes are RWO but node-local on this single node, so mounting `store` and
 # `claude-auth` next to the running app is fine.
 apiVersion: batch/v1
@@ -48,9 +51,14 @@ spec:
                 - |
                   set -eu
                   umask 077
+                  # Only these two prefixes: the rotations below would never clean any other (#118).
+                  case "$BACKUP_PREFIX" in
+                    ''|pre-) ;;
+                    *) echo "BACKUP_PREFIX must be empty or pre-, not '$BACKUP_PREFIX'" >&2; exit 1 ;;
+                  esac
                   ts=$(date -u +%Y%m%d-%H%M%S)
-                  db="/backups/db-$ts.dump"
-                  files="/backups/files-$ts.tar.gz"
+                  db="/backups/${BACKUP_PREFIX}db-$ts.dump"
+                  files="/backups/${BACKUP_PREFIX}files-$ts.tar.gz"
                   # A failed run leaves no partial files.
                   trap 'rm -f "$db.part" "$files.part"' EXIT
                   # kube-router admits a new pod's IP a few seconds after it starts (until then:
@@ -69,9 +77,12 @@ spec:
                   rc=0; tar -C /data -czf "$files.part" store claude || rc=$?
                   [ "$rc" -le 1 ] || exit "$rc"
                   mv "$files.part" "$files"
-                  # Newest BACKUP_KEEP of each kind (timestamped names sort oldest first).
-                  for pat in 'db-*.dump' 'files-*.tar.gz'; do
-                    find /backups -maxdepth 1 -name "$pat" | sort -r | tail -n +"$((BACKUP_KEEP + 1))" \
+                  # Newest BACKUP_KEEP of each nightly kind and BACKUP_PRE_KEEP of each pre-deploy kind
+                  # (timestamped names sort oldest first; 'db-*' doesn't match 'pre-db-*').
+                  for rot in "$BACKUP_KEEP db-*.dump" "$BACKUP_KEEP files-*.tar.gz" \
+                             "$BACKUP_PRE_KEEP pre-db-*.dump" "$BACKUP_PRE_KEEP pre-files-*.tar.gz"; do
+                    keep=${rot%% *} pat=${rot#* }
+                    find /backups -maxdepth 1 -name "$pat" | sort -r | tail -n +"$((keep + 1))" \
                       | while read -r old; do rm -f -- "$old"; done
                   done
                   echo "backup ok: $db ($(du -h "$db" | cut -f1)) $files ($(du -h "$files" | cut -f1))"
@@ -79,6 +90,11 @@ spec:
               env:
                 - name: BACKUP_KEEP
                   value: "14"
+                # "" for a nightly run; the deploy wrapper sets pre- on its Job (#118).
+                - name: BACKUP_PREFIX
+                  value: ""
+                - name: BACKUP_PRE_KEEP
+                  value: "5"
                 - name: HOME
                   value: /tmp
                 - name: PGPASSWORD
