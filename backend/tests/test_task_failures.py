@@ -6,7 +6,7 @@ from datetime import timedelta
 
 import pytest
 
-import jobfinder.tasks.ai  # noqa: F401  (registers the handlers)
+import jobfinder.tasks.ai  # registers the handlers
 import jobfinder.tasks.io  # noqa: F401
 from jobfinder.core.clock import utcnow
 from jobfinder.core.config import get_settings
