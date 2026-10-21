@@ -9,11 +9,11 @@ from datetime import UTC, datetime, timedelta
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from jobfinder import db as dbmod
 from jobfinder.auth.security import prune_sessions
 from jobfinder.context import default_context
 from jobfinder.core import logging as core_logging
 from jobfinder.core.config import settings
+from jobfinder.core.context import default_context as core_context
 from jobfinder.integrations.claude.claude_code import AIError
 from jobfinder.integrations.claude.tasks import AITasks
 from jobfinder.models import Task
@@ -49,7 +49,7 @@ async def _fail(session_factory, task_id: int, error: str, *, retry: bool) -> No
 
 
 async def run_task(task_id: int, ai: AITasks, session_factory=None) -> None:
-    session_factory = session_factory or dbmod.SessionLocal
+    session_factory = session_factory or core_context().sessions
     async with session_factory() as db:
         task = await db.get(Task, task_id)
         if task is None:
@@ -82,7 +82,7 @@ def _log_task_exception(t: asyncio.Task) -> None:
 
 async def enqueue_scheduled(kind: str) -> None:
     """Scheduled work goes through the same queue as everything else (retries, one at a time via dedupe)."""
-    async with dbmod.SessionLocal() as db:
+    async with core_context().sessions() as db:
         await ledger.add(db, kind, dedupe=True)  # the ledger sets the row's queue, ready for the switch
         await db.commit()
     log.info("scheduled %s", kind)
@@ -149,7 +149,7 @@ async def main() -> None:
         if time.monotonic() - last_reap >= settings.worker_reap_seconds:
             last_reap = time.monotonic()
             try:
-                async with dbmod.SessionLocal() as db:
+                async with core_context().sessions() as db:
                     await queue.reap_stuck(db)
                     pruned = await ledger.prune(db)
                     await ratelimit.prune(db)
@@ -161,7 +161,7 @@ async def main() -> None:
                 log.exception("maintenance tick failed")
         claimed = None
         if len(running) < limit:
-            async with dbmod.SessionLocal() as db:
+            async with core_context().sessions() as db:
                 claimed = await queue.claim(db, exclude_prefix=queue.RENDER_PREFIX)
         if claimed:
             t = asyncio.create_task(run_task(claimed.id, ai))

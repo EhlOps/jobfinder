@@ -4,8 +4,9 @@
 clock. Nothing is built at import time. core may import nothing outside core, so the integrations
 (`ctx.claude`, `ctx.store`) are added one layer up, in jobfinder/context.py, whose AppContext extends
 this one; the api, the worker and the CLI use that. `default_context()` here is the process's own
-infrastructure, which `jobfinder.db` and the renderer use and jobfinder/context.py builds on; tests
-build theirs around the test database.
+infrastructure: code outside a request (the task runtime, CLI, renderer, scheduler) opens its sessions
+from `default_context().sessions`, and jobfinder/context.py builds on it. Tests build theirs around the
+test database and swap the default context's `sessions` for it.
 """
 from dataclasses import dataclass
 from functools import lru_cache

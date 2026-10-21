@@ -6,7 +6,7 @@ import httpx
 import pytest
 import sqlalchemy as sa
 
-from jobfinder.config import get_settings
+from jobfinder.core.config import get_settings
 from jobfinder.ingest import runner, service
 from jobfinder.ingest.sources import usajobs
 from jobfinder.models import Job, Profile, User

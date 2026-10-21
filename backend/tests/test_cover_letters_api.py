@@ -2,7 +2,7 @@ import io
 
 import docx
 
-from jobfinder.letters.docx_export import build_docx, filename
+from jobfinder.integrations.docx_export import build_docx, filename
 from jobfinder.models import Job, JobMatch
 from jobfinder.scheduling import queue
 from jobfinder.worker import run_task

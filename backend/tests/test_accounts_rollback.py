@@ -5,11 +5,11 @@ from datetime import UTC, datetime, timedelta
 import pytest
 import sqlalchemy as sa
 
-from jobfinder.config import get_settings
+from jobfinder.core.config import get_settings
 from jobfinder.models import Profile, RateEvent, Session, Task, User
-from jobfinder.notify.tokens import make_password_token
 from jobfinder.repositories import users
 from jobfinder.services import accounts, ratelimit
+from jobfinder.services.tokens import make_password_token
 from tests.rollback import Boom, count, raise_after
 
 

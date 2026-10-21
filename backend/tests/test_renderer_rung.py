@@ -6,7 +6,7 @@ import httpx
 import pytest
 
 from jobfinder import renderer
-from jobfinder.config import get_settings
+from jobfinder.core.config import get_settings
 from jobfinder.ingest.recipes import RecipeError, run_recipe, validate_recipe
 from jobfinder.ingest.recipes.rendered import item_id
 from jobfinder.ingest.recipes.sniff import explain_json_sample, pagination_for

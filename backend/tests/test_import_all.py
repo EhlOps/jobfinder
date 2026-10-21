@@ -23,7 +23,6 @@ OLD_PATHS = [
     "jobfinder.ingest.recipes.html",
     "jobfinder.ingest.discovery.robots",
     "jobfinder.ingest.discovery.github_lists",
-    "jobfinder.auth.ratelimit",
     "jobfinder.ingest.service",
     "jobfinder.ingest.coveted",
     "jobfinder.ingest.resolve.ladder",
@@ -61,7 +60,6 @@ def test_every_module_imports_on_its_own(shard):
 
 def test_old_paths_are_the_moved_modules():
     """A test that monkeypatches the old path must patch the module the code runs."""
-    from jobfinder.auth import ratelimit as old_ratelimit
     from jobfinder.ingest.discovery import robots as old_robots
     from jobfinder.ingest.recipes import html as old_html
     from jobfinder.ingest.sources import fetch_greenhouse
@@ -70,9 +68,8 @@ def test_old_paths_are_the_moved_modules():
     from jobfinder.integrations.ats import workday
     from jobfinder.integrations.ats.greenhouse import fetch_greenhouse as moved_fetch_greenhouse
     from jobfinder.integrations.recipes import html
-    from jobfinder.services import ratelimit
 
-    assert (old_workday, old_html, old_robots, old_ratelimit) == (workday, html, robots, ratelimit)
+    assert (old_workday, old_html, old_robots) == (workday, html, robots)
     assert sys.modules["jobfinder.ingest.sources.workday"] is workday
     assert fetch_greenhouse is moved_fetch_greenhouse
 
