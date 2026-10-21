@@ -29,7 +29,6 @@ class Settings(BaseSettings):
     public_base_url: str
     store_dir: str
     upload_max_bytes: int
-    sync_uploads: bool
     log_level: str
     session_ttl_days: int
     claude_bin: str

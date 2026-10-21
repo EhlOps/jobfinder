@@ -34,6 +34,6 @@ class ProfileLinkOut(BaseModel):
 
 class LinkUpload(BaseModel):
     """An added or refreshed link, and the fetch_link task fetching it while it is processing. task_id is
-    null when nothing is fetched: LinkedIn and X links are only saved, and SYNC_UPLOADS fetches in the request."""
+    null when nothing is fetched: LinkedIn and X links are only saved."""
     link: ProfileLinkOut
     task_id: int | None

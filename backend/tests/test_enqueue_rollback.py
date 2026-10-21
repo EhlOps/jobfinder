@@ -54,9 +54,9 @@ async def test_upload_rolls_back_its_parse_task(authed, maker, monkeypatch, publ
     assert await published.settle() == []
 
 
-async def test_onboarding_extract_rolls_back(authed, maker, monkeypatch, published):
-    monkeypatch.setattr(get_settings(), "sync_uploads", True)  # read now: no parse_document task to publish
-    await authed.post("/api/documents", files={"file": ("resume.txt", b"Intern at Acme", "text/plain")})
+async def test_onboarding_extract_rolls_back(authed, maker, monkeypatch, published, isolated_store):
+    # a resume already read, stored directly: no parse_document task to publish
+    isolated_store.put(await _uid(authed), "resume", "resume.txt", text="Intern at Acme", data=b"Intern at Acme", ext=".txt")
     await _fails_after_add(authed, monkeypatch, "POST", "/api/onboarding/extract")
     assert await count(maker, Task, kind="extract_profile") == 0
     assert await published.settle() == []
