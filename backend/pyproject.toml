@@ -28,7 +28,7 @@ dependencies = [
 ]
 
 [project.scripts]
-# The Typer app; `python -m jobfinder.cli` also maps the pre-#49 command names (jobfinder.cli._legacy).
+# The Typer app (`python -m jobfinder.cli` runs it too).
 jobfinder = "jobfinder.cli:app"
 
 [project.optional-dependencies]
@@ -88,12 +88,9 @@ source_modules = [
   "jobfinder.core",
   "jobfinder.ingest",
   "jobfinder.integrations",
-  "jobfinder.letters",
   "jobfinder.matching",
   "jobfinder.models",
-  "jobfinder.notify",
   "jobfinder.profile",
-  "jobfinder.questions",
   "jobfinder.renderer",
   "jobfinder.repositories",
   "jobfinder.resumes",
@@ -111,7 +108,7 @@ forbidden_modules = ["jobfinder.api"]
 name = "The api package does not import the Claude CLI client directly"
 type = "forbidden"
 source_modules = ["jobfinder.api"]
-forbidden_modules = ["jobfinder.integrations.claude.claude_code", "jobfinder.ai.claude_code"]  # and its shim, until #53
+forbidden_modules = ["jobfinder.integrations.claude.claude_code"]
 allow_indirect_imports = true
 
 [[tool.importlinter.contracts]]
@@ -133,12 +130,9 @@ forbidden_modules = [
   "jobfinder.context",
   "jobfinder.ingest",
   "jobfinder.integrations",
-  "jobfinder.letters",
   "jobfinder.matching",
   "jobfinder.models",
-  "jobfinder.notify",
   "jobfinder.profile",
-  "jobfinder.questions",
   "jobfinder.renderer",
   "jobfinder.repositories",
   "jobfinder.resumes",

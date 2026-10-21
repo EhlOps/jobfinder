@@ -5,9 +5,9 @@ import stat
 import pytest
 from stub_claude import StubClaude, envelope
 
-from jobfinder.ai import credentials
-from jobfinder.ai.claude_code import ClaudeCode
 from jobfinder.core.config import get_settings
+from jobfinder.integrations.claude import credentials
+from jobfinder.integrations.claude.claude_code import ClaudeCode
 
 TOKEN = "sk-ant-oat01-" + "x" * 40
 

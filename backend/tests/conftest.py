@@ -286,7 +286,7 @@ def sent_mail(monkeypatch):
     async def fake(to, subject, text, html=None, headers=None):
         sent.append((to, subject, text))
 
-    monkeypatch.setattr("jobfinder.notify.email.send_email", fake)
+    monkeypatch.setattr("jobfinder.integrations.smtp.send_email", fake)
     return sent
 
 
