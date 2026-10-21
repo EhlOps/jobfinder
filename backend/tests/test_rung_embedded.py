@@ -6,11 +6,11 @@ import sqlalchemy as sa
 from security_payloads import PRIVATE_URLS, SCRIPT_URLS, SQLI
 
 from jobfinder.ingest import http_safety
-from jobfinder.ingest.resolve import resolve_link
-from jobfinder.ingest.resolve.ladder import BoardHit, ResolveContext
-from jobfinder.ingest.resolve.rungs import RUNGS
-from jobfinder.ingest.resolve.rungs.embedded import EmbeddedRung, page_boards, pick_board
 from jobfinder.models import Company, Job, JobLink, Task
+from jobfinder.services.resolver import resolve_link
+from jobfinder.services.resolver.ladder import BoardHit, ResolveContext
+from jobfinder.services.resolver.rungs import RUNGS
+from jobfinder.services.resolver.rungs.embedded import EmbeddedRung, page_boards, pick_board
 from tests.fakes import fake_resolve_public, handle
 
 FIX = Path(__file__).parent / "fixtures"

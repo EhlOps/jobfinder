@@ -185,7 +185,7 @@ async def induce_recipe(db: AsyncSession, ai: AITasks, task: Task, p: InduceReci
 @ledger_task(ai_broker, "reinduce_recipe", payload=ReinduceArgs)
 async def reinduce_recipe(db: AsyncSession, ai: AITasks, task: Task, p: ReinduceArgs) -> dict:
     """Self-heal a degraded recipe board (queued by ingest_company): ask Claude for a new recipe, at most
-    twice a week per domain (ingest.recipes.health)."""
+    twice a week per domain (integrations.recipes.health)."""
     from jobfinder.core.config import settings
     from jobfinder.services.resolver import llm_allowed
     from jobfinder.services.resolver.rungs.llm import reinduce_company

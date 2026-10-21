@@ -2,8 +2,8 @@ import httpx
 import pytest
 import sqlalchemy as sa
 
-from jobfinder.ingest.validate import add_board, validate_board
 from jobfinder.models import Company
+from jobfinder.services.board_validation import add_board, validate_board
 from tests.fakes import handle
 
 GOOD = {"jobs": [{"id": 1, "title": "Engineer", "absolute_url": "https://x/1", "location": {"name": "Remote"}}]}

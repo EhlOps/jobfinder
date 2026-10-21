@@ -6,11 +6,18 @@ import sqlalchemy as sa
 
 from jobfinder import worker
 from jobfinder.config import get_settings
-from jobfinder.ingest import discovery, http_safety
-from jobfinder.ingest.discovery import board_from_url, boards_from_text, github_lists, hn_hiring, yc
-from jobfinder.ingest.discovery.robots import USER_AGENT, PoliteFetcher, RobotsDisallowed
+from jobfinder.ingest import http_safety
+from jobfinder.integrations.directories import (
+    board_from_url,
+    boards_from_text,
+    github_lists,
+    hn_hiring,
+    yc,
+)
+from jobfinder.integrations.robots import USER_AGENT, PoliteFetcher, RobotsDisallowed
 from jobfinder.models import Company
 from jobfinder.scheduling.handlers import HANDLERS
+from jobfinder.services import discovery
 from tests.fakes import fake_resolve_public, handle, serve
 
 

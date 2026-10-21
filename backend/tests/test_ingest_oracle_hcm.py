@@ -7,16 +7,16 @@ import httpx
 import pytest
 from security_payloads import SCRIPT_URLS, SQLI
 
-from jobfinder.ingest.discovery import board_from_url
-from jobfinder.ingest.sources import ATS_FETCHERS, PROBE_FETCHERS, oracle_hcm
-from jobfinder.ingest.sources.detect import detect_board
-from jobfinder.ingest.sources.oracle_hcm import (
+from jobfinder.integrations.ats import SLUG_RE, oracle_hcm
+from jobfinder.integrations.ats.detect import detect_board
+from jobfinder.integrations.ats.oracle_hcm import (
     detect_ce_page,
     fetch_oracle_hcm,
     parse_oracle_hcm,
     parse_slug,
 )
-from jobfinder.ingest.validate import SLUG_RE
+from jobfinder.integrations.ats.registry import ATS_FETCHERS, PROBE_FETCHERS
+from jobfinder.integrations.directories import board_from_url
 from tests.fakes import handle
 
 FIX = Path(__file__).parent / "fixtures"

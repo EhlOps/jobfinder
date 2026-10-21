@@ -3,7 +3,7 @@ import pytest
 
 from jobfinder.ingest import http_safety
 from jobfinder.ingest.base import JobPosting
-from jobfinder.ingest.recipes import (
+from jobfinder.integrations.recipes import (
     Recipe,
     RecipeError,
     parse_recipe,
@@ -11,7 +11,7 @@ from jobfinder.ingest.recipes import (
     run_recipe,
     validate_recipe,
 )
-from jobfinder.ingest.recipes.json_api import compile_path, get_all, parse_date
+from jobfinder.integrations.recipes.json_api import compile_path, get_all, parse_date
 from tests.fakes import fake_resolve_public, handle, serve
 
 PAGES = {

@@ -9,11 +9,10 @@ import httpx
 import pytest
 import sqlalchemy as sa
 
-from jobfinder.ingest import validate
-from jobfinder.ingest.validate import ValidationResult, add_board
 from jobfinder.models import Company, CovetedTarget, Job, JobLink, Task
 from jobfinder.scheduling import handlers
-from jobfinder.services import coverage, ingestion, resolver
+from jobfinder.services import board_validation, coverage, ingestion, resolver
+from jobfinder.services.board_validation import ValidationResult, add_board
 from tests.rollback import Boom, count, raise_after
 from tests.test_ingest_service import fake_fetcher, posting
 from tests.test_job_links import GOOD, _link, board_json
@@ -122,7 +121,7 @@ async def test_lost_insert_race_keeps_the_callers_earlier_writes(maker, monkeypa
     async with maker() as db:
         db.add(Company(name="Acme", ats="greenhouse", slug="acme"))
         await db.commit()
-        monkeypatch.setattr(validate.boards_repo, "existing", never_found)
+        monkeypatch.setattr(board_validation.boards_repo, "existing", never_found)
         db.add(Company(name="Other", ats="lever", slug="other"))  # the caller's own pending write
         company, reason = await add_board(db, "greenhouse", "acme", "Acme", validation=ValidationResult(True))
         assert company is None and reason.startswith("duplicate")
@@ -132,7 +131,7 @@ async def test_lost_insert_race_keeps_the_callers_earlier_writes(maker, monkeypa
 
 async def test_discovery_keeps_boards_added_before_a_failure(maker, monkeypatch):
     """discover_boards checkpoints after each added board (the task passes its commit)."""
-    from jobfinder.ingest import discovery
+    from jobfinder.services import discovery
 
     async def found(_fetcher):
         return [("greenhouse", "a"), ("greenhouse", "b")]

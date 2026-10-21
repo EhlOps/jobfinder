@@ -10,9 +10,9 @@ from jobfinder.ingest.base import (
     infer_workplace,
     parse_salary_range,
 )
-from jobfinder.ingest.sources.ashby import parse_ashby
-from jobfinder.ingest.sources.greenhouse import parse_greenhouse
-from jobfinder.ingest.sources.lever import parse_lever
+from jobfinder.integrations.ats.ashby import parse_ashby
+from jobfinder.integrations.ats.greenhouse import parse_greenhouse
+from jobfinder.integrations.ats.lever import parse_lever
 
 FIX = Path(__file__).parent / "fixtures"
 

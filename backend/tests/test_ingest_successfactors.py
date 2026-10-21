@@ -9,10 +9,11 @@ from security_payloads import SCRIPT_URLS, SQLI, XSS_TEXT
 
 from jobfinder.ingest import http_safety
 from jobfinder.ingest.http_safety import FetchError
-from jobfinder.ingest.sources import ATS_FETCHERS, PROBE_FETCHERS
-from jobfinder.ingest.sources import successfactors as sf
-from jobfinder.ingest.sources.detect import HTML_DETECTORS, detect_board
-from jobfinder.ingest.sources.successfactors import (
+from jobfinder.integrations.ats import SLUG_RE
+from jobfinder.integrations.ats import successfactors as sf
+from jobfinder.integrations.ats.detect import HTML_DETECTORS, detect_board
+from jobfinder.integrations.ats.registry import ATS_FETCHERS, PROBE_FETCHERS
+from jobfinder.integrations.ats.successfactors import (
     detect_successfactors,
     fetch_successfactors,
     make_slug,
@@ -23,7 +24,6 @@ from jobfinder.ingest.sources.successfactors import (
     parse_successfactors,
     parse_total,
 )
-from jobfinder.ingest.validate import SLUG_RE
 from tests.fakes import PUBLIC_IP, fake_resolve_public, handle
 
 FIX = Path(__file__).parent / "fixtures"
@@ -308,7 +308,7 @@ async def test_robots_disallow_is_honoured(web, public_dns):
 
 
 def test_board_name_from_slug():
-    from jobfinder.ingest.resolve import name_from_slug
+    from jobfinder.services.resolver import name_from_slug
 
     assert name_from_slug("successfactors", SLUG) == "Ey"
     assert name_from_slug("successfactors", "jobs.acme-robotics.co.uk") == "Acme Robotics"

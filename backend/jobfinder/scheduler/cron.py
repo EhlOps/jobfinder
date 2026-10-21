@@ -36,7 +36,7 @@ class Cron:
 
 
 def _ingest_every(s: Settings) -> dict:
-    # adaptive cadence: tick often, each run fetches only the boards that are due (ingest.schedule)
+    # adaptive cadence: tick often, each run fetches only the boards that are due (services.ingest_schedule)
     return {"minutes": s.ingest_tick_minutes} if s.adaptive_schedule_enabled else {"hours": s.ingest_interval_hours}
 
 
