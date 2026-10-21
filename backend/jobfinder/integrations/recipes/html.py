@@ -16,8 +16,7 @@ import httpx
 import lxml.etree
 import lxml.html
 
-from jobfinder.ingest.base import JobPosting
-from jobfinder.ingest.http_safety import TEXT_TYPES, SafeResponse, safe_fetch
+from jobfinder.integrations.http_safety import TEXT_TYPES, SafeResponse, safe_fetch
 from jobfinder.integrations.recipes import (
     MAX_ITEMS,
     RECIPE_RUNNERS,
@@ -27,6 +26,7 @@ from jobfinder.integrations.recipes import (
 )
 from jobfinder.integrations.recipes.json_api import make_posting, page_request, parse_date
 from jobfinder.integrations.robots import PoliteFetcher
+from jobfinder.models.posting import JobPosting
 
 PAGE_MAX_BYTES = 3_000_000
 MAX_STEPS = 12  # compounds per selector

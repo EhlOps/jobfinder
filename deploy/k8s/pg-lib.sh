@@ -53,7 +53,7 @@ k8s_trim_task_streams() {
 # needs it at 0 pauses the ScaledObject too: `kubectl scale --replicas=0` alone is undone within a
 # polling interval. keda_pause <namespace> <who> pauses it at 0 (call it before the scale-down, so the
 # HPA can't bring a pod back in between); keda_resume <namespace> hands it back to KEDA. A pause that
-# isn't ours (no jobfinder.io/paused-by: set by hand, or the base's while TASKS_BACKEND is legacy) is
+# isn't ours (no jobfinder.io/paused-by: set by hand) is
 # left alone by both. Both are no-ops where there is no ScaledObject (or no KEDA), and fail on any other
 # error, so a script never scales down believing worker-io is paused when it isn't. deploy.sh also lifts
 # a marked pause after its rollout, so a script that failed in between recovers with the redeploy.

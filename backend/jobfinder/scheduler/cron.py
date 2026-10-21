@@ -1,8 +1,7 @@
 """The cron table: which kinds run on a clock, when, and behind which setting.
 
 Each run adds one deduped ledger row and commits, so a scheduled run shows up and retries like any
-other task and never piles up behind a slow previous one. The table matches the legacy worker's
-(worker.make_scheduler), which keeps its own copy until #53 removes it.
+other task and never piles up behind a slow previous one. This is the only copy of the table (#53).
 """
 import logging
 from collections.abc import Callable
@@ -11,9 +10,9 @@ from datetime import timedelta
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from jobfinder import db as dbmod
 from jobfinder.core.clock import utcnow
 from jobfinder.core.config import Settings, settings
+from jobfinder.core.context import default_context
 from jobfinder.tasks import ledger
 
 log = logging.getLogger("jobfinder.scheduler")
@@ -36,7 +35,7 @@ class Cron:
 
 
 def _ingest_every(s: Settings) -> dict:
-    # adaptive cadence: tick often, each run fetches only the boards that are due (ingest.schedule)
+    # adaptive cadence: tick often, each run fetches only the boards that are due (services.ingest_schedule)
     return {"minutes": s.ingest_tick_minutes} if s.adaptive_schedule_enabled else {"hours": s.ingest_interval_hours}
 
 
@@ -56,7 +55,7 @@ TABLE = [
 async def run(kind: str) -> None:
     """One scheduled run: queue the kind (unless it's already queued or running) and commit."""
     try:
-        async with dbmod.SessionLocal() as db:
+        async with default_context().sessions() as db:
             task = await ledger.add(db, kind, dedupe=True)
             await db.commit()
     except Exception:

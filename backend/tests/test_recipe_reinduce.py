@@ -6,15 +6,15 @@ import httpx
 import pytest
 import sqlalchemy as sa
 
-from jobfinder.ai.claude_code import AIError
-from jobfinder.ai.tasks import AITasks
-from jobfinder.config import get_settings
-from jobfinder.ingest import http_safety
-from jobfinder.ingest.recipes import health
-from jobfinder.ingest.resolve.rungs.llm import reinduce_company
-from jobfinder.ingest.service import ingest_company
+from jobfinder.core.config import get_settings
+from jobfinder.integrations import http_safety
+from jobfinder.integrations.claude.claude_code import AIError
+from jobfinder.integrations.claude.tasks import AITasks
+from jobfinder.integrations.recipes import health
 from jobfinder.models import AICall, Company, Job, Task
-from jobfinder.scheduling import handlers
+from jobfinder.services.ingestion import ingest_company
+from jobfinder.services.resolver.rungs.llm import reinduce_company
+from jobfinder.tasks import ai as ai_tasks
 from tests.fakes import FakeClaude, fake_resolve_public, handle
 from tests.test_rung_llm import induced
 
@@ -132,7 +132,7 @@ async def test_reinduce_skips_boards_that_are_not_recipes_or_when_disabled(maker
 
 
 async def test_handler_runs_the_heal_and_honours_backoff(maker, monkeypatch):
-    from jobfinder.ingest.resolve.rungs import llm
+    from jobfinder.services.resolver.rungs import llm
 
     got = []
 
@@ -141,22 +141,21 @@ async def test_handler_runs_the_heal_and_honours_backoff(maker, monkeypatch):
         return {"ok": True}
 
     monkeypatch.setattr(llm, "reinduce_company", fake_heal)
-    assert handlers.HANDLERS["reinduce_recipe"] is handlers.reinduce_recipe
     async with maker() as db:
-        task = Task(kind="reinduce_recipe", payload={"company_id": 3})
-        assert await handlers.reinduce_recipe(db, AITasks(FakeClaude()), task) == {"ok": True}
+        task, args = Task(kind="reinduce_recipe"), ai_tasks.ReinduceArgs(company_id=3)
+        assert await ai_tasks.reinduce_recipe(db, AITasks(FakeClaude()), task, args) == {"ok": True}
         db.add(AICall(task="score_match", model="sonnet", duration_ms=1, ok=False, error_kind="rate_limited",
                       created_at=datetime.now(UTC)))
         await db.commit()
-        out = await handlers.reinduce_recipe(db, AITasks(FakeClaude()), task)
+        out = await ai_tasks.reinduce_recipe(db, AITasks(FakeClaude()), task, args)
         assert out["skipped"] == "AI backing off" and "requeued" in out and got == [3]
         [later] = (await db.scalars(sa.select(Task).where(Task.kind == "reinduce_recipe"))).all()
         assert later.payload == {"company_id": 3, "attempt": 1} and later.run_after > datetime.now(UTC)
         # the retries are bounded
-        last = Task(kind="reinduce_recipe", payload={"company_id": 3, "attempt": handlers.REINDUCE_RETRIES})
-        assert "requeued" not in await handlers.reinduce_recipe(db, AITasks(FakeClaude()), last)
+        last = ai_tasks.ReinduceArgs(company_id=3, attempt=ai_tasks.REINDUCE_RETRIES)
+        assert "requeued" not in await ai_tasks.reinduce_recipe(db, AITasks(FakeClaude()), task, last)
         monkeypatch.setattr(get_settings(), "resolver_llm_enabled", False)
-        assert await handlers.reinduce_recipe(db, AITasks(FakeClaude()), task) == {"skipped": "llm disabled"}
+        assert await ai_tasks.reinduce_recipe(db, AITasks(FakeClaude()), task, args) == {"skipped": "llm disabled"}
     assert got == [3]
 
 

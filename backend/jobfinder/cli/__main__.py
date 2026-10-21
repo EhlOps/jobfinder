@@ -1,5 +1,5 @@
-"""`python -m jobfinder.cli ...`: the `jobfinder` script, plus the pre-#49 command names (_legacy)."""
-from jobfinder.cli import legacy_main
+"""`python -m jobfinder.cli ...`: the same Typer app as the `jobfinder` script (the pre-#49 names are gone, #53)."""
+from jobfinder.cli import app
 
 if __name__ == "__main__":
-    legacy_main()
+    app(prog_name="jobfinder")

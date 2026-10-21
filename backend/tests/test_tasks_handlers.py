@@ -1,22 +1,19 @@
-"""The handlers on @ledger_task (#48): their payload models accept every row queued before the switch,
-the legacy worker runs the very same functions, and their follow-ups go through the ledger."""
+"""The handlers on @ledger_task (#48): every kind has one, their payload models accept every row queued
+before the switch, and their follow-ups go through the ledger."""
 import pytest
 import sqlalchemy as sa
 from pydantic import ValidationError
 
 from jobfinder.models import Task
-from jobfinder.scheduling import handlers
 from jobfinder.tasks import ai as ai_tasks
 from jobfinder.tasks import io as io_tasks
 from jobfinder.tasks import ledger, runtime
 from jobfinder.tasks.kinds import QUEUES
+from tests.fakes import run_task
 
 
-def test_the_legacy_handlers_are_the_ledger_handlers():
-    assert set(handlers.HANDLERS) == {k for k, q in QUEUES.items() if q != "render"}
-    for kind, legacy in handlers.HANDLERS.items():
-        assert legacy.__wrapped__ is runtime.REGISTRY[kind]
-        assert getattr(handlers, kind) is legacy
+def test_every_ai_and_io_kind_has_a_handler():
+    assert {k for k, q in QUEUES.items() if q != "render"} <= set(runtime.REGISTRY)
 
 
 @pytest.mark.parametrize("model, payload, expected", [
@@ -47,7 +44,7 @@ def test_a_payload_missing_its_id_is_refused():
         ai_tasks.InduceRecipeArgs.model_validate({})
 
 
-async def test_the_legacy_adapter_hands_over_the_validated_payload(maker, monkeypatch):
+async def test_the_runtime_hands_over_the_validated_payload(maker, monkeypatch):
     from jobfinder.services import letters
 
     got = []
@@ -58,8 +55,12 @@ async def test_the_legacy_adapter_hands_over_the_validated_payload(maker, monkey
 
     monkeypatch.setattr(letters, "generate", generate)
     async with maker() as db:
-        out = await handlers.cover_letter(db, None, Task(kind="cover_letter", payload={"match_id": 9}))
-    assert out == {"ok": True} and got == [(9, "professional", "")]
+        task = await ledger.add(db, "cover_letter", {"match_id": 9})
+        await db.commit()
+    await run_task(task.id, ai=object(), session_factory=maker)
+    async with maker() as db:
+        task = await db.get(Task, task.id)
+    assert (task.status, task.result) == ("done", {"ok": True}) and got == [(9, "professional", "")]
 
 
 async def test_follow_ups_are_ledger_rows_flushed_into_the_task(db, monkeypatch):

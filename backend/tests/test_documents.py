@@ -1,12 +1,10 @@
 import io
 
 import docx
-import pytest
 
 from jobfinder.core.config import get_settings
 from jobfinder.models import Task
 from jobfinder.tasks import runtime
-from jobfinder.worker import run_task
 
 
 def _docx_bytes(text: str) -> bytes:
@@ -39,11 +37,6 @@ async def upload(authed, maker, name: str, data: bytes, ctype: str = "text/plain
     return (await authed.get(f"/api/documents/{r.json()['document']['id']}")).json()
 
 
-@pytest.fixture
-def sync_uploads(monkeypatch):
-    monkeypatch.setattr(get_settings(), "sync_uploads", True)
-
-
 # ── async upload: the api stores, worker-io reads (#51) ────────────────
 async def test_upload_is_processing_until_the_worker_reads_it(authed, maker):
     r = await _post(authed, "resume.txt", b"Python engineer")
@@ -71,14 +64,6 @@ async def test_upload_txt_and_docx(authed, maker):
     assert doc["kind"] == "portfolio" and doc["chars"] > 0 and doc["status"] == "ready"
     await upload(authed, maker, "resume.txt", b"Python engineer")
     assert len((await authed.get("/api/documents")).json()) == 2
-
-
-async def test_the_legacy_worker_reads_uploads_too(authed, maker):
-    r = await _post(authed, "a.txt", b"legacy bytes")
-    await run_task(r.json()["task_id"], None, maker)
-    doc_id = r.json()["document"]["id"]
-    assert (await authed.get(f"/api/documents/{doc_id}")).json()["status"] == "ready"
-    assert (await authed.get(f"/api/documents/{doc_id}/text")).text == "legacy bytes"
 
 
 async def test_upload_is_published_on_io_under_the_ledger(authed, published):
@@ -151,7 +136,7 @@ async def test_an_unreadable_file_uploaded_again_is_read_again(authed, maker, mo
 
 # ── unchanged behaviour ────────────────────────────────────────────────
 async def test_list_hides_tailored_resumes(authed, maker):
-    from jobfinder.resumes.service import match_tags
+    from jobfinder.services.resumes import match_tags
     from jobfinder.storage.documents import get_store
 
     up = await upload(authed, maker, "a.txt", b"aaa")
@@ -267,21 +252,6 @@ def test_the_api_does_not_load_the_parsers_or_the_fetcher():
     assert out.stdout.strip() == "[]", out.stdout + out.stderr
 
 
-# ── SYNC_UPLOADS=true: read in the request, as before #51 ──────────────
-async def test_sync_upload_is_ready_at_once(authed, sync_uploads):
-    r = await _post(authed, "resume.txt", b"Python engineer")
-    assert r.status_code == 202 and r.json()["task_id"] is None
-    doc = r.json()["document"]
-    assert doc["status"] == "ready" and doc["chars"] == len("Python engineer")
-    again = (await _post(authed, "b.txt", b"Python engineer")).json()
-    assert again["document"]["id"] == doc["id"] and again["document"]["duplicate"] and again["task_id"] is None
-
-
-async def test_sync_corrupt_pdf_is_a_422(authed, sync_uploads):
-    assert (await _post(authed, "cv.pdf", b"%PDF-1.4 not really", "application/pdf")).status_code == 422
-    assert (await authed.get("/api/documents")).json() == []
-
-
 async def _parser_idle():
     """Parses that timed out keep running to the end; wait until their slots are back so tests don't leak into each other."""
     import asyncio
@@ -293,43 +263,3 @@ async def _parser_idle():
             return
         await asyncio.sleep(0.05)
     raise AssertionError("parser slots never came back")
-
-
-@pytest.mark.real_commit
-async def test_sync_slow_parse_times_out_without_blocking_the_api(authed, monkeypatch, sync_uploads):
-    import asyncio
-    import time
-
-    from jobfinder.profile import resume_parse
-
-    monkeypatch.setattr(resume_parse, "PARSE_TIMEOUT_S", 0.2)
-    monkeypatch.setattr(resume_parse, "extract_text", lambda data, ext: time.sleep(1) or "late")
-    started = asyncio.get_running_loop().time()
-    upload = asyncio.create_task(_post(authed, "a.txt", b"hi"))
-    await asyncio.sleep(0.05)
-    assert (await authed.get("/api/auth/me")).status_code == 200  # still answering while the parse runs
-    r = await upload
-    assert r.status_code == 422 and asyncio.get_running_loop().time() - started < 0.9
-    await _parser_idle()
-
-
-async def test_sync_stuck_parses_keep_their_slots_so_uploads_get_503_not_more_threads(authed, monkeypatch, sync_uploads):
-    import threading
-
-    from jobfinder.profile import resume_parse
-
-    await _parser_idle()
-    release = threading.Event()
-    monkeypatch.setattr(resume_parse, "PARSE_TIMEOUT_S", 0.2)
-    monkeypatch.setattr(resume_parse, "extract_text", lambda data, ext: release.wait(5) and "late")
-    try:
-        for i in range(resume_parse.MAX_PARSES):  # each times out for the client but its thread is still running
-            assert (await _post(authed, f"{i}.txt", b"hi")).status_code == 422
-        r = await _post(authed, "third.txt", b"hi")
-        assert r.status_code == 503 and "try again" in r.json()["detail"]
-        assert (await authed.get("/api/auth/me")).status_code == 200
-    finally:
-        release.set()
-    await _parser_idle()  # slots come back once the threads really finish
-    monkeypatch.undo()
-    assert (await _post(authed, "ok.txt", b"hello")).status_code == 202

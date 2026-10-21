@@ -1,10 +1,10 @@
 import sqlalchemy as sa
 from factories import make_match, make_question
 
+from jobfinder.integrations import smtp as mail
+from jobfinder.integrations.smtp import EmailError
 from jobfinder.models import Profile, ProfileFact, Task, User
-from jobfinder.notify import email as mail
-from jobfinder.notify.email import EmailError
-from jobfinder.notify.tokens import MAX_AGE, make_token
+from jobfinder.services.tokens import MAX_AGE, make_token
 
 
 async def uid(client):

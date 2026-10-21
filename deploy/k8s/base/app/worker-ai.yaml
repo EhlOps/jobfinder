@@ -4,9 +4,7 @@
 # CLI, so the worker image, the claude-auth volume and a $HOME for the CLI's state.
 # One process runs up to AI_MAX_CONCURRENCY tasks at once, and that is also the cap on parallel Claude
 # calls against the subscription; a second replica would double it, so replicas stay at 1 and the
-# strategy is Recreate (a RollingUpdate would overlap two pods). It claims each ledger row atomically, so
-# overlapping consumers (this pod and the legacy worker during a switch-over) never run a task twice.
-# Its stream only carries work under TASKS_BACKEND=ledger, so the base keeps it at 0 and an overlay that flips to the ledger scales it to 1 (overlays/staging; docs/k3s.md, "Task platform").
+# strategy is Recreate (a RollingUpdate would overlap two pods).
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -14,7 +12,7 @@ metadata:
   labels:
     jobfinder.io/rollout: app
 spec:
-  replicas: 0
+  replicas: 1
   strategy:
     type: Recreate
   selector:

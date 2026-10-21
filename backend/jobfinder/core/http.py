@@ -2,7 +2,7 @@
 guard every fetch of an untrusted URL starts with.
 
 `new_client` builds the one `httpx.AsyncClient` the app context owns (core/context.py). Fetching an
-untrusted URL must still go through the SSRF-safe fetch (ingest/http_safety.py), which sends this
+untrusted URL must still go through the SSRF-safe fetch (integrations/http_safety.py), which sends this
 User-Agent too and calls `resolve_public` on every hop: the host is resolved once and refused unless every
 address is public, and the caller then connects to that validated IP, not to a second DNS answer.
 """

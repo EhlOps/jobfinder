@@ -12,9 +12,8 @@ import re
 from datetime import UTC, datetime
 from urllib.parse import parse_qsl, urljoin, urlsplit
 
-from jobfinder.core.urls import registrable_domain
-from jobfinder.ingest.base import safe_http_url
-from jobfinder.ingest.http_safety import (
+from jobfinder.core.urls import registrable_domain, safe_http_url
+from jobfinder.integrations.http_safety import (
     JSON_TYPES,
     TEXT_TYPES,
     FetchError,

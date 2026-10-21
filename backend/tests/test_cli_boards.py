@@ -1,8 +1,8 @@
 import pytest
 
-from jobfinder.ingest import validate
-from jobfinder.ingest.validate import ValidationResult
 from jobfinder.models import Company
+from jobfinder.services import board_validation
+from jobfinder.services.board_validation import ValidationResult
 from tests.cli_runner import invoke
 from tests.rollback import count
 
@@ -44,7 +44,7 @@ async def test_add_board_commits(maker, monkeypatch):
     async def ok(ats, slug, client=None, list_only=False):
         return ValidationResult(True, "", 3)
 
-    monkeypatch.setattr(validate, "validate_board", ok)
+    monkeypatch.setattr(board_validation, "validate_board", ok)
     r = await invoke("boards", "add", "--ats", "greenhouse", "--slug", "acme", "--name", "Acme")
     assert r.exit_code == 0 and "Added greenhouse/acme" in r.stdout
     assert await count(maker, Company, slug="acme", origin="seed") == 1
@@ -57,7 +57,7 @@ async def test_add_board_that_fails_validation_exits_1(maker, monkeypatch):
     async def bad(ats, slug, client=None, list_only=False):
         return ValidationResult(False, "board has no postings")
 
-    monkeypatch.setattr(validate, "validate_board", bad)
+    monkeypatch.setattr(board_validation, "validate_board", bad)
     r = await invoke("boards", "add", "--ats", "lever", "--slug", "empty", "--name", "Empty")
     assert r.exit_code == 1 and "Not added: board has no postings" in r.stderr
     assert await count(maker, Company, slug="empty") == 0

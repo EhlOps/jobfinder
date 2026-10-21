@@ -1,4 +1,4 @@
-"""The CLI as a whole: every verb has help, old names map, errors map to exit codes."""
+"""The CLI as a whole: every verb has help, errors map to exit codes."""
 import asyncio
 import os
 import subprocess
@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from jobfinder.cli import _legacy, app, ops
+from jobfinder.cli import app, ops
 from jobfinder.core.errors import Invalid
 from jobfinder.integrations.claude.claude_code import AIError
 from jobfinder.models import User
@@ -32,32 +32,24 @@ def test_every_group_and_verb_has_help():
         assert f"jobfinder {' '.join(verb)}" in r.stdout
 
 
-def test_every_old_name_maps_to_a_verb(capsys):
-    assert {tuple(v) for v in _legacy.OLD_NAMES.values()} <= {tuple(v) for v in VERBS}
-    assert _legacy.translate(["set-board", "--id", "3", "--enabled", "no"]) == [
-        "boards", "set", "--id", "3", "--enabled", "no"]
-    assert "`set-board` is deprecated" in capsys.readouterr().err
-    assert _legacy.translate(["ingest", "--company", "acme"]) == ["ingest", "run", "--company", "acme"]
-    assert _legacy.translate(["ingest"]) == ["ingest", "run"]
-    capsys.readouterr()
-    # the new spellings pass through untouched, without a note
-    for argv in (["ingest", "run"], ["ingest", "--help"], ["questions", "collect"], ["users", "list"], []):
-        assert _legacy.translate(argv) == argv
-    assert capsys.readouterr().err == ""
-
-
 @pytest.mark.real_commit
-async def test_old_name_runs_through_python_m(maker):
-    """`python -m jobfinder.cli list-users` still works (conftest points DATABASE_URL at this database)."""
+async def test_python_m_runs_the_app(maker):
+    """`python -m jobfinder.cli` is the Typer app; the pre-#49 flat names are gone (#53). conftest points
+    DATABASE_URL at this database."""
     async with maker() as db:
         db.add(User(email="old@x.com"))
         await db.commit()
-    p = await asyncio.to_thread(
-        subprocess.run, [sys.executable, "-m", "jobfinder.cli", "list-users"], capture_output=True,
-        text=True, cwd=Path(__file__).resolve().parents[1], env=os.environ, timeout=60, check=False,
-    )
+
+    def python_m(*argv):
+        return subprocess.run(
+            [sys.executable, "-m", "jobfinder.cli", *argv], capture_output=True, text=True,
+            cwd=Path(__file__).resolve().parents[1], env=os.environ, timeout=60, check=False,
+        )
+
+    p = await asyncio.to_thread(python_m, "users", "list")
     assert p.returncode == 0, p.stderr
-    assert "old@x.com" in p.stdout and "`list-users` is deprecated" in p.stderr
+    assert "old@x.com" in p.stdout
+    assert (await asyncio.to_thread(python_m, "list-users")).returncode == 2
 
 
 def test_an_app_error_exits_1(monkeypatch):

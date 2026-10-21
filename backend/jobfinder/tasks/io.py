@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import jobfinder.tasks.documents  # noqa: F401  (registers parse_document and fetch_link on io, #51)
+from jobfinder.core.context import default_context
 from jobfinder.models import Task
 from jobfinder.tasks import ledger
 from jobfinder.tasks.brokers import io_broker
@@ -47,36 +48,18 @@ async def ingest_tick(db: AsyncSession, ai, task: Task, _: None) -> dict:
     and queue one ingest_board per board, plus one ingest_source per due extra source, all committed
     with this task. Each board then runs, retries and logs on its own, worker-io's slots in parallel,
     so a slow or failing board holds up nothing else. Deduped: a board still queued or running from an
-    earlier tick isn't queued twice.
-
-    The legacy poll-loop worker runs AI_MAX_CONCURRENCY tasks at a time, so there the tick runs the
-    whole thing inline, INGEST_CONCURRENCY boards at a time, as ingest_jobs did."""
-    from jobfinder.core.config import settings
-    from jobfinder.db import SessionLocal
-    from jobfinder.ingest import runner
+    earlier tick isn't queued twice."""
     from jobfinder.services import ingestion
 
-    if settings.tasks_backend != "ledger":
-        summary = await runner.run_ingest(SessionLocal)
-        # Adaptive ticks come every few minutes and often fetch nothing: plan only when jobs changed.
-        if not settings.adaptive_schedule_enabled or summary.get("new") or summary.get("deactivated"):
-            await _plan(db)
-        return summary
     ids = await ingestion.due_board_ids(db)
     for company_id in ids:
         await ledger.add(db, "ingest_board", {"company_id": company_id}, dedupe=True)
     # not recorded as run here: the ingest_source task records its run, so a tick that rolls back
     # doesn't skip the source for a whole interval
-    sources = await runner.due_extras(SessionLocal, record=False)
+    sources = await ingestion.due_extras(default_context().sessions, record=False)
     for source in sources:
         await ledger.add(db, "ingest_source", {"source": source}, dedupe=True)
     return {"due": len(ids), "sources": sources}
-
-
-@ledger_task(io_broker, "ingest_jobs", ai=False)
-async def ingest_jobs(db: AsyncSession, ai, task: Task, _: None) -> dict:
-    """The old whole-run kind, kept so rows queued before the switch still run: a tick. TODO(#53): remove"""
-    return await ingest_tick(db, ai, task, None)
 
 
 @ledger_task(io_broker, "ingest_board", payload=IngestBoardArgs, ai=False)
@@ -84,24 +67,21 @@ async def ingest_board(db: AsyncSession, ai, task: Task, p: IngestBoardArgs) -> 
     """Fetch one board. The board commits in its own session (services.ingestion.ingest_board), which
     records a failed fetch on the board (its backoff is the board's retry); this task's session holds
     only the follow-up."""
-    from jobfinder.db import SessionLocal
     from jobfinder.services import ingestion
 
     async with ingestion.http_client() as client:
-        stats = await ingestion.ingest_board(SessionLocal, client, p.company_id)
+        stats = await ingestion.ingest_board(default_context().sessions, client, p.company_id)
     return await _changed(db, stats)
 
 
 @ledger_task(io_broker, "ingest_source", payload=IngestSourceArgs, ai=False)
 async def ingest_source(db: AsyncSession, ai, task: Task, p: IngestSourceArgs) -> dict:
     """Fetch jobspy or usajobs (the sources without boards), on their own so a long scrape never holds
-    a board up. Like ingest_board, it commits in its own sessions (ingest.runner)."""
-    from jobfinder.db import SessionLocal
-    from jobfinder.ingest import runner
-    from jobfinder.services import ratelimit
+    a board up. Like ingest_board, it commits in its own sessions (services.ingestion)."""
+    from jobfinder.services import ingestion, ratelimit
 
-    await ratelimit.hit(db, runner.EXTRA_KIND, p.source)  # its cadence (runner._extra_due), kept with the result
-    return await _changed(db, await runner.ingest_extra(SessionLocal, p.source))
+    await ratelimit.hit(db, ingestion.EXTRA_KIND, p.source)  # its cadence (ingestion._extra_due), kept with the result
+    return await _changed(db, await ingestion.ingest_extra(default_context().sessions, p.source))
 
 
 async def _changed(db: AsyncSession, stats) -> dict:
@@ -122,7 +102,7 @@ async def _plan(db: AsyncSession, run_after=None) -> None:
 
 @ledger_task(io_broker, "plan_work", ai=False)
 async def plan_work(db: AsyncSession, ai, task: Task, _: None) -> dict:
-    from jobfinder.scheduling import planner
+    from jobfinder.services import planner
 
     return await planner.plan(db)
 
@@ -142,7 +122,7 @@ async def daily_emails(db: AsyncSession, ai, task: Task, _: None) -> dict:
 
 @ledger_task(io_broker, "discover_boards", ai=False)
 async def discover_boards(db: AsyncSession, ai, task: Task, _: None) -> dict:
-    from jobfinder.ingest import discovery
+    from jobfinder.services import discovery
 
     return (await discovery.discover_boards(db, checkpoint=db.commit)).as_dict()  # keep each board as it's added
 

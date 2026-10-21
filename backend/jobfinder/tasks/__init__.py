@@ -7,7 +7,6 @@
   runtime.py  @ledger_task: claim -> validate -> run -> finish, for the worker processes
   __main__    `python -m jobfinder.tasks ai|io|render` runs one queue's worker
 
-Rows added with TASKS_BACKEND=ledger are published after their transaction commits; anything lost on
-the way is re-sent by the scheduler's relay (jobfinder.scheduler). With TASKS_BACKEND=legacy nothing is
-published and the poll-loop worker (jobfinder.worker) claims rows straight from the table.
+Rows are published after their transaction commits; anything lost on the way is re-sent by the
+scheduler's relay (jobfinder.scheduler).
 """
