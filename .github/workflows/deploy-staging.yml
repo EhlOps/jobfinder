@@ -10,6 +10,9 @@
 # "Run workflow" on dev (it defaults to the head of the branch it runs on; the host refuses commits
 # that aren't on dev).
 #
+# After the SSH call, .github/scripts/deploy-report.sh reads the host's `deploy-summary:` line and
+# writes the step summary; on a deploy it comments "Deployed to staging" on each PR it shipped (#118).
+#
 # Secrets (repo settings → Secrets and variables → Actions), set up per docs/k3s.md, "Staging":
 #   STAGING_SSH_KEY          private half of the deploy key (ed25519, no passphrase)
 #   STAGING_SSH_HOST         the host's address
@@ -48,10 +51,19 @@ jobs:
     runs-on: ubuntu-latest
     # Above the host's worst case: up to 20 min for the deploy lock, then the migrate Job and rollouts.
     timeout-minutes: 60
+    # The caller job in images.yml must grant the same (a called job can't have more). (#118)
+    permissions:
+      contents: read
+      pull-requests: write  # the report's PR comments
     environment:
       name: staging
       url: https://staging.ehlops.com
     steps:
+      # Full history: the report lists the PRs between the previous deploy and this one.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
       # Until the owner has created the deploy key and secrets, skip quietly instead of failing.
       - name: Check the secrets
         id: ready
@@ -80,6 +92,8 @@ jobs:
           fi
           # docker/metadata-action's type=sha tag: the first 7 characters.
           echo "tag=sha-${sha:0:7}" >> "$GITHUB_OUTPUT"
+          # The full sha, for the fallback summary when the host prints none.
+          echo "sha=$(git rev-parse -q --verify "$sha^{commit}" || echo "$sha")" >> "$GITHUB_OUTPUT"
           echo "Deploying sha-${sha:0:7}"
 
       - name: SSH setup
@@ -100,16 +114,36 @@ jobs:
             ssh-keyscan -t ed25519 "$SSH_HOST" > ~/.ssh/known_hosts
           fi
 
+      # ssh's exit code is the step's result; the output is also kept for the summary line.
       - name: Deploy
+        id: deploy
         if: steps.ready.outputs.ok == 'true'
         env:
           SSH_HOST: ${{ secrets.STAGING_SSH_HOST }}
           SSH_USER: ${{ secrets.STAGING_SSH_USER }}
           TAG: ${{ steps.tag.outputs.tag }}
         run: |
+          set -o pipefail
           ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
             -o ServerAliveInterval=30 -o ConnectTimeout=20 \
-            "$SSH_USER@$SSH_HOST" "$TAG"
+            "$SSH_USER@$SSH_HOST" "$TAG" 2>&1 | tee "$RUNNER_TEMP/deploy.log"
+
+      # The host's last `deploy-summary:` line (#118); without one (ssh never connected, say), a
+      # minimal summary so the report still runs.
+      - name: Extract the summary
+        if: always() && steps.tag.outcome == 'success'
+        env:
+          DEPLOY_ENV: staging
+          TAG: ${{ steps.tag.outputs.tag }}
+          SHA: ${{ steps.tag.outputs.sha }}
+          SSH_OUTCOME: ${{ steps.deploy.outcome }}
+        run: .github/scripts/deploy-summary.sh "$RUNNER_TEMP/deploy.log" > "$RUNNER_TEMP/summary.json"
+
+      - name: Report
+        if: always() && steps.tag.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: .github/scripts/deploy-report.sh "$RUNNER_TEMP/summary.json"
 
       - name: Clean up the key
         if: always()
