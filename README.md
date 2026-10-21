@@ -48,9 +48,11 @@ imports anything above it, and `lint-imports` (blocking in CI) enforces it.
 | `cli/` | The Typer CLI, `jobfinder <group> <verb>`. |
 | `core/` | Config, database engine, request context and small helpers; kept tiny and imports nothing else from `jobfinder`. |
 
-A few domain packages sit beside the layers (`ai/`, `auth/`, `matching/`, `profile/`, `resumes/`, `renderer/`,
-`storage/`). `tests/test_architecture.py` checks what import-linter can't: commits happen only at the boundaries,
-`core` modules stay under 150 lines, and `api/` defines no pydantic `BaseModel`.
+Beside `integrations/` sit three small helpers on the same layer: `profile/` (reading resumes and web pages),
+`resumes/` (export and keywords) and `storage/` (the document store). `renderer/` is the Playwright container's
+entrypoint; its client is `integrations/render/`. `tests/test_architecture.py` checks what import-linter can't:
+commits happen only at the boundaries, `core` modules stay under 150 lines (`config.py`, the list of every setting,
+may reach 160), and `api/` defines no pydantic `BaseModel`.
 
 ### Configuration
 
