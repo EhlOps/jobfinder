@@ -10,7 +10,7 @@ import sys
 
 import typer
 
-from jobfinder.cli import _legacy, boards, ops, users
+from jobfinder.cli import _legacy, boards, dev, ops, users
 
 app = typer.Typer(
     name="jobfinder",
@@ -26,6 +26,7 @@ app.add_typer(ops.questions_app, name="questions")
 app.add_typer(ops.email, name="email")
 app.add_typer(ops.ai, name="ai")
 app.add_typer(ops.tasks, name="tasks")
+app.add_typer(dev.app, name="dev")
 
 
 def legacy_main(argv: list[str] | None = None) -> None:
