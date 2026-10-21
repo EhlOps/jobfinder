@@ -16,8 +16,10 @@
 #
 # Uses the manifests in DEPLOY_K8S_DIR (default: next to this script); they must be that commit's.
 # At the end it records the tag (and DEPLOY_COMMIT, when given) as annotations on the namespace.
+# With DEPLOY_PINS_OUT=<file>, it also writes what step 1 pinned there, one `<image> <tag-or-digest>`
+# line per image (api, worker, renderer, web), for the run's summary (#118).
 # Needs kubectl (KUBECONFIG pointing at the cluster) and curl. GitHub Actions reaches it through the
-# SSH forced command deploy-staging-ssh.sh; docs/k3s.md, "Staging", has the whole flow.
+# SSH forced command deploy-ssh.sh <staging|prod>; docs/k3s.md, "Staging", has the whole flow.
 set -euo pipefail
 
 usage() { echo "usage: $0 <staging|prod> sha-<7-40 hex>" >&2; exit 2; }
@@ -65,6 +67,11 @@ remote_digest() {
   esac
 }
 
+# Records <image> <tag-or-digest> in DEPLOY_PINS_OUT, when set (#118).
+record_pin() {
+  [ -z "${DEPLOY_PINS_OUT:-}" ] || printf '%s %s\n' "$1" "$2" >> "$DEPLOY_PINS_OUT"
+}
+
 # Prints a kustomize `images:` entry pinning <name>.
 pin_image() {
   local name=$1 deployed digest t
@@ -74,6 +81,7 @@ pin_image() {
     if [ -n "$digest" ]; then
       if [ "$t" = "$tag" ]; then log "$name: $t"; else log "$name: not rebuilt at $tag, newest is $t"; fi
       printf '  - name: %s/jobfinder-%s\n    newTag: %s\n' "$REGISTRY" "$name" "$t"
+      record_pin "$name" "$t"
       return
     fi
   done
@@ -82,15 +90,18 @@ pin_image() {
   case $deployed in
     "$REGISTRY/jobfinder-$name@"sha256:*)
       log "$name: not rebuilt at $tag, keeping ${deployed#*@}"
-      printf '  - name: %s/jobfinder-%s\n    digest: %s\n' "$REGISTRY" "$name" "${deployed#*@}" ;;
+      printf '  - name: %s/jobfinder-%s\n    digest: %s\n' "$REGISTRY" "$name" "${deployed#*@}"
+      record_pin "$name" "${deployed#*@}" ;;
     "$REGISTRY/jobfinder-$name:"sha-*)
       log "$name: not rebuilt at $tag, keeping ${deployed##*:}"
-      printf '  - name: %s/jobfinder-%s\n    newTag: %s\n' "$REGISTRY" "$name" "${deployed##*:}" ;;
+      printf '  - name: %s/jobfinder-%s\n    newTag: %s\n' "$REGISTRY" "$name" "${deployed##*:}"
+      record_pin "$name" "${deployed##*:}" ;;
     *)
       digest=$(remote_digest "$name" "$fallback")
       [ -n "$digest" ] || die "$name: neither $tag nor $fallback exists in GHCR, and nothing is deployed"
       log "$name: not rebuilt at $tag and not deployed yet, using $fallback ($digest)"
-      printf '  - name: %s/jobfinder-%s\n    digest: %s\n' "$REGISTRY" "$name" "$digest" ;;
+      printf '  - name: %s/jobfinder-%s\n    digest: %s\n' "$REGISTRY" "$name" "$digest"
+      record_pin "$name" "$digest" ;;
   esac
 }
 
@@ -120,6 +131,7 @@ fi
 
 work=$(mktemp -d "$k8s_dir/.deploy.XXXXXX")
 trap 'rm -rf "$work"' EXIT
+[ -z "${DEPLOY_PINS_OUT:-}" ] || : > "$DEPLOY_PINS_OUT"
 {
   echo "apiVersion: kustomize.config.k8s.io/v1beta1"
   echo "kind: Kustomization"
