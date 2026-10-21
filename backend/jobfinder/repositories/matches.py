@@ -3,6 +3,7 @@
 `get_owned` is the one ownership check for everything under /api/matches/{id} and for the letter
 and resume workers: a match id that isn't the user's reads as missing.
 """
+from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -10,14 +11,11 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from jobfinder.core.text import early_career_pattern
 from jobfinder.models import ClarifyingQuestion, Company, Job, JobMatch, ProfileFact
 
 STATUSES = ("new", "saved", "applied", "dismissed")
-# services/matching/prefilter.py EARLY_CAREER_TITLE for Postgres (\y is its word boundary): keep in step.
-EARLY_CAREER_SQL = (
-    r"\y(new grad(uate)?|recent graduate|graduate (engineer|developer|program(me)?|scheme)s?"
-    r"|university (grad(uate)?|hire|program(me)?|recruit(ing)?)s?|campus (hire|recruit(ing)?)s?|early career|entry[- ]level)\y"
-)
+EARLY_CAREER_SQL = early_career_pattern("postgres")  # the prefilter's EARLY_CAREER_TITLE, for Postgres
 
 
 @dataclass(frozen=True)
@@ -175,10 +173,10 @@ async def answered_match_ids(db: AsyncSession, user_id: int) -> set[int]:
 
 
 async def stale(
-    db: AsyncSession, user_id: int, version: int, statuses: tuple[str, ...], first: list[int]
+    db: AsyncSession, user_id: int, version: int, statuses: tuple[str, ...], first: Collection[int]
 ) -> list[tuple[JobMatch, Job, Company | None]]:
     """Matches at one of `statuses`, scored against a profile older than `version`, on active jobs: the
-    ids in `first` first, then saved ones, then the rest by score."""
+    ids in `first` first (none is fine), then saved ones, then the rest by score."""
     rows = await db.execute(
         sa.select(JobMatch, Job, Company)
         .join(Job, Job.id == JobMatch.job_id)
@@ -187,7 +185,7 @@ async def stale(
             JobMatch.user_id == user_id, JobMatch.profile_version < version,
             JobMatch.status.in_(statuses), Job.is_active.is_(True),
         )
-        .order_by(JobMatch.id.in_(first).desc(), (JobMatch.status == "saved").desc(), JobMatch.llm_score.desc())
+        .order_by(JobMatch.id.in_(sorted(first)).desc(), (JobMatch.status == "saved").desc(), JobMatch.llm_score.desc())
     )
     return [(m, j, c) for m, j, c in rows.all()]
 
