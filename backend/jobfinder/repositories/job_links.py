@@ -30,13 +30,11 @@ async def for_user(db: AsyncSession, user_id: int) -> list[JobLink]:
     )).all())
 
 
-def db_now():
-    """The database's now(), for a timestamp set alongside created_at (same clock, same moment)."""
-    return sa.func.now()
-
-
-async def add(db: AsyncSession, link: JobLink) -> JobLink:
-    """Insert and load the server defaults (id, created_at, resolved_at)."""
+async def add(db: AsyncSession, link: JobLink, *, resolved: bool = False) -> JobLink:
+    """Insert and load the server defaults (id, created_at). A link answered at once gets resolved_at
+    from the database's now(), the same clock and moment as created_at."""
+    if resolved:
+        link.resolved_at = sa.func.now()
     db.add(link)
     await db.flush()
     await db.refresh(link)

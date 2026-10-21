@@ -217,5 +217,6 @@ async def test_api_answers_refused_links_without_queueing(authed, maker):
     body = r.json()
     assert body["status"] == "unresolved" and body["rung"] == "terms_refused"
     assert "Apple" in body["error"] and body["company"] is None
+    assert body["resolved_at"] == body["created_at"]  # answered at once, on the database clock
     async with maker() as db:
         assert (await db.scalars(sa.select(Task).where(Task.kind == "resolve_job_link"))).all() == []
