@@ -34,7 +34,7 @@ async def _relay(now: datetime) -> int:
     sent: list[int] = []
     failed: dict[str, Exception] = {}  # queue -> its first error; that queue's other rows wait a tick
     for task_id, queue, kind in rows:
-        # The kind decides the stream: rows from the legacy enqueue carry the column's default ('io').
+        # The kind decides the stream: a row queued before its kind moved keeps the old column.
         queue = QUEUES.get(kind, queue)
         if queue in failed:
             continue

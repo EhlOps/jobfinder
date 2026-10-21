@@ -7,7 +7,7 @@ it must be on the pasted URL's registrable domain, and it must return jobs inclu
 retry feeds the failure back; after that, or on any AI error, the rung passes. The recipe, not the model,
 reads the site from then on.
 
-Also here: reinduce_company(), the self-heal for a recipe board that degraded (scheduling handler
+Also here: reinduce_company(), the self-heal for a recipe board that degraded (the io handler
 reinduce_recipe), which re-runs the same induction with the old recipe and its failure as context.
 """
 import html as htmllib

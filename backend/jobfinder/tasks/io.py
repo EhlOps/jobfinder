@@ -48,19 +48,9 @@ async def ingest_tick(db: AsyncSession, ai, task: Task, _: None) -> dict:
     and queue one ingest_board per board, plus one ingest_source per due extra source, all committed
     with this task. Each board then runs, retries and logs on its own, worker-io's slots in parallel,
     so a slow or failing board holds up nothing else. Deduped: a board still queued or running from an
-    earlier tick isn't queued twice.
-
-    The legacy poll-loop worker runs AI_MAX_CONCURRENCY tasks at a time, so there the tick runs the
-    whole thing inline, INGEST_CONCURRENCY boards at a time, as ingest_jobs did."""
-    from jobfinder.core.config import settings
+    earlier tick isn't queued twice."""
     from jobfinder.services import ingestion
 
-    if settings.tasks_backend != "ledger":
-        summary = await ingestion.run_ingest(default_context().sessions)
-        # Adaptive ticks come every few minutes and often fetch nothing: plan only when jobs changed.
-        if not settings.adaptive_schedule_enabled or summary.get("new") or summary.get("deactivated"):
-            await _plan(db)
-        return summary
     ids = await ingestion.due_board_ids(db)
     for company_id in ids:
         await ledger.add(db, "ingest_board", {"company_id": company_id}, dedupe=True)
@@ -70,12 +60,6 @@ async def ingest_tick(db: AsyncSession, ai, task: Task, _: None) -> dict:
     for source in sources:
         await ledger.add(db, "ingest_source", {"source": source}, dedupe=True)
     return {"due": len(ids), "sources": sources}
-
-
-@ledger_task(io_broker, "ingest_jobs", ai=False)
-async def ingest_jobs(db: AsyncSession, ai, task: Task, _: None) -> dict:
-    """The old whole-run kind, kept so rows queued before the switch still run: a tick. TODO(#53): remove"""
-    return await ingest_tick(db, ai, task, None)
 
 
 @ledger_task(io_broker, "ingest_board", payload=IngestBoardArgs, ai=False)
@@ -118,7 +102,7 @@ async def _plan(db: AsyncSession, run_after=None) -> None:
 
 @ledger_task(io_broker, "plan_work", ai=False)
 async def plan_work(db: AsyncSession, ai, task: Task, _: None) -> dict:
-    from jobfinder.scheduling import planner
+    from jobfinder.services import planner
 
     return await planner.plan(db)
 

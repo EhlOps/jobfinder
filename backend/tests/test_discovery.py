@@ -4,7 +4,6 @@ import httpx
 import pytest
 import sqlalchemy as sa
 
-from jobfinder import worker
 from jobfinder.core.config import get_settings
 from jobfinder.integrations import http_safety
 from jobfinder.integrations.directories import (
@@ -16,8 +15,9 @@ from jobfinder.integrations.directories import (
 )
 from jobfinder.integrations.robots import USER_AGENT, PoliteFetcher, RobotsDisallowed
 from jobfinder.models import Company
-from jobfinder.scheduling.handlers import HANDLERS
+from jobfinder.scheduler import cron
 from jobfinder.services import discovery
+from jobfinder.tasks import io as io_tasks
 from tests.fakes import fake_resolve_public, handle, serve
 
 
@@ -275,12 +275,12 @@ def test_terms_gate_and_scheduling(monkeypatch):
     names = {s.name: s for s in discovery.all_sources()}
     assert not names["wellfound"].terms_ok and not names["yc_work_at_a_startup"].terms_ok
     assert all(s.terms_note for s in names.values())
-    assert "discover_boards" in HANDLERS
+    assert io_tasks.discover_boards  # the handler worker-io runs
     settings = get_settings()
     monkeypatch.setattr(settings, "discovery_enabled", False)
-    assert "discover_boards" not in {j.id for j in worker.make_scheduler().get_jobs()}
+    assert "discover_boards" not in {j.id for j in cron.make_scheduler().get_jobs()}
     monkeypatch.setattr(settings, "discovery_enabled", True)
-    assert "discover_boards" in {j.id for j in worker.make_scheduler().get_jobs()}
+    assert "discover_boards" in {j.id for j in cron.make_scheduler().get_jobs()}
 
 
 def probe_handler(robots: dict[str, str], stats: dict, delay: float = 0.0, md: str = ""):

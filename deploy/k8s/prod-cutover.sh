@@ -74,9 +74,8 @@ WRITERS=("${PROJECT}-api-1" "${PROJECT}-worker-1" "${PROJECT}-renderer-1"
 TOOL_IMAGE=${TOOL_IMAGE:-postgres:16}
 DUMP_DIR=${CUTOVER_DUMP_DIR:-}   # default: a fresh mktemp -d (step 4)
 TRAEFIK=${TRAEFIK_URL:-http://127.0.0.1:8280}
-# Every app Deployment that touches the database; the task platform's three (#48) are at 0 where
-# TASKS_BACKEND=legacy, and scaled to 0 and back like the rest.
-APP_DEPLOYMENTS=(api worker renderer scheduler worker-ai worker-io)
+# Every app Deployment that touches the database, scaled to 0 and back.
+APP_DEPLOYMENTS=(api renderer scheduler worker-ai worker-io)
 HELPER=cutover-files
 
 log() { printf '[cutover %s %s] %s\n' "$NS" "$(date -u +%H:%M:%S)" "$*" >&2; }

@@ -11,10 +11,9 @@ from jobfinder.core.config import get_settings
 from jobfinder.integrations.claude.claude_code import AIError
 from jobfinder.models import CoverLetter, JobMatch, Profile, ProfileFact, Task
 from jobfinder.repositories import letters as letters_repo
-from jobfinder.scheduling import queue
 from jobfinder.services import profile as profile_service
-from jobfinder.worker import run_task
-from tests.fakes import FakeLetterAI, FakeScoringAI
+from jobfinder.tasks import ledger
+from tests.fakes import FakeLetterAI, FakeScoringAI, run_task
 from tests.rollback import Boom, count, raise_after
 from tests.test_cover_letters_api import LETTER, draft, setup
 from tests.test_matching_service import make_job
@@ -100,7 +99,8 @@ async def test_matching_task_keeps_each_scored_job_when_a_rate_limit_stops_it(ma
         u = await make_matching_user(db, email="rl@x.com")
         for t in ("Backend Engineer A", "Backend Engineer B", "Backend Engineer C", "Backend Engineer D"):
             await make_job(db, t)  # equal scores: the newest (D, C) form the first batch
-        task = await queue.enqueue(db, "match_user", user_id=u.id)
+        task = await ledger.add(db, "match_user", user_id=u.id)
+        await db.commit()
     limited = AIError("rate_limited", "usage limit")
     ai = FakeScoringAI(errors={"Backend Engineer A": limited, "Backend Engineer B": limited})
     await run_task(task.id, ai, maker)

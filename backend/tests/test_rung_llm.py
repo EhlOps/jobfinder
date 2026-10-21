@@ -18,11 +18,12 @@ from jobfinder.integrations.claude.tasks import (
 )
 from jobfinder.integrations.recipes import Recipe, RecipeError
 from jobfinder.models import AICall, Company, Job, JobLink, Task
-from jobfinder.scheduling import handlers
 from jobfinder.services.resolver import induce_link, resolve_link
 from jobfinder.services.resolver.ladder import RecipeHit, ResolveContext
 from jobfinder.services.resolver.rungs import RUNGS
 from jobfinder.services.resolver.rungs.llm import LlmRung, endpoint_candidates
+from jobfinder.tasks import ai as ai_tasks
+from jobfinder.tasks import io
 from jobfinder.tasks.ai import INDUCE_RETRIES
 from tests.factories import make_user
 from tests.fakes import FakeClaude, fake_resolve_public, handle
@@ -375,7 +376,7 @@ async def test_resolve_job_link_handler_queues_induce_recipe_only_when_the_llm_i
 
     monkeypatch.setattr(resolver, "resolve_link", fake_resolve)
     async with maker() as db:
-        out = await handlers.resolve_job_link(db, None, Task(kind="resolve_job_link", payload={"link_id": 7}))
+        out = await io.resolve_job_link(db, None, Task(kind="resolve_job_link"), io.ResolveLinkArgs(link_id=7))
         assert got == {"link_id": 7, "allow_llm": True}
         assert out == {"status": "resolving", "queued": "induce_recipe"}  # the hints live on the row, not here
         [row] = await induce_rows(db)
@@ -385,13 +386,13 @@ async def test_resolve_job_link_handler_queues_induce_recipe_only_when_the_llm_i
         db.add(AICall(task="score_match", model="sonnet", duration_ms=1, ok=False, error_kind="rate_limited",
                       created_at=datetime.now(UTC)))
         await db.commit()
-        await handlers.resolve_job_link(db, None, Task(kind="resolve_job_link", payload={"link_id": 7}))
+        await io.resolve_job_link(db, None, Task(kind="resolve_job_link"), io.ResolveLinkArgs(link_id=7))
         assert got["allow_llm"] is False and await induce_rows(db) == []
     monkeypatch.setattr(get_settings(), "resolver_llm_enabled", False)
     async with maker() as db:
         await db.execute(sa.delete(AICall))
         await db.commit()
-        await handlers.resolve_job_link(db, None, Task(kind="resolve_job_link", payload={"link_id": 7}))
+        await io.resolve_job_link(db, None, Task(kind="resolve_job_link"), io.ResolveLinkArgs(link_id=7))
         assert got["allow_llm"] is False and await induce_rows(db) == []
 
 
@@ -410,8 +411,9 @@ async def test_induce_recipe_handler_hands_the_rung_its_ai(maker, monkeypatch):
     monkeypatch.setattr(resolver, "induce_link", fake_induce)
     ai = AITasks(FakeClaude())
     async with maker() as db:
-        task = Task(kind="induce_recipe", payload={"link_id": 7, "notes": ["n"], "samples": [["u", "{}"]]})
-        assert (await handlers.induce_recipe(db, ai, task))["new"] == 2
+        task = Task(kind="induce_recipe")
+        args = ai_tasks.InduceRecipeArgs.model_validate({"link_id": 7, "notes": ["n"], "samples": [["u", "{}"]]})
+        assert (await ai_tasks.induce_recipe(db, ai, task, args))["new"] == 2
         assert got == {"link_id": 7, "ai": ai, "allow_llm": True, "retry": True, "samples": [("u", "{}")],
                        "tried": [], "notes": ["n"], "single_job": None, "board_error": None}
         assert len(await rows(db, "plan_work")) == 1
@@ -420,13 +422,13 @@ async def test_induce_recipe_handler_hands_the_rung_its_ai(maker, monkeypatch):
         db.add(AICall(task="score_match", model="sonnet", duration_ms=1, ok=False, error_kind="rate_limited",
                       created_at=datetime.now(UTC)))
         await db.commit()
-        out = await handlers.induce_recipe(db, ai, Task(kind="induce_recipe", payload={"link_id": 7}))
+        out = await ai_tasks.induce_recipe(db, ai, task, ai_tasks.InduceRecipeArgs(link_id=7))
         assert got == {} and out["skipped"] == "AI backing off" and "requeued" in out
         [later] = await rows(db, "induce_recipe")
         assert later.payload["attempt"] == 1 and later.payload["link_id"] == 7 and later.queue == "ai"
         # out of attempts: the link is finished without the LLM
-        last = Task(kind="induce_recipe", payload={"link_id": 7, "attempt": INDUCE_RETRIES})
-        out = await handlers.induce_recipe(db, ai, last)
+        last = ai_tasks.InduceRecipeArgs(link_id=7, attempt=INDUCE_RETRIES)
+        out = await ai_tasks.induce_recipe(db, ai, task, last)
         assert got["allow_llm"] is False and got["retry"] is False and "requeued" not in out
 
 

@@ -12,8 +12,7 @@ from jobfinder.models import ClarifyingQuestion, JobMatch, Task, User
 from jobfinder.services import daily
 from jobfinder.services.tokens import read_token
 from jobfinder.tasks import ledger
-from jobfinder.worker import run_task
-from tests.fakes import FakeQuestionsAI
+from tests.fakes import FakeQuestionsAI, run_task
 
 
 @pytest.fixture

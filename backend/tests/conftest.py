@@ -44,6 +44,7 @@ from jobfinder.core import context as core_context
 from jobfinder.core.config import get_settings
 from jobfinder.core.db import Base
 from jobfinder.storage.documents import DocumentStore
+from jobfinder.tasks import ledger
 from tests.fakes import MockWeb
 
 
@@ -313,14 +314,26 @@ class Published(list):
         return self
 
 
+_PUBLISH = ledger._publish  # as the app has it, for `published` to put back
+
+
+@pytest.fixture(autouse=True)
+def no_publish(monkeypatch):
+    """No test reaches valkey: a commit publishes nothing unless the test asks for `published` (#53)."""
+    async def nothing(pending):
+        pass
+
+    monkeypatch.setattr(ledger, "_publish", nothing)
+
+
 @pytest.fixture
-def published(request, monkeypatch):
-    """TASKS_BACKEND=ledger with valkey replaced by a recorder (tasks.brokers.publish). real_commit tests
-    mark the published rows sent for real; savepoint-mode ones record the ids in `marked` instead."""
+def published(request, monkeypatch, no_publish):
+    """The after-commit publish, with valkey replaced by a recorder (tasks.brokers.publish). real_commit
+    tests mark the published rows sent for real; savepoint-mode ones record the ids in `marked` instead."""
     from jobfinder.tasks import brokers, ledger
 
     out = Published()
-    monkeypatch.setattr(get_settings(), "tasks_backend", "ledger")
+    monkeypatch.setattr(ledger, "_publish", _PUBLISH)
 
     async def record(queue, kind, task_id):
         out.append((queue, kind, task_id))

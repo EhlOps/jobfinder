@@ -5,7 +5,6 @@ import docx
 from jobfinder.core.config import get_settings
 from jobfinder.models import Task
 from jobfinder.tasks import runtime
-from jobfinder.worker import run_task
 
 
 def _docx_bytes(text: str) -> bytes:
@@ -65,14 +64,6 @@ async def test_upload_txt_and_docx(authed, maker):
     assert doc["kind"] == "portfolio" and doc["chars"] > 0 and doc["status"] == "ready"
     await upload(authed, maker, "resume.txt", b"Python engineer")
     assert len((await authed.get("/api/documents")).json()) == 2
-
-
-async def test_the_legacy_worker_reads_uploads_too(authed, maker):
-    r = await _post(authed, "a.txt", b"legacy bytes")
-    await run_task(r.json()["task_id"], None, maker)
-    doc_id = r.json()["document"]["id"]
-    assert (await authed.get(f"/api/documents/{doc_id}")).json()["status"] == "ready"
-    assert (await authed.get(f"/api/documents/{doc_id}/text")).text == "legacy bytes"
 
 
 async def test_upload_is_published_on_io_under_the_ledger(authed, published):

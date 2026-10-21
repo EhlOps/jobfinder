@@ -90,12 +90,10 @@ source_modules = [
   "jobfinder.repositories",
   "jobfinder.resumes",
   "jobfinder.scheduler",
-  "jobfinder.scheduling",
   "jobfinder.services",
   "jobfinder.schemas",
   "jobfinder.storage",
   "jobfinder.tasks",
-  "jobfinder.worker",
 ]
 forbidden_modules = ["jobfinder.api"]
 
@@ -131,12 +129,10 @@ forbidden_modules = [
   "jobfinder.repositories",
   "jobfinder.resumes",
   "jobfinder.scheduler",
-  "jobfinder.scheduling",
   "jobfinder.services",
   "jobfinder.schemas",
   "jobfinder.storage",
   "jobfinder.tasks",
-  "jobfinder.worker",
 ]
 
 [[tool.importlinter.contracts]]
@@ -162,4 +158,4 @@ allow_indirect_imports = true  # api -> services -> repositories is the layering
 name = "Requests and services queue tasks through the ledger; only workers import the task runtime (#48)"
 type = "forbidden"
 source_modules = ["jobfinder.api", "jobfinder.services", "jobfinder.repositories"]
-forbidden_modules = ["jobfinder.tasks.runtime", "jobfinder.worker"]
+forbidden_modules = ["jobfinder.tasks.runtime"]

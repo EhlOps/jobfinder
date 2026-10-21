@@ -22,9 +22,8 @@ here=$(cd "$(dirname "$0")" && pwd)
 
 NS=${NS:-jobfinder-staging}
 SRC=${SRC_CONTAINER:-jobfinder-db-1}
-# Every app Deployment that touches the database; the task platform's three (#48) are at 0 where
-# TASKS_BACKEND=legacy, and scaled to 0 and back like the rest.
-APP_DEPLOYMENTS=(api worker renderer scheduler worker-ai worker-io)
+# Every app Deployment that touches the database, scaled to 0 and back.
+APP_DEPLOYMENTS=(api renderer scheduler worker-ai worker-io)
 
 log() { printf '[staging-restore] %s\n' "$*" >&2; }
 die() { log "ERROR: $*"; exit 1; }

@@ -36,7 +36,7 @@ PRUNE_BATCH = 5000  # rows one prune deletes, so a large backlog is cleared over
 
 
 def dedupe_key(kind: str, user_id: int | None, payload: dict) -> str:
-    """The one dedupe key: scheduling.queue uses it too, so legacy and ledger rows dedupe against each other."""
+    """The one dedupe key: kind, user and payload (sorted), so equal requests land on one row."""
     return hashlib.sha256(f"{kind}|{user_id}|{json.dumps(payload, sort_keys=True, default=str)}".encode()).hexdigest()
 
 
@@ -271,7 +271,7 @@ def _after_commit(session: Session) -> None:
     if session.in_nested_transaction():  # a savepoint released: the rows aren't committed yet
         return
     pending = session.info.pop(PENDING, None)
-    if not pending or settings.tasks_backend != "ledger":
+    if not pending:
         return
     try:
         loop = asyncio.get_running_loop()

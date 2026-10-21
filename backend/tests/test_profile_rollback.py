@@ -12,8 +12,7 @@ from jobfinder.services import daily
 from jobfinder.services import profile as profile_service
 from jobfinder.services import questions as questions_service
 from jobfinder.services.tokens import make_token
-from jobfinder.worker import run_task
-from tests.fakes import FakeQuestionsAI
+from tests.fakes import FakeQuestionsAI, run_task
 from tests.rollback import Boom, count, raise_after
 
 

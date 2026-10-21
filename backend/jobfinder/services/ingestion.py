@@ -292,8 +292,7 @@ async def ingest_boards(
 ) -> list[IngestStats]:
     """Poll the boards `due_board_ids` picks, INGEST_CONCURRENCY at a time. One company failing never
     affects the others: each board is fetched in, and committed by, its own session (ingest_board).
-    The CLI and the legacy worker run this; the ledger's ingest_tick fans out one ingest_board task per
-    board instead (#50)."""
+    The CLI runs this; the ledger's ingest_tick fans out one ingest_board task per board instead (#50)."""
     async with session_factory() as db:
         ids = await due_board_ids(db, ats=ats, slug=slug, all_boards=all_boards)
 

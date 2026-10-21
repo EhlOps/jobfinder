@@ -1,4 +1,4 @@
-# worker-io (#48; compose: worker-io, profile "ledger"): the taskiq worker on stream `jobfinder:io`:
+# worker-io (#48): the taskiq worker on stream `jobfinder:io`:
 # the ingest kinds (ingest_tick fans out one ingest_board per board), plan_work, discover_boards,
 # score_coveted, resolve_job_link and audit_coverage, daily_emails, which sends mail over SMTP (#50), and
 # parse_document and fetch_link, which read uploads and profile links off the api into the document store
@@ -9,9 +9,7 @@
 # Recreate like the other workers: a rollout pauses io work for a few seconds, and messages wait in the
 # stream meanwhile. Claims are atomic, so overlapping consumers would be safe too.
 # Replicas: KEDA (worker-io-scaledobject.yaml, #52) scales it from 1 to 4 on the stream's backlog, so
-# there is no `replicas` here: a value would reset the HPA's count on every deploy. The ScaledObject is
-# paused at 0 in the base (the stream only carries work under TASKS_BACKEND=ledger) and an overlay on the
-# ledger unpauses it (overlays/staging; docs/k3s.md, "Task platform" and "KEDA").
+# there is no `replicas` here: a value would reset the HPA's count on every deploy (docs/k3s.md, "KEDA").
 # No PodDisruptionBudget: on one node it only matters for a drain (a k3s upgrade), and minAvailable 1
 # would block that drain while a pod stopping mid-task costs nothing (graceful shutdown, then the reaper).
 apiVersion: apps/v1

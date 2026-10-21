@@ -7,11 +7,11 @@ from security_payloads import SQLI
 
 from jobfinder.core.config import get_settings
 from jobfinder.models import Company, Job, JobLink, Task
-from jobfinder.scheduling import handlers
 from jobfinder.services import resolver
 from jobfinder.services.board_selection import select_boards
 from jobfinder.services.resolver import BadLink, clean_url, name_from_slug, resolve_link
 from jobfinder.services.resolver.rungs.url_pattern import UrlPatternRung
+from jobfinder.tasks import io
 from tests.fakes import serve
 
 GH = "https://boards.greenhouse.io/acme/jobs/123"
@@ -228,5 +228,5 @@ async def test_handler_queues_matching_when_new_jobs(maker, monkeypatch):
     monkeypatch.setattr(resolver, "resolve_link", fake)
     async with maker() as db:
         task = Task(kind="resolve_job_link", payload={"link_id": 1})
-        assert (await handlers.resolve_job_link(db, None, task))["new"] == 3
+        assert (await io.resolve_job_link(db, None, task, io.ResolveLinkArgs(link_id=1)))["new"] == 3
         assert len(await tasks(db, "plan_work")) == 1

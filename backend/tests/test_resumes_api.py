@@ -6,8 +6,7 @@ import sqlalchemy as sa
 from jobfinder.ai.schemas import Experience, ResumeContact, TailoredResume
 from jobfinder.integrations.claude.claude_code import AIError
 from jobfinder.models import Job, Task
-from jobfinder.worker import run_task
-from tests.fakes import FakeTailorAI
+from tests.fakes import FakeTailorAI, run_task
 from tests.test_cover_letters_api import setup as _setup
 
 BASE = "/api/matches/{}/resume"

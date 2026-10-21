@@ -69,7 +69,7 @@ async def existing_board(db: AsyncSession, ats: str, slug: str) -> Company | Non
 async def llm_allowed(db: AsyncSession) -> bool:
     """The resolver may ask Claude unless it's switched off or the planner is backing off a rate limit."""
     from jobfinder.core.config import settings
-    from jobfinder.scheduling import planner
+    from jobfinder.services import planner
 
     return settings.resolver_llm_enabled and await planner.backoff_until(db, datetime.now(UTC)) is None
 
