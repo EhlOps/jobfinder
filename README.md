@@ -33,7 +33,7 @@ browser → host Caddy (TLS) → Traefik 127.0.0.1:8280 → web (Caddy, the SPA)
                                     valkey streams jobfinder:priority / :ai / :io / :render
                                                  │
                      worker-priority (profile, letters, uploads, links; Claude first; 1–3 pods by KEDA)
-                     worker-ai (bulk Claude: matching, 1 pod) · worker-io (ingest; 1–4 pods by KEDA) · renderer (opt-in)
+                     worker-ai (bulk Claude: matching; 1–3 pods by KEDA) · worker-io (ingest; 1–8 pods by KEDA) · renderer (opt-in)
                      scheduler (1 pod): cron, relay (re-sends unpublished rows), reaper (requeues stuck rows)
 ```
 
@@ -183,7 +183,7 @@ change:
 | Workflow | Runs |
 |---|---|
 | `backend` | `ruff`, `pytest -n auto` and `lint-imports` against a Postgres service |
-| `k8s` | Renders every overlay with kustomize, validates it with kubeconform, and checks the scaling rules (worker-ai never autoscaled, worker-io's replicas left to KEDA) |
+| `k8s` | Renders every overlay with kustomize, validates it with kubeconform, and checks the scaling rules (every `worker-*` Deployment has one KEDA ScaledObject and no `replicas`; each trigger reads its own namespace's valkey) |
 | `images` | Builds the images whose directory changed and, on a push, pushes them to ghcr.io, then calls `deploy-staging` (dev) or `deploy-prod` (main) |
 
 The frontend's tests and typecheck are not in CI; run them before you push. The image build runs `tsc` as part of

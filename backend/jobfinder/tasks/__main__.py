@@ -1,4 +1,4 @@
-"""`python -m jobfinder.tasks ai|io|render`: run one queue's taskiq worker (one process).
+"""`python -m jobfinder.tasks priority|ai|io|render`: run one queue's taskiq worker (one process).
 
 It imports the queue's handler modules (WORKER_MODULES; @ledger_task registers each kind on its own
 queue's broker, so the process consumes only this queue's kinds), runs up to the queue's concurrency
@@ -23,6 +23,13 @@ WORKER_MODULES = {
     "render": ["jobfinder.tasks.render"],
 }
 
+# On SIGTERM a worker waits this long for its running tasks, then exits. Each stays under its pod's
+# terminationGracePeriodSeconds (200s for worker-ai and worker-priority, 60s for the others), so it
+# exits cleanly; 180s lets a matching slice (~2.5 minutes) finish when KEDA scales a pod in, instead of
+# leaving it to the reaper.
+WAIT_TASKS_SECONDS = {"ai": 180, "priority": 180}
+DEFAULT_WAIT_TASKS_SECONDS = 50
+
 
 def worker_argv(queue: str) -> list[str]:
     return [
@@ -30,8 +37,7 @@ def worker_argv(queue: str) -> list[str]:
         "--workers", "1",
         "--max-async-tasks", str(getattr(settings, CONCURRENCY[queue])),
         "--ack-type", "when_executed",
-        # On SIGTERM, wait this long for running tasks: under the pods' 60s grace, so they exit cleanly.
-        "--wait-tasks-timeout", "50",
+        "--wait-tasks-timeout", str(WAIT_TASKS_SECONDS.get(queue, DEFAULT_WAIT_TASKS_SECONDS)),
         "--no-configure-logging",
     ]
 

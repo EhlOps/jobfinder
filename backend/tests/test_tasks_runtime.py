@@ -95,6 +95,15 @@ def test_each_broker_reads_no_more_than_its_worker_runs_at_once():
         assert worker_argv(queue)[worker_argv(queue).index("--max-async-tasks") + 1] == str(concurrency)
 
 
+def test_each_worker_waits_for_its_tasks_within_its_pods_grace():
+    """worker-ai and worker-priority wait 180s on SIGTERM (under their pods' 200s grace), so a pod KEDA
+    scales in finishes its matching slice; the others 50s (under 60s)."""
+    for queue in brokers.BROKERS:
+        argv = worker_argv(queue)
+        wait = int(argv[argv.index("--wait-tasks-timeout") + 1])
+        assert wait == (180 if queue in ("ai", "priority") else 50), queue
+
+
 async def test_the_registered_taskiq_task_runs_the_handler(maker, monkeypatch):
     seen = []
 

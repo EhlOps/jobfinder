@@ -80,8 +80,20 @@ patches:
       - op: replace
         path: /spec/rules/0/host
         value: staging.ehlops.com
-  # The KEDA trigger's address: this namespace's valkey (the operator runs in namespace keda; the base
-  # names prod's).
+  # Each ScaledObject: the KEDA trigger's address is this namespace's valkey (the operator runs in
+  # namespace keda; the base names prod's; .github/workflows/k8s.yml checks it), and a lower ceiling.
+  # worker-ai stays at 1: staging shares prod's Claude subscription (its gate is staging's own valkey,
+  # so its AI_MAX_CONCURRENCY adds to prod's calls); worker-io 2: staging ingests the same boards.
+  - target:
+      kind: ScaledObject
+      name: worker-ai
+    patch: |-
+      - op: replace
+        path: /spec/triggers/0/metadata/address
+        value: valkey.jobfinder-staging.svc.cluster.local:6379
+      - op: replace
+        path: /spec/maxReplicaCount
+        value: 1
   - target:
       kind: ScaledObject
       name: worker-io
@@ -89,7 +101,10 @@ patches:
       - op: replace
         path: /spec/triggers/0/metadata/address
         value: valkey.jobfinder-staging.svc.cluster.local:6379
-  # The priority lane (#124): this namespace's valkey, and at most 2 pods (staging's own users only).
+      - op: replace
+        path: /spec/maxReplicaCount
+        value: 2
+  # worker-priority 2: staging's own users only.
   - target:
       kind: ScaledObject
       name: worker-priority

@@ -56,17 +56,30 @@ jobs:
             -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
             -summary -output text /r
 
-      # #52. worker-ai is never autoscaled: one process is the cap on parallel Claude calls against the
-      # subscription. worker-io's replicas belong to KEDA's HPA, so its Deployment must not set any
-      # (every deploy would reset the count). yq is preinstalled on the runner.
+      # #52, #124. Every worker (each Deployment named worker-*) autoscales on its stream's lag: exactly
+      # one ScaledObject targets it (none would leave it at 1, two would fight), and its Deployment sets
+      # no replicas (KEDA's HPA owns them; every deploy would reset the count). Parallel Claude calls are
+      # capped by the Claude gate, not by worker-ai's replica count. Each ScaledObject's redis-streams
+      # triggers must read its own namespace's valkey: the base names prod's, so an overlay that forgets
+      # the address patch would scale staging on prod's backlog. yq is preinstalled on the runner.
       - name: Scaling policy
         run: |
           for f in rendered/deploy_k8s_overlays_*.yaml; do
-            n=$(yq ea '[select(.kind == "ScaledObject" or .kind == "HorizontalPodAutoscaler") | select(.spec.scaleTargetRef.name == "worker-ai")] | length' "$f")
-            [ "$n" = 0 ] || { echo "::error file=$f::worker-ai must never be autoscaled (#52)"; exit 1; }
-            r=$(yq ea 'select(.kind == "Deployment" and .metadata.name == "worker-ai") | .spec.replicas' "$f")
-            [ "$r" -le 1 ] || { echo "::error file=$f::worker-ai must run at most 1 replica, has $r"; exit 1; }
-            r=$(yq ea 'select(.kind == "Deployment" and .metadata.name == "worker-io") | .spec.replicas' "$f")
-            [ "$r" = null ] || { echo "::error file=$f::worker-io sets replicas ($r); KEDA owns them (#52)"; exit 1; }
-            echo "$f: ok"
+            fail() { echo "::error file=$f::$1"; exit 1; }
+            workers=$(yq ea -N 'select(.kind == "Deployment" and (.metadata.name | test("^worker-"))) | .metadata.name' "$f")
+            [ -n "$workers" ] || fail "no worker- Deployment rendered"
+            for w in $workers; do
+              n=$(yq ea -N "[select(.kind == \"ScaledObject\" and .spec.scaleTargetRef.name == \"$w\")] | length" "$f")
+              [ "$n" = 1 ] || fail "$w must have exactly one ScaledObject, has $n (#124)"
+              n=$(yq ea -N "[select(.kind == \"HorizontalPodAutoscaler\" and .spec.scaleTargetRef.name == \"$w\")] | length" "$f")
+              [ "$n" = 0 ] || fail "$w has its own HorizontalPodAutoscaler; KEDA's would fight it (#124)"
+              r=$(yq ea -N "select(.kind == \"Deployment\" and .metadata.name == \"$w\") | .spec.replicas" "$f")
+              [ "$r" = null ] || fail "$w sets replicas ($r); KEDA owns them (#52)"
+            done
+            bad=$(yq e -N 'select(.kind == "ScaledObject") | .metadata.namespace as $ns | .metadata.name as $so
+                         | .spec.triggers[] | select(.type == "redis-streams")
+                         | select(.metadata.address != "valkey." + $ns + ".svc.cluster.local:6379")
+                         | $so + " (" + $ns + ") reads " + .metadata.address' "$f")
+            [ -z "$bad" ] || fail "ScaledObject trigger not on its own namespace's valkey: $bad"
+            echo "$f: ok ($(echo $workers))"
           done

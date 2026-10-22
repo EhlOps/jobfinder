@@ -18,8 +18,8 @@ deploy/k8s/
     data/               # #47: backup CronJob and PVC backups; #118: pre-deploy runs (BACKUP_PREFIX=pre-)
     app/                # #43: web, api, renderer, smtp, migrate Job, Ingress, config overrides;
                         # #48: scheduler, worker-ai, worker-io (the task platform);
-                        # #52: worker-io's KEDA ScaledObject (1-4 replicas on the io backlog);
-                        # #124: worker-priority (the priority lane) and its ScaledObject
+                        # #52, #124: a KEDA ScaledObject per worker (on its stream's backlog;
+                        # prod's maxima, overlays/staging lowers them); #124: worker-priority, the priority lane
   overlays/
     staging/            # namespace `jobfinder-staging`; sealed secrets, mailpit, staging config
     prod/               # namespace `jobfinder` (the base default); sealed secrets, Gmail relay, prod config

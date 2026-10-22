@@ -36,7 +36,7 @@ def _broker(queue: str) -> RedisStreamBroker:
     # xread_count: one XREADGROUP takes at most what the process runs at once (taskiq-redis's default is
     # 100). Everything read is pending on this consumer, and no other can claim it for 10 minutes, so a
     # big read-ahead would strand the unstarted rest when KEDA scales a pod in, and hide it from the
-    # group's lag that KEDA scales worker-io on (#52, deploy/k8s/base/app/worker-io-scaledobject.yaml).
+    # group's lag that KEDA scales the workers on (#52, #124, deploy/k8s/base/app/worker-*-scaledobject.yaml).
     return RedisStreamBroker(url=settings.valkey_url, queue_name=f"jobfinder:{queue}",
                              consumer_group_name=f"jobfinder-{queue}", maxlen=STREAM_MAXLEN,
                              xread_count=max(1, getattr(settings, CONCURRENCY[queue])),
