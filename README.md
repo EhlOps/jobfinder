@@ -374,10 +374,11 @@ Calls someone is waiting on (the api, the priority worker) get the next free per
 
 **Staging** deploys itself from every push to `dev` (GitHub Actions `images` → `deploy-staging`).
 
-**Production** deploys itself from every push to `main` (`images` → `deploy-prod`). There is no approval
-step: **a release is a dev → main PR merged with "Create a merge commit"**, which is the only merge method
-main's ruleset allows. Nobody pushes to main directly. Hotfixes land on dev first, reach staging, and are then
-released the same way.
+**Production** deploys itself from every push to `main` (`images` → `deploy-prod`). **A release is a
+dev → main PR, squash-merged** (a merge commit works too). Main's ruleset requires one approval, which admins
+can bypass. After every release, `sync-dev` merges main back into dev so the next release PR shows only new
+work. Nobody pushes to main directly. Hotfixes land on dev first, reach staging, and are then released the
+same way.
 
 Both workflows SSH to the host, where a root-owned forced command (`deploy-ssh.sh staging|prod`) checks the
 commit and runs `deploy.sh`. `deploy.sh` pins the images, runs the migrate Job and only then rolls the

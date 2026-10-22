@@ -211,7 +211,10 @@ browser → host Caddy (TLS) → Traefik 127.0.0.1:8280 → web (Caddy :8080) �
 
 ### Releasing (#118)
 
-**A release is a dev → main PR, merged with "Create a merge commit".** Every push to main deploys prod; there is no approval step, so the merge is the decision. The main ruleset allows only merge commits, which matters for two reasons. A squash would fork main away from dev, and every later release PR would then conflict. A merge commit's second parent (`<commit>^2`) is exactly the dev commit that staging ran, and the staging gate checks that commit.
+**A release is a dev → main PR, squash-merged (or merged with a merge commit).** Every push to main deploys prod, so the merge is the decision. Main's ruleset requires one approving review, which repository admins can bypass on the PR page ("bypass rules"), because GitHub never lets a PR's author approve it. Two things keep squash releases working:
+
+- **The staging gate finds the release's dev side.** A merge commit's dev side is its second parent (`<commit>^2`). A squash commit has one parent, so the dev side is the dev commit with the same tree, i.e. the dev head that was squashed (`dev_side` in `deploy-ssh.sh` and `.github/scripts/dev-side.sh`).
+- **`sync-dev` merges main back into dev after every release** (`.github/workflows/sync-dev.yml`). Without it, a squash forks main away from dev and every later release PR conflicts. Main's tree matches a dev commit, so the merge keeps dev's files (`-s ours`). The push uses the workflow token, which starts no workflows, so staging doesn't redeploy. If main ever has a change that dev lacks, the merge is a normal one, and a conflict fails the run for a human to fix.
 
 Before merging, read the release PR's migrations with "Rollback" in mind: the automatic rollback only reverts images, never the schema.
 
@@ -221,7 +224,7 @@ What the merge sets off, in order:
 2. **`deploy-prod.yml`** runs in environment `production`, whose deployment-branch policy allows only `main`, so only main runs can read the prod key. It SSHes to the host and sends only `sha-<7>`.
 3. **On the host, the key's forced command** is the root-owned `/usr/local/lib/jobfinder/deploy-ssh.sh prod`. The env comes from `authorized_keys`, never from the client. The wrapper then works through these steps:
    1. **Checks.** It accepts exactly `sha-<7-40 lowercase hex>`; anything else is refused with exit 2. The commit must be on `origin/main`. Prod never moves backwards: a commit that prod's `jobfinder.io/deployed-commit` already contains is skipped with exit 0, which covers late runs and re-runs. The wrapper holds a per-env lock, so prod and staging deploys can run at the same time, but never two of the same env.
-   2. **Staging gate.** The release's dev side (`<commit>^2`, or the commit itself when it has no second parent) must equal, or be an ancestor of, staging's `jobfinder.io/deployed-commit` (on namespace `jobfinder-staging`). If it isn't, the release is refused.
+   2. **Staging gate.** The release's dev side (`<commit>^2` for a merge commit; for a squash, the dev commit with the same tree; else the commit itself) must equal, or be an ancestor of, staging's `jobfinder.io/deployed-commit` (on namespace `jobfinder-staging`). If it isn't, the release is refused.
    3. **Prior state.** It records the image of every app Deployment (`jobfinder.io/rollout=app`), plus the namespace's `jobfinder.io/deployed-tag` and `jobfinder.io/deployed-commit`, before anything changes.
    4. **Pre-deploy backup.** It creates Job `backup-pre-<sha7>` from `cronjob/backup` with `BACKUP_PREFIX=pre-`, which writes `pre-db-<ts>.dump` and `pre-files-<ts>.tar.gz` ("Backups"), and waits for it. **A failed backup stops the deploy** before anything changes.
    5. **`deploy.sh prod`** pins the images, runs the migrate Job and rolls out the Deployments (see "Deploying by hand" for how it pins). Its candidate tags are the dev side's first-parent history, then main's. An image the merge didn't rebuild therefore comes from the newest dev build of the same tree.
@@ -308,29 +311,29 @@ On the host, as opc, from a checkout of dev that has #118:
    git push origin <that commit>:main      # must be a fast-forward of main
    ```
 
-7. **The two main rulesets.** "main: owner only" lets only repository admins (the owner) update or delete main, and forbids force pushes. "main: merge commits" requires a PR merged with a merge commit, needs 0 approvals and has no bypass:
+7. **The two main rulesets.** "main: no delete or force push" forbids deleting main and force pushes (admins can bypass). "main: reviewed PRs" requires a PR with one approving review, merged by squash or merge commit; admins can bypass it on a PR (bypass mode `pull_request`), which is how the owner merges their own release PRs:
 
    ```sh
    gh api -X POST repos/EhlOps/jobfinder/rulesets --input - <<'EOF'
-   {"name": "main: owner only", "target": "branch", "enforcement": "active",
+   {"name": "main: no delete or force push", "target": "branch", "enforcement": "active",
     "conditions": {"ref_name": {"include": ["refs/heads/main"], "exclude": []}},
-    "rules": [{"type": "update"}, {"type": "deletion"}, {"type": "non_fast_forward"}],
+    "rules": [{"type": "deletion"}, {"type": "non_fast_forward"}],
     "bypass_actors": [{"actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always"}]}
    EOF
    gh api -X POST repos/EhlOps/jobfinder/rulesets --input - <<'EOF'
-   {"name": "main: merge commits", "target": "branch", "enforcement": "active",
+   {"name": "main: reviewed PRs", "target": "branch", "enforcement": "active",
     "conditions": {"ref_name": {"include": ["refs/heads/main"], "exclude": []}},
     "rules": [{"type": "pull_request", "parameters": {
-      "required_approving_review_count": 0, "dismiss_stale_reviews_on_push": false,
+      "required_approving_review_count": 1, "dismiss_stale_reviews_on_push": false,
       "require_code_owner_review": false, "require_last_push_approval": false,
-      "required_review_thread_resolution": false, "allowed_merge_methods": ["merge"]}}],
-    "bypass_actors": []}
+      "required_review_thread_resolution": false, "allowed_merge_methods": ["squash", "merge"]}}],
+    "bypass_actors": [{"actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "pull_request"}]}
    EOF
    gh api repos/EhlOps/jobfinder/rulesets --jq '.[] | [.id, .name, .enforcement] | @tsv'
    ```
 
-   In `bypass_actors`, `actor_id` 5 is the built-in admin role. The repo keeps squash merges allowed, because dev's PRs use them; the ruleset narrows only main.
-8. **First release:** open a dev → main PR, merge it with **Create a merge commit**, and watch **Actions → deploy-prod**.
+   In `bypass_actors`, `actor_id` 5 is the built-in admin role. Nobody pushes to main directly: the `pull_request` rule refuses pushes that don't come from a PR, and the admin bypass applies only to merging a PR.
+8. **First release:** open a dev → main PR, squash-merge it (an admin ticks "bypass rules" when nobody else approved it), and watch **Actions → deploy-prod** and **Actions → sync-dev**.
 
 Until `PROD_SSH_KEY`, `PROD_SSH_HOST` and `PROD_SSH_USER` all exist, `deploy-prod` skips with a warning, as staging's does.
 
@@ -347,7 +350,7 @@ kubectl -n jobfinder create job --from=cronjob/backup backup-pre-<sha7> --dry-ru
 kubectl -n jobfinder wait --for=condition=complete job/backup-pre-<sha7> --timeout=15m
 
 git fetch && git checkout <commit>     # deploy.sh applies this checkout's manifests
-DEV=$(git rev-parse --verify --quiet 'HEAD^2' || git rev-parse HEAD)   # a release's dev side
+. .github/scripts/dev-side.sh && DEV=$(dev_side HEAD)   # a release's dev side
 DEPLOY_COMMIT=$(git rev-parse HEAD) \
 DEPLOY_CANDIDATE_TAGS="$( { git rev-list --first-parent --max-count=50 "$DEV"; git rev-list --first-parent --max-count=50 --skip=1 HEAD; } | cut -c1-7 | sed 's/^/sha-/' | tr '\n' ' ')" \
   deploy/k8s/deploy.sh prod sha-$(git rev-parse --short=7 HEAD)
@@ -382,7 +385,7 @@ kubectl -n jobfinder logs deploy/scheduler --tail=50                            
 
 ```sh
 git checkout <older commit>
-DEV=$(git rev-parse --verify --quiet 'HEAD^2' || git rev-parse HEAD)
+. .github/scripts/dev-side.sh && DEV=$(dev_side HEAD)
 DEPLOY_COMMIT=$(git rev-parse HEAD) \
 DEPLOY_CANDIDATE_TAGS="$( { git rev-list --first-parent --max-count=50 "$DEV"; git rev-list --first-parent --max-count=50 --skip=1 HEAD; } | cut -c1-7 | sed 's/^/sha-/' | tr '\n' ' ')" \
   deploy/k8s/deploy.sh prod sha-$(git rev-parse --short=7 HEAD)

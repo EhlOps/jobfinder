@@ -30,8 +30,9 @@
 #   4. Smoke checks through Traefik (127.0.0.1:8280, the env's Host header), retried for ~2 minutes:
 #      /readyz 200, / 200, /api/auth/me 401, every app pod Ready, and no app container restarting.
 # Prod only (#118):
-#   - Staging gate: the release's dev side (<commit>^2 for a dev -> main merge commit, else the commit)
-#     must already run on staging, i.e. be an ancestor of (or equal to) staging's deployed-commit.
+#   - Staging gate: the release's dev side (<commit>^2 for a dev -> main merge commit; for a squash,
+#     the dev commit with the same tree; else the commit) must already run on staging, i.e. be an
+#     ancestor of (or equal to) staging's deployed-commit.
 #   - Records every app Deployment's images and the namespace's deployed-tag/-commit, then takes a
 #     pre-deploy backup (a Job from cronjob/backup with BACKUP_PREFIX=pre-); a failed backup stops
 #     before anything changes.
@@ -182,10 +183,20 @@ commit=$(git -C "$REPO" rev-parse --verify --quiet "${sha}^{commit}") \
   || { commit=unknown; end_run refused 1 "$sha is not a commit in $REPO after fetching $BRANCH"; }
 git -C "$REPO" merge-base --is-ancestor "$commit" "refs/remotes/origin/$BRANCH" \
   || end_run refused 1 "$commit is not on origin/$BRANCH"
-# The dev side of a release (#118): a dev -> main merge commit's second parent, else the commit.
+# The dev side of a release (#118): a dev -> main merge commit's second parent. A squash release has
+# one parent, so it's the dev commit with the same tree: the oldest of the newest run of such commits
+# in dev's first-parent history, which skips sync-dev's "-s ours" merge of main on top. Else the commit.
+dev_side() {
+  local tree d
+  if d=$(git -C "$REPO" rev-parse --verify --quiet "$1^2"); then echo "$d"; return; fi
+  tree=$(git -C "$REPO" rev-parse --verify --quiet "$1^{tree}") || { echo "$1"; return; }
+  d=$(git -C "$REPO" log --first-parent --max-count=200 --format='%H %T' refs/remotes/origin/dev \
+      | awk -v t="$tree" '$2 == t {d = $1; next} d != "" {exit} END {print d}')
+  echo "${d:-$1}"
+}
 dev_commit=$commit
 if [ "$env" = prod ]; then
-  dev_commit=$(git -C "$REPO" rev-parse --verify --quiet "${commit}^2") || dev_commit=$commit
+  dev_commit=$(dev_side "$commit")
 fi
 
 ns_annotation() {
@@ -205,8 +216,8 @@ fi
 
 prior=''
 if [ "$env" = prod ]; then
-  # Staging gate (#118): prod only gets what staging already runs. A squash-merged release or a
-  # main-only hotfix has no dev side on staging and is refused here.
+  # Staging gate (#118): prod only gets what staging already runs. A main-only hotfix (or a squash
+  # whose files match no dev commit) has no dev side on staging and is refused here.
   staged=$(ns_annotation "$STAGING_NS" deployed-commit)
   if ! [[ $staged =~ ^[0-9a-f]{40}$ ]] \
      || ! git -C "$REPO" merge-base --is-ancestor "$dev_commit" "$staged" 2>/dev/null; then
