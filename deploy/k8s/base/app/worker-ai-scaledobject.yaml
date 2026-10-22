@@ -1,0 +1,48 @@
+# Autoscales worker-ai on the ai stream's backlog (#124): 1 to 3 replicas (overlays/staging: 1), one per 2
+# undelivered messages. Same shape as worker-io-scaledobject.yaml (which explains the lag signal, the
+# address and pausing); KEDA creates and owns HPA keda-hpa-worker-ai, so worker-ai.yaml has no `replicas`.
+#
+# Safe now: parallel Claude calls against the subscription are capped cluster-wide by the Claude gate
+# (AI_MAX_CONCURRENCY permits shared through valkey, integrations/claude/gate.py), so another pod adds
+# task slots, not Claude calls. Until the gate the single worker-ai process was the cap and this
+# Deployment never scaled.
+#
+# lagCount "2": the ai kinds are long (a matching slice runs ~2.5 minutes, a cover letter a minute or
+# so), so a small backlog is already minutes of work. The HPA wants ceil(lag / 2) pods: a pod per two
+# unread messages, a whole pod's worth at WORKER_AI_CONCURRENCY (2) task slots. Lag counts only what no
+# pod has read, so with every slot busy up to two messages per pod can still wait for a free slot; a
+# larger target would let more wait a full slice. Extra pods mostly wait on the gate when it is
+# saturated, which is cheap (memory, no Claude call).
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: worker-ai
+  labels:
+    jobfinder.io/rollout: app   # deploy.sh phase 2, after the migrations
+spec:
+  scaleTargetRef:
+    name: worker-ai
+  # Never below 1: the next slice or a cover letter starts at once, not after a cold start.
+  minReplicaCount: 1
+  # 3 x WORKER_AI_CONCURRENCY (2) tasks at once, of which at most AI_MAX_CONCURRENCY call Claude; 3 x the
+  # 2Gi limit is 6 GiB worst case. overlays/staging lowers it to 1 (staging shares prod's subscription).
+  maxReplicaCount: 3
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        # As worker-io: out at once, in after 5 low minutes, one pod a minute. A pod stopped mid-slice
+        # finishes it: the worker waits up to 180s for its tasks within the 200s grace (worker-ai.yaml,
+        # tasks/__main__.py), and the reaper requeues anything cut off.
+        scaleDown:
+          stabilizationWindowSeconds: 300
+          policies:
+            - type: Pods
+              value: 1
+              periodSeconds: 60
+  triggers:
+    - type: redis-streams
+      metadata:
+        address: valkey.jobfinder.svc.cluster.local:6379   # overlays/staging patches in its own
+        stream: jobfinder:ai                  # tasks/brokers.py
+        consumerGroup: jobfinder-ai
+        lagCount: "2"                         # target lag per replica (an AverageValue)
