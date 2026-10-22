@@ -36,8 +36,13 @@ export default function Matches() {
   // The wizard sends us here with ?task=<id> so we can show the first matches as they arrive.
   const [taskId, setTaskId] = useState<number | null>(params.get("task") ? Number(params.get("task")) : null);
 
-  const task = useTask<{ scored?: number }>(taskId);
-  const running = taskId !== null && task.data?.status !== "done" && task.data?.status !== "failed";
+  const task = useTask<{ scored?: number; next_slice?: number }>(taskId);
+  // Matching runs in slices that chain themselves: a finished slice names the next one, so follow it.
+  const nextSlice = task.data?.status === "done" ? task.data.result?.next_slice : undefined;
+  const running = taskId !== null && (!!nextSlice || (task.data?.status !== "done" && task.data?.status !== "failed"));
+  useEffect(() => {
+    if (nextSlice) setTaskId(nextSlice);
+  }, [nextSlice]);
 
   // The default filter comes from the profile, so hold the first list fetch until it is known (or has failed).
   const profile = useQuery({ queryKey: ["profile"], staleTime: 5 * 60_000, retry: false, queryFn: () => api<Profile>("/api/profile") });

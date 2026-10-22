@@ -85,6 +85,7 @@ class Settings(BaseSettings):
     renderer_max_rendered_boards: int
     renderer_concurrency: int
     match_daily_llm_budget: int
+    match_slice_jobs: int
     match_min_prefilter: float
     digest_min_score: int
     digest_max_matches: int

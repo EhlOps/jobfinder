@@ -76,3 +76,33 @@ async def test_follow_ups_are_ledger_rows_flushed_into_the_task(db, monkeypatch)
     [audit] = (await db.scalars(sa.select(Task).where(Task.kind == "audit_coverage"))).all()
     assert (audit.queue, audit.status) == ("io", "queued")
     assert ledger.PENDING in db.info  # published once the runtime commits
+
+
+async def test_priority_kinds_never_touch_the_daily_match_budget(authed, maker, monkeypatch):
+    """The daily cap is on bulk match scoring only (#124): profile work, documents and the AI check
+    never read it, so a user out of budget can still do all of them."""
+    from jobfinder.services.matching import service
+    from tests.fakes import FakeAuditAI, FakeLetterAI, FakeOnboardingAI, FakePingAI, FakeTailorAI
+    from tests.test_cover_letters_api import setup
+    from tests.test_resumes_api import _resume
+
+    def no_budget(*a, **kw):
+        raise AssertionError("remaining_budget called")
+
+    monkeypatch.setattr(service, "remaining_budget", no_budget)
+    mid, _ = await setup(authed, maker)
+    doc = await authed.post("/api/documents", files={"file": ("cv.txt", b"Intern at Acme", "text/plain")})
+    await run_task(doc.json()["task_id"], None, maker)
+    uid = (await authed.get("/api/auth/me")).json()["id"]
+    runs = [
+        ("extract_profile", {}, FakeOnboardingAI()), ("followup_questions", {}, FakeOnboardingAI()),
+        ("audit_profile", {}, FakeAuditAI()), ("cover_letter", {"match_id": mid}, FakeLetterAI("Dear Acme,\n\nHi.")),
+        ("resume_tailor", {"match_id": mid}, FakeTailorAI(_resume(["Go"]))), ("ai_check", {}, FakePingAI()),
+    ]
+    for kind, payload, fake in runs:
+        async with maker() as db:
+            task = await ledger.add(db, kind, payload, user_id=uid)
+            await db.commit()
+        await run_task(task.id, fake, maker)
+        async with maker() as db:
+            assert ((await db.get(Task, task.id)).status, kind) == ("done", kind)

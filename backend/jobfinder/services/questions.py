@@ -53,6 +53,11 @@ async def unsubscribe(db: AsyncSession, user_id: int) -> None:
         user.question_emails_enabled = False
 
 
+async def has_unreviewed(db: AsyncSession, user_id: int) -> bool:
+    """Whether collect_questions would find matches to look at."""
+    return bool(await repo.unreviewed_matches(db, user_id, 1))
+
+
 async def open_count(db: AsyncSession, user_id: int) -> int:
     return await repo.open_count(db, user_id)
 
