@@ -1,8 +1,9 @@
 """`python -m jobfinder.tasks ai|io|render`: run one queue's taskiq worker (one process).
 
-It imports `jobfinder.tasks.<queue>` (where that queue's @ledger_task handlers live), runs up to the
-queue's concurrency at once (AI_MAX_CONCURRENCY, WORKER_IO_CONCURRENCY, RENDERER_CONCURRENCY) and
-acks a message only after its task has run, so a killed worker's messages are redelivered.
+It imports the queue's handler modules (WORKER_MODULES; @ledger_task registers each kind on its own
+queue's broker, so the process consumes only this queue's kinds), runs up to the queue's concurrency
+at once (AI_MAX_CONCURRENCY, WORKER_IO_CONCURRENCY, RENDERER_CONCURRENCY) and acks a message only
+after its task has run, so a killed worker's messages are redelivered.
 """
 import sys
 
@@ -10,10 +11,18 @@ from jobfinder.core import logging as core_logging
 from jobfinder.core.config import settings
 from jobfinder.tasks.brokers import CONCURRENCY
 
+# The modules each queue's worker imports: those holding its kinds' @ledger_task handlers. A module may
+# register kinds of other queues too; they land on those queues' brokers, which this process never reads.
+WORKER_MODULES = {
+    "ai": ["jobfinder.tasks.ai"],
+    "io": ["jobfinder.tasks.io"],  # which imports tasks.documents (parse_document, fetch_link)
+    "render": ["jobfinder.tasks.render"],
+}
+
 
 def worker_argv(queue: str) -> list[str]:
     return [
-        f"jobfinder.tasks.brokers:{queue}_broker", f"jobfinder.tasks.{queue}",
+        f"jobfinder.tasks.brokers:{queue}_broker", *WORKER_MODULES[queue],
         "--workers", "1",
         "--max-async-tasks", str(getattr(settings, CONCURRENCY[queue])),
         "--ack-type", "when_executed",
