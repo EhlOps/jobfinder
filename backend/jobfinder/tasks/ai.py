@@ -105,12 +105,23 @@ async def audit_profile(db: AsyncSession, ai: AITasks, task: Task, _: None) -> d
 
 @ledger_task("match_user")
 async def match_user(db: AsyncSession, ai: AITasks, task: Task, _: None) -> dict:
+    """One slice of MATCH_SLICE_JOBS scores. While it scored something and work and budget remain, it
+    queues the next slice at the back of the ai stream, so other users' slices take turns with it. The
+    rerun dedupe folds a profile edit made mid-chain into that one queued slice (services.questions).
+    The payload stays empty for that reason: a per-chain counter would give the slices their own dedupe key."""
+    from jobfinder.core.config import settings
+    from jobfinder.services import questions
     from jobfinder.services.matching import service
 
-    # Commit after each scored job: a rate limit mid-run keeps what was scored (the runtime rolls back the rest).
-    summary = await service.match_user(db, ai, task.user_id, checkpoint=db.commit)
-    if summary.get("scored"):
-        # New assessments may have raised questions worth asking.
+    # Commit after each scored job: a rate limit mid-slice keeps what was scored (the runtime rolls back the rest).
+    limit = max(1, settings.match_slice_jobs)  # 0 would score nothing, ever
+    summary = await service.match_user(db, ai, task.user_id, limit=limit, checkpoint=db.commit)
+    if summary.get("scored") and summary.get("pending") and summary.get("budget_left"):
+        # The id lets the matches page follow the chain (frontend routes/Matches.tsx).
+        summary["next_slice"] = (await ledger.add(db, "match_user", user_id=task.user_id, rerun=True)).id
+    elif summary.get("scored") or await questions.has_unreviewed(db, task.user_id):
+        # The chain ends here: its new assessments may have raised questions worth asking. The second check
+        # covers a chain whose last slice scored nothing, or an earlier chain that stopped on an error.
         await ledger.add(db, "collect_questions", user_id=task.user_id, dedupe=True)
     return summary
 

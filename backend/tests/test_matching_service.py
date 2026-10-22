@@ -6,12 +6,13 @@ import sqlalchemy as sa
 from jobfinder.core.config import get_settings
 from jobfinder.integrations.claude.claude_code import AIError
 from jobfinder.integrations.claude.schemas import MatchScore
-from jobfinder.models import Company, Job, JobMatch, Profile, User
+from jobfinder.models import Company, Job, JobMatch, Profile, ProfileFact, Task, User
 from jobfinder.models.posting import dedupe_hash
 from jobfinder.repositories import matches as matches_repo
 from jobfinder.services.matching import service
+from jobfinder.tasks import ledger
 from tests.factories import make_match
-from tests.fakes import FakeScoringAI
+from tests.fakes import FakeScoringAI, run_task
 
 STATUS = {"target_roles": ["Backend Engineer"], "target_locations": ["Boston"], "is_new_grad": True,
           "salary_min": 100000, "needs_visa_sponsorship": False}
@@ -22,6 +23,7 @@ def budget(monkeypatch):
     s = get_settings()
     monkeypatch.setattr(s, "match_daily_llm_budget", 25)
     monkeypatch.setattr(s, "ai_max_concurrency", 2)
+    monkeypatch.setattr(s, "match_slice_jobs", 25)
 
 
 async def make_user(db, status=None, background=None, email="u@x.com", version=3):
@@ -181,25 +183,37 @@ async def test_profile_change_rescoring_keeps_status_and_skips_dismissed(maker):
         await db.commit()
         ai2 = FakeScoringAI({"Backend Engineer S": 95})
         out = await service.match_user(db, ai2, u.id)
-        # saved first, then by score; low scores are refreshed too (answers often fill the gap); dismissed is left alone
-        assert ai2.calls == ["Backend Engineer S", "Backend Engineer N", "Backend Engineer P"] and out["scored"] == 3
+        # saved first, then by prefilter score and newest posting (P is newer than N), whatever the old LLM score:
+        # low scores are refreshed too (answers often fill the gap); dismissed is left alone
+        assert ai2.calls == ["Backend Engineer S", "Backend Engineer P", "Backend Engineer N"] and out["scored"] == 3
         rows = {m.job_id: m for m in (await db.scalars(sa.select(JobMatch)))}
         assert rows[saved.id].llm_score == 95 and rows[saved.id].status == "saved" and rows[saved.id].profile_version == 2
         assert rows[dismissed.id].profile_version == 1 and rows[new_poor.id].profile_version == 2
         assert rows[new_good.id].profile_version == 2
 
 
-async def test_stale_puts_the_first_ids_first_and_takes_an_empty_set(maker):
+def _c(job_id, score, posted, match_id=None, saved=False):
+    return service.Candidate(job_id, score, posted, f"h{job_id}", match_id=match_id, saved=saved)
+
+
+def test_rank_work_puts_answered_then_saved_first_then_interleaves_by_score_and_posting():
+    stale = [_c(1, 10, 5, match_id=101), _c(2, 90, 5, match_id=102), _c(3, 5, 1, match_id=103, saved=True),
+             _c(4, 50, 9, match_id=104), _c(5, 1, 1, match_id=105, saved=True)]
+    new = [_c(6, 70, 1), _c(7, 50, 10), _c(8, 95, 0)]
+    order = [w.job_id for w in service.rank_work(stale, new, answered={105, 101})]
+    # answered (by score), saved, then stale and new together by score, ties broken by the newer posting
+    assert order == [1, 5, 3, 8, 2, 6, 7, 4]
+    assert [w.job_id for w in service.rank_work([], new, set())] == [8, 6, 7]
+
+
+async def test_stale_rows_are_light_and_skip_dismissed_and_current(maker):
     async with maker() as db:
-        u = await make_user(db, version=1)
-        made = [await make_match(db, u.id, score=90 - i) for i in range(3)]
+        u = await make_user(db, version=2)
+        (a, _), (b, _), (c, _) = [await make_match(db, u.id, score=90 - i) for i in range(3)]
+        b.status, c.profile_version = "dismissed", 2
         await db.commit()
-
-        async def order(first):
-            return [m.id for m, _, _ in await matches_repo.stale(db, u.id, 2, service.STALE_STATUSES, first)]
-
-        assert await order(set()) == [m.id for m, _ in made]
-        assert await order({made[2][0].id}) == [made[2][0].id, made[0][0].id, made[1][0].id]
+        rows = await matches_repo.stale(db, u.id, 2, service.STALE_STATUSES)
+        assert [(r.match_id, r.status) for r in rows] == [(a.id, a.status)] and not hasattr(rows[0], "description_text")
 
 
 async def test_rate_limit_mid_run_keeps_progress_and_reraises(maker):
@@ -228,6 +242,7 @@ async def test_unparseable_answer_is_skipped_not_fatal(maker):
         ai = FakeScoringAI(errors={"Backend Engineer A": AIError("bad_output", "junk")})
         out = await service.match_user(db, ai, u.id)
         assert out["scored"] == 1 and out["failed"] == 1 and set(await matches(db)) == {"Backend Engineer B"}
+        assert out["pending"] == 0  # left for the next run: a slice doesn't chain just to retry it
 
 
 async def test_no_profile_or_empty_profile_does_nothing(maker):
@@ -401,3 +416,108 @@ async def test_new_user_defaults_match_budget_enabled_true(maker):
     async with maker() as db:
         u = (await db.scalars(sa.select(User).where(User.email == "new@example.com"))).one()
         assert u.match_budget_enabled is True
+
+
+# ── slices that chain themselves (#124) ──────────────────────────────────
+async def test_a_slice_scores_at_most_limit_and_reports_whats_left(maker):
+    async with maker() as db:
+        u = await make_user(db)
+        for i in range(7):
+            await make_job(db, f"Backend Engineer {i}")
+        ai = FakeScoringAI()
+        out = await service.match_user(db, ai, u.id, limit=3)
+        assert len(ai.calls) == 3 and (out["scored"], out["pending"], out["budget_left"], out["failed"]) == (3, 4, 22, 0)
+        out = await service.match_user(db, ai, u.id, budget=2, limit=3)   # the budget is the tighter bound
+        assert (out["scored"], out["pending"], out["budget_left"]) == (2, 2, 0)
+        assert (await db.get(Profile, u.id)).match_summary == out
+
+
+async def _chain(maker, ai, user_id):
+    """Run match_user through the runtime and follow its queued slices until the chain ends."""
+    async with maker() as db:
+        task = await ledger.add(db, "match_user", user_id=user_id)
+        await db.commit()
+    results, tid = [], task.id
+    while tid is not None:
+        await run_task(tid, ai, maker)
+        async with maker() as db:
+            results.append((await db.get(Task, tid)).result)
+            tid = await db.scalar(sa.select(Task.id).where(Task.kind == "match_user", Task.status == "queued"))
+    async with maker() as db:
+        questions = (await db.scalars(sa.select(Task).where(Task.kind == "collect_questions"))).all()
+    return results, questions
+
+
+async def test_the_chain_runs_slices_in_relevance_order_and_collects_questions_once(maker, monkeypatch):
+    monkeypatch.setattr(get_settings(), "match_slice_jobs", 4)
+    async with maker() as db:
+        u = await make_user(db, version=2)
+        u.match_budget_enabled = False
+        old = datetime.now(UTC) - timedelta(days=3)
+        for i in range(6):  # new candidates, newest last
+            await make_job(db, f"Backend Engineer N{i}", posted_at=old + timedelta(hours=i))
+        await make_match(db, u.id, title="Backend Engineer Saved", status="saved")
+        _, ans_job = await make_match(db, u.id, title="Backend Engineer Answered")
+        db.add(ProfileFact(user_id=u.id, question="q", answer="a", source="job_question", job_id=ans_job.id))
+        await db.commit()
+    ai = FakeScoringAI()
+    results, questions = await _chain(maker, ai, u.id)
+    assert [r["scored"] for r in results] == [4, 4]
+    assert [r["pending"] for r in results] == [4, 0] and "next_slice" not in results[1]
+    assert isinstance(results[0]["next_slice"], int)  # the next slice's task id, for the matches page
+    assert ai.calls[:2] == ["Backend Engineer Answered", "Backend Engineer Saved"]
+    assert ai.calls[2:] == [f"Backend Engineer N{i}" for i in (5, 4, 3, 2, 1, 0)]  # equal scores: newest first
+    assert len(questions) == 1
+
+
+async def test_the_chain_stops_when_the_budget_runs_out(maker, monkeypatch):
+    monkeypatch.setattr(get_settings(), "match_slice_jobs", 2)
+    async with maker() as db:
+        u = await make_user(db)
+        u.match_budget = 3
+        for i in range(6):
+            await make_job(db, f"Backend Engineer {i}")
+        await db.commit()
+    results, questions = await _chain(maker, FakeScoringAI(), u.id)
+    assert [(r["scored"], r["budget_left"], r["pending"]) for r in results] == [(2, 1, 4), (1, 0, 3)]
+    assert len(questions) == 1
+    # with no budget left, the slice scores nothing: the chain neither continues nor collects again
+    results, questions = await _chain(maker, FakeScoringAI(), u.id)
+    assert [(r["scored"], r["budget_left"]) for r in results] == [(0, 0)] and len(questions) == 1
+
+
+async def test_nothing_to_score_ends_the_chain_without_collecting(maker):
+    async with maker() as db:
+        u = await make_user(db)
+    results, questions = await _chain(maker, FakeScoringAI(), u.id)
+    assert [(r["scored"], r["pending"]) for r in results] == [(0, 0)] and questions == []
+
+
+async def test_a_rate_limit_mid_slice_keeps_what_was_scored_and_queues_nothing(maker):
+    async with maker() as db:
+        u = await make_user(db)
+        for t in ("Backend Engineer A", "Backend Engineer B", "Backend Engineer C", "Backend Engineer D"):
+            await make_job(db, t)  # equal scores, newest first: D and C, then B and A
+        task = await ledger.add(db, "match_user", user_id=u.id)
+        await db.commit()
+    ai = FakeScoringAI(errors={"Backend Engineer A": AIError("rate_limited", "usage limit")})
+    await run_task(task.id, ai, maker)
+    async with maker() as db:
+        assert set(await matches(db)) == {"Backend Engineer D", "Backend Engineer C", "Backend Engineer B"}
+        assert (await db.get(Profile, u.id)).match_summary["pending"] == 1
+        rows = [(t.kind, t.status) for t in await db.scalars(sa.select(Task).order_by(Task.id))]
+    assert rows == [("match_user", "queued")]  # the same task, put back for a retry; no new slice, no questions
+
+
+async def test_a_chain_whose_last_slice_scores_nothing_still_collects_questions(maker, monkeypatch):
+    monkeypatch.setattr(get_settings(), "match_slice_jobs", 2)
+    async with maker() as db:
+        u = await make_user(db)
+        old = datetime.now(UTC) - timedelta(days=1)
+        await make_job(db, "Backend Engineer Junk", posted_at=old)  # oldest: ranked last, alone in slice 2
+        for t in ("Backend Engineer A", "Backend Engineer B"):
+            await make_job(db, t)
+    ai = FakeScoringAI(errors={"Backend Engineer Junk": AIError("bad_output", "junk")})
+    results, questions = await _chain(maker, ai, u.id)
+    assert [(r["scored"], r["failed"], r["pending"]) for r in results] == [(2, 0, 1), (0, 1, 0)]
+    assert len(questions) == 1
