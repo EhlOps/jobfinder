@@ -25,7 +25,7 @@ KEEPALIVE_OPTIONS = {getattr(socket, name): value
 
 
 # The setting that caps each queue's tasks at once in one worker process (tasks/__main__.py).
-CONCURRENCY = {"ai": "ai_max_concurrency", "io": "worker_io_concurrency", "render": "renderer_concurrency"}
+CONCURRENCY = {"ai": "worker_ai_concurrency", "io": "worker_io_concurrency", "render": "renderer_concurrency"}
 
 
 def _broker(queue: str) -> RedisStreamBroker:

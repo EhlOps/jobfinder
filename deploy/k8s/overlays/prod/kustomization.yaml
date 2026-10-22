@@ -41,6 +41,9 @@ configMapGenerator:
       - INGEST_MAX_DISCOVERED_BOARDS_PER_RUN=100
       - DISCOVERY_ENABLED=false
       - DISCOVERY_MAX_CANDIDATES=50
+      # Cluster-wide Claude permits (the gate, #124): prod gets 3, staging keeps the default 2. The
+      # subscription is shared with staging, whose background Claude work is off.
+      - AI_MAX_CONCURRENCY=3
 
 patches:
   # Postfix relays through Gmail (RELAYHOST, ALLOWED_SENDER_DOMAINS), with the

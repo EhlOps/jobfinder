@@ -2,9 +2,10 @@
 # which carries every kind that may call Claude (tasks/kinds.py: profile, matching, letters, resumes,
 # questions, daily emails, the resolver and the coverage audit). The only task worker with the claude
 # CLI, so the worker image, the claude-auth volume and a $HOME for the CLI's state.
-# One process runs up to AI_MAX_CONCURRENCY tasks at once, and that is also the cap on parallel Claude
-# calls against the subscription; a second replica would double it, so replicas stay at 1 and the
-# strategy is Recreate (a RollingUpdate would overlap two pods).
+# One process runs up to WORKER_AI_CONCURRENCY tasks at once. Parallel Claude calls against the
+# subscription are capped cluster-wide by the Claude gate (AI_MAX_CONCURRENCY permits shared through
+# valkey, integrations/claude/gate.py), not by this process. Replicas stay at 1 and the strategy
+# Recreate until worker-ai autoscales (#124).
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -68,7 +69,7 @@ spec:
               cpu: 200m
               memory: 512Mi
             limits:
-              # Python plus up to AI_MAX_CONCURRENCY node `claude` processes.
+              # Python plus up to AI_MAX_CONCURRENCY node `claude` processes (the gate's cap bounds one pod too).
               memory: 2Gi
           securityContext:
             allowPrivilegeEscalation: false

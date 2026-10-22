@@ -2,15 +2,18 @@
 
 It imports the queue's handler modules (WORKER_MODULES; @ledger_task registers each kind on its own
 queue's broker, so the process consumes only this queue's kinds), runs up to the queue's concurrency
-at once (AI_MAX_CONCURRENCY, WORKER_IO_CONCURRENCY, RENDERER_CONCURRENCY) and acks a message only
-after its task has run, so a killed worker's messages are redelivered.
+at once (WORKER_AI_CONCURRENCY, WORKER_IO_CONCURRENCY, RENDERER_CONCURRENCY) and acks a message only
+after its task has run, so a killed worker's messages are redelivered. A worker for a queue in
+PRIORITY_QUEUES asks the Claude gate for permits in the priority lane, every other in bulk.
 """
 import sys
 
 from jobfinder.core import logging as core_logging
 from jobfinder.core.config import settings
+from jobfinder.integrations.claude import gate
 from jobfinder.tasks.brokers import CONCURRENCY
 
+PRIORITY_QUEUES = {"priority"}
 # The modules each queue's worker imports: those holding its kinds' @ledger_task handlers. A module may
 # register kinds of other queues too; they land on those queues' brokers, which this process never reads.
 WORKER_MODULES = {
@@ -40,6 +43,9 @@ def main(argv: list[str]) -> int:
     from taskiq.cli.worker.run import run_worker
 
     core_logging.configure(settings.log_level)
+    # Set before taskiq starts the worker process, which inherits it: taskiq forks on Linux (the images);
+    # under spawn (macOS) the child would start in bulk.
+    gate.set_lane("priority" if argv[0] in PRIORITY_QUEUES else "bulk")
     return run_worker(WorkerArgs.from_cli(worker_argv(argv[0]))) or 0
 
 

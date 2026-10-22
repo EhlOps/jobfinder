@@ -5,6 +5,8 @@
 - The `Fake*AI` classes stand in for `AITasks` itself, one per capability, for tests of the
   services and task handlers that call it. They are kept separate on purpose: a fake that only
   has the methods a test expects fails loudly when code under test calls something else.
+- `LocalGate` is the Claude gate in memory (one process's semaphore); conftest.py gives every test
+  one, so only tests/test_claude_gate.py talks to valkey.
 - `FakeClock`, `fake_resolve_public` and `FakeRenderer` replace the clock, DNS and the renderer
   container.
 - `run_task` delivers one ledger row in-process, the way its queue's worker would.
@@ -12,7 +14,7 @@
   network, through respx. The `web` fixture in conftest.py hands a test one that is already active.
 """
 import asyncio
-from contextlib import suppress
+from contextlib import asynccontextmanager, suppress
 from datetime import datetime
 from itertools import pairwise
 
@@ -357,3 +359,17 @@ def refuse(web: respx.MockRouter, url: str | None = None) -> respx.Route:
     route = web.route(_named(url)) if url else web.route()
     return route.mock(side_effect=httpx.ConnectError)  # a fresh error, tied to its request
 
+
+
+class LocalGate:
+    """The Claude gate (integrations/claude/gate.py) without valkey: `limit` permits in this process."""
+
+    def __init__(self, limit: int = 2):
+        self._sem = asyncio.Semaphore(limit)
+        self.leases: list[float] = []
+
+    @asynccontextmanager
+    async def slot(self, lease_s: float):
+        self.leases.append(lease_s)
+        async with self._sem:
+            yield

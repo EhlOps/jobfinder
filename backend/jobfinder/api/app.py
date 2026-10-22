@@ -29,6 +29,7 @@ from jobfinder.api import settings as settings_api
 from jobfinder.context import AppContext, build_context, default_context
 from jobfinder.core import errors
 from jobfinder.core.config import Settings
+from jobfinder.integrations.claude import gate
 from jobfinder.services import health as health_service
 
 ROUTERS = (
@@ -56,6 +57,7 @@ def create_app(settings: Settings | None = None, ctx: AppContext | None = None) 
     closes it at shutdown. Either way the settings load here, so a missing key fails startup."""
     owned = ctx is None
     context = ctx or (default_context() if settings is None else build_context(settings))
+    gate.set_lane("priority")  # a request's Claude call has someone waiting on it: it goes before bulk work
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
