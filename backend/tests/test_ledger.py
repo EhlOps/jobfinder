@@ -144,6 +144,22 @@ async def test_a_duplicate_delivery_claims_nothing(maker):
     assert len(claimed) == 1 and claimed[0].status == "running" and claimed[0].attempts == 1
 
 
+async def test_claim_stamps_started_at_for_each_attempt(db):
+    """started_at is the latest attempt's claim (#124): a retry keeps it until its own claim overwrites it."""
+    t = await ledger.add(db, "plan_work")
+    assert t.started_at is None
+    before = utcnow()
+    t = await ledger.claim(db, t.id)
+    first = t.started_at
+    assert first is not None and before <= first <= utcnow()
+    await ledger.fail(db, t, "rate limited", retry=True)
+    assert (t.status, t.started_at) == ("queued", first)
+    t.run_after = utcnow()
+    await db.flush()
+    t = await ledger.claim(db, t.id)
+    assert t.attempts == 2 and t.started_at > first
+
+
 async def test_claim_skips_rows_not_due(db):
     t = await ledger.add(db, "plan_work", run_after=utcnow() + timedelta(minutes=1))
     assert await ledger.claim(db, t.id) is None

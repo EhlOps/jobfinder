@@ -148,6 +148,22 @@ async def test_a_delivery_for_a_running_row_is_dropped(maker):
     assert (row.status, row.attempts, ran) == ("done", 2, [1])
 
 
+async def test_a_task_that_waited_over_a_minute_is_logged(maker, caplog):
+    """#124's PRD 1: a claim more than ledger.SLOW_WAIT after run_after warns with id, kind, queue, wait."""
+    async def handler(db, ai, task, payload):
+        return {}
+
+    async with maker() as db:
+        late = await ledger.add(db, "plan_work", run_after=utcnow() - timedelta(seconds=90))
+        prompt = await ledger.add(db, "ingest_tick")
+        await db.commit()
+    with caplog.at_level("WARNING", logger="jobfinder.tasks"):
+        await runtime.execute("plan_work", handler, late.id, wants_ai=False)
+        await runtime.execute("ingest_tick", handler, prompt.id, wants_ai=False)
+    slow = [r.getMessage() for r in caplog.records if "before claim" in r.getMessage()]
+    assert len(slow) == 1 and slow[0].startswith(f"task {late.id} (plan_work) on io waited 9")
+
+
 async def test_a_delivery_never_raises_into_taskiq(maker, caplog):
     """Postgres unreachable at the claim: logged once, and the message is acked (the relay re-sends)."""
 
