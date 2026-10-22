@@ -2,7 +2,7 @@
 
 `enable_source` is the one re-enable rule, shared by Admin › Sources and `cli set-board --enabled yes`.
 """
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from jobfinder.core.clock import next_on_grid, planner_interval
 from jobfinder.core.config import settings
@@ -16,6 +16,7 @@ from jobfinder.schemas.ai_admin import (
     ActiveTask,
     AiStatus,
     IngestCadence,
+    LaneStats,
     LastCall,
     Schedule,
     ScheduleRow,
@@ -256,6 +257,14 @@ async def _ingest_cadence(db: AsyncSession, now: datetime) -> IngestCadence:
     )
 
 
+LANE_WINDOW = timedelta(hours=24)  # the Queues table's window
+
+
+async def _lanes(db: AsyncSession, now: datetime) -> list[LaneStats]:
+    rows = await repo.lane_stats(db, now - LANE_WINDOW, int(ledger.SLOW_WAIT.total_seconds()))
+    return [LaneStats(**r) for r in rows]
+
+
 async def schedule(db: AsyncSession) -> Schedule:
     """What the background planner has done and will do for each user."""
     now = datetime.now(UTC)
@@ -281,5 +290,5 @@ async def schedule(db: AsyncSession) -> Schedule:
     return Schedule(
         backoff_until=_iso(await planner.backoff_until(db, now)), in_flight=len(await planner.in_flight_users(db)),
         max_per_tick=settings.planner_max_per_tick, next_tick=_iso(next_tick), users=users,
-        ingest=await _ingest_cadence(db, now),
+        ingest=await _ingest_cadence(db, now), lanes=await _lanes(db, now),
     )

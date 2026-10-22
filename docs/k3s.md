@@ -184,7 +184,7 @@ browser → host Caddy (TLS) → Traefik 127.0.0.1:8280 → web (Caddy :8080) �
 | `web` | `jobfinder-web` | nobody (65534), `SITE_ADDRESS=:8080`, `TRUSTED_PROXIES=10.42.0.0/16` |
 | `api` ×2 | `jobfinder-api` | uid 10001, `/readyz` readiness, `/healthz` liveness, `MIGRATE_ON_START=false` |
 | `scheduler` ×1 | `jobfinder-api` | cron, relay, reaper ("Task platform"); `strategy: Recreate`, heartbeat-file liveness |
-| `worker-ai` ×1 | `jobfinder-worker` | stream `jobfinder:ai`, `AI_MAX_CONCURRENCY`; the only one with Claude (store and claude-auth volumes) |
+| `worker-ai` ×1 | `jobfinder-worker` | stream `jobfinder:ai`, `WORKER_AI_CONCURRENCY`; the only one with Claude (store and claude-auth volumes) |
 | `worker-io` ×1–4 | `jobfinder-worker` | stream `jobfinder:io`, `WORKER_IO_CONCURRENCY`; store volume (it parses uploads and fetches links, #51); replicas by KEDA ("KEDA") |
 | `renderer` ×0 | `jobfinder-renderer` | opt-in, stream `jobfinder:render`; patch replicas to 1 and merge `RENDERER_ENABLED=true` |
 | `smtp` | `boky/postfix:5.1.0` | root (postfix needs it); prod relays to Gmail, staging to mailpit only (egress NetworkPolicy) |
@@ -486,7 +486,7 @@ Background work runs on a Postgres **ledger**, with **valkey** for delivery, a *
 api / workers ──(1) INSERT the tasks row, in the caller's transaction──▶ Postgres `tasks` (the ledger: the truth)
       │ (2) after COMMIT: XADD the row's id to its queue's stream
       ▼
-valkey  jobfinder:ai     ──▶ worker-ai  (AI_MAX_CONCURRENCY=2; the only one with the claude CLI)
+valkey  jobfinder:ai     ──▶ worker-ai  (WORKER_AI_CONCURRENCY=2; the only one with the claude CLI)
         jobfinder:io     ──▶ worker-io  (WORKER_IO_CONCURRENCY=10: ingest, planning, discovery, coverage scores, uploads, links)
         jobfinder:render ──▶ renderer   (RENDERER_CONCURRENCY; opt-in, 0 replicas)
         worker: (3) claim the row (one atomic UPDATE, queued → running) → run → finish → XACK
@@ -512,7 +512,7 @@ Which kind runs on which queue is in `backend/jobfinder/tasks/kinds.py`.
 | Deployment | Image | Command | Replicas | Volumes |
 |---|---|---|---|---|
 | `scheduler` | `jobfinder-api` | `python -m jobfinder.scheduler` | 1, Recreate, never more than 1 | `/tmp` (heartbeat) |
-| `worker-ai` | `jobfinder-worker` | `python -m jobfinder.tasks ai` | 1, Recreate (the Claude cap is per process) | store, claude-auth, `/tmp`, `$HOME` |
+| `worker-ai` | `jobfinder-worker` | `python -m jobfinder.tasks ai` | 1, Recreate (the Claude cap is the cluster-wide gate, `AI_MAX_CONCURRENCY`) | store, claude-auth, `/tmp`, `$HOME` |
 | `worker-io` | `jobfinder-worker` | `python -m jobfinder.tasks io` | 1–4 by KEDA, Recreate | store, `/tmp` |
 | `renderer` | `jobfinder-renderer` | `python -m jobfinder.renderer` | 0 (opt-in) | `/tmp`, `/dev/shm` |
 
@@ -674,12 +674,35 @@ from (values ('plan_work', 'io'), ('ai_check', 'ai')) v(k, q), generate_series(1
 
 Record the results (date, commit, timings) on the PR that changed the platform.
 
+### Scheduling baseline (#124)
+
+#124's PRD 1 is that every profile task returns within 2 minutes of being queued. Since migration 0027, `ledger.claim` stamps `tasks.started_at` on each claim, so a task's wait (`started_at - run_after`, the latest attempt's) and its run (`finished_at - started_at`) are recorded separately. The **Queues (last 24h)** table on `/settings/schedule` shows them per queue: tasks, wait p50/p95, run p95, and waits over 60s. A worker also logs a warning for every task that waited more than 60s before its claim (`task <id> (<kind>) on <queue> waited <n>s before claim`). The wait runs from `run_after`, so a task the reaper requeued counts its dead worker's run as wait, and a rerun held behind its running twin counts only from the twin's finish (its `run_after` moves while it is held). Retries waiting out their backoff are left out of the table until they are claimed again.
+
+This is prod over the 7 days to 2026-10-22, before #124's changes. `started_at` did not exist yet, so wait-before-claim was not recorded and these are end-to-end times only. The owner wants to revisit the match_user slice size against this baseline: compare it with the Queues table once #124 is on prod.
+
+| Task (`tasks`, created → finished) | Runs | p50 | p95 | Max |
+|---|---|---|---|---|
+| `extract_profile` | 4 | 14.4s | 22.6s | |
+| `audit_profile` | 1 | 39s | | |
+| `match_user` | 12 | 236s | 2621s | 3911s |
+| `collect_questions` | 15 | 0.1s | 96s | 297s |
+| `ingest_board` | 2111 | 5.9s | 74s | 245s |
+
+| Claude call (`ai_calls`) | Calls | p50 | p95 | Max |
+|---|---|---|---|---|
+| `score_match` | 1329 | 11.0s | 13.7s | 31.1s |
+| `extract_profile` | | 14.0s | 22.5s | |
+| `audit_profile` | | 38s | | |
+
+- **match_user** scored 21–245 jobs per run. User 2 had a daily budget of 1000 with about 34.7k matches pending.
+- **Jobs.** 111,248 active jobs.
+
 ## Scale
 
 | Workload | How it scales |
 |---|---|
 | `worker-io` | KEDA, 1–4 replicas on the lag of `jobfinder:io` (`lagCount: 50` per replica; "KEDA"). Change the range in `base/app/worker-io-scaledobject.yaml` (`minReplicaCount`/`maxReplicaCount`). |
-| `worker-ai` | **Never.** Exactly 1 replica: its process caps parallel Claude calls at `AI_MAX_CONCURRENCY`. To allow more Claude calls, raise that setting, not the replicas. CI refuses a render that scales it. |
+| `worker-ai` | **Never.** Exactly 1 replica. Parallel Claude calls are capped cluster-wide by the Claude gate (`AI_MAX_CONCURRENCY` permits in valkey), not per process; to allow more Claude calls, raise that setting, not the replicas. CI refuses a render that scales it. |
 | `api` | 2 replicas (`base/app/api.yaml`), stateless. Change `replicas` there (or patch it in an overlay) and deploy; `kubectl -n $NS scale deploy/api --replicas=3` works until the next deploy. |
 | `scheduler` | Exactly 1 (Recreate). A second one would fire every cron job twice. |
 | `renderer` | 0 or 1, opt-in (README, "render worker"). |

@@ -22,7 +22,7 @@ from typing import Literal, TypeVar, overload
 from pydantic import BaseModel, ValidationError
 
 from jobfinder.core.config import settings
-from jobfinder.integrations.claude import credentials
+from jobfinder.integrations.claude import credentials, gate
 
 T = TypeVar("T", bound=BaseModel)
 Model = Literal["haiku", "sonnet", "opus"]
@@ -30,6 +30,9 @@ ErrorKind = Literal["auth", "rate_limited", "timeout", "bad_output", "cli_missin
 
 # Keychain-backed login on macOS needs USER/LOGNAME/TMPDIR as well as HOME.
 _ENV_ALLOWLIST = ("PATH", "HOME", "USER", "LOGNAME", "TMPDIR", "CLAUDE_CONFIG_DIR")
+
+# A gate permit's lease covers the call and its one repair retry (each up to timeout_s) plus reaping the CLI.
+LEASE_MARGIN_S = 30
 
 _AUTH_RE = re.compile(
     r"not logged in|please run /login|authenticat|unauthorized|\b401\b|"
@@ -94,14 +97,14 @@ class ClaudeCode:
         claude_bin: str | None = None,
         scratch_dir: str | None = None,
         oauth_token: str | None = None,
-        max_concurrency: int | None = None,
+        claude_gate: gate.Gate | None = None,
         recorder: Recorder | None = None,
     ):
         s = settings
         self._bin = claude_bin or s.claude_bin
         self._scratch = scratch_dir or s.claude_scratch_dir
         self._token = s.claude_code_oauth_token if oauth_token is None else oauth_token
-        self._sem = asyncio.Semaphore(max_concurrency or s.ai_max_concurrency)
+        self._gate = claude_gate  # None: the process's shared gate (gate.default_gate), looked up per call
         self._recorder = recorder
 
     def _env(self) -> dict[str, str]:
@@ -185,8 +188,11 @@ class ClaudeCode:
         t0 = time.monotonic()
         usage: dict = {}
         error_kind: str | None = None
+        called = False
         try:
-            async with self._sem:
+            # One cluster-wide permit per call (gate.py), held across the repair retry too.
+            async with (self._gate or gate.default_gate()).slot(2 * timeout_s + LEASE_MARGIN_S):
+                called, t0 = True, time.monotonic()  # record the call itself, not the wait for a permit
                 envelope = await self._invoke(argv, prompt, timeout_s)
                 usage = envelope.get("usage") or {}
                 if output is None:
@@ -204,11 +210,15 @@ class ClaudeCode:
                         return self._validate(output, envelope)
                     except (ValidationError, ValueError, json.JSONDecodeError) as e:
                         raise AIError("bad_output", str(e)[:500]) from None
+        except gate.GateUnavailable as e:
+            # Retryable, and no planner backoff (unlike rate_limited). Claude never ran, so no ai_calls
+            # row: it would read as the latest call and end a rate-limit backoff early.
+            raise AIError("timeout", str(e)) from e
         except AIError as e:
             error_kind = e.kind
             raise
         finally:
-            if self._recorder:
+            if self._recorder and called:
                 with contextlib.suppress(Exception):  # logging must never break a call
                     await self._recorder(
                         CallRecord(

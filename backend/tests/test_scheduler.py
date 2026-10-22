@@ -266,6 +266,53 @@ async def test_admin_schedule_counts_boards_per_tier(authed, maker):
     assert tiers == [{"tier": 1, "boards": 2, "due": 1}, {"tier": None, "boards": 1, "due": 1}]
 
 
+async def _seed_lanes(db):
+    """ai: five tasks claimed in the last day, waits 0/10/20/100/200s, runs 1-5s; io: one still running,
+    after a 5s wait. Left out: one claimed 25h ago, one never claimed, and a retry in backoff (its
+    started_at is the last attempt's, before the new run_after)."""
+    now = datetime.now(UTC)
+    rows = []
+    for i, wait in enumerate((0, 10, 20, 100, 200)):
+        started = now - timedelta(hours=1, minutes=i)
+        rows.append(Task(kind="match_user", queue="ai", status="done", run_after=started - timedelta(seconds=wait),
+                         started_at=started, finished_at=started + timedelta(seconds=i + 1)))
+    rows.append(Task(kind="ingest_board", queue="io", status="running", run_after=now - timedelta(seconds=5), started_at=now))
+    rows.append(Task(kind="match_user", queue="ai", status="queued", run_after=now + timedelta(minutes=2),
+                     started_at=now - timedelta(minutes=10)))
+    old = now - timedelta(hours=25)
+    rows.append(Task(kind="match_user", queue="ai", status="done", run_after=old - timedelta(hours=1), started_at=old,
+                     finished_at=old))
+    rows.append(Task(kind="match_user", queue="ai", status="queued", run_after=now - timedelta(hours=2)))
+    db.add_all(rows)
+    await db.flush()
+
+
+async def test_lane_stats_percentiles_per_queue_over_the_last_day(db):
+    from jobfinder.repositories import admin as admin_repo
+
+    await _seed_lanes(db)
+    rows = await admin_repo.lane_stats(db, datetime.now(UTC) - timedelta(hours=24), 60)
+    ai, io = ({k: round(v, 3) if isinstance(v, float) else v for k, v in r.items()} for r in rows)
+    # percentile_cont interpolates: p95 of 0,10,20,100,200 is 100 + 0.8 * 100
+    assert ai == {"queue": "ai", "tasks": 5, "wait_p50": 20.0, "wait_p95": 180.0, "run_p50": 3.0, "run_p95": 4.8,
+                  "slow_waits": 2}
+    assert io == {"queue": "io", "tasks": 1, "wait_p50": 5.0, "wait_p95": 5.0, "run_p50": None, "run_p95": None,
+                  "slow_waits": 0}
+
+
+async def test_admin_schedule_reports_queue_lanes(authed, maker):
+    async with maker() as db:
+        await db.execute(sa.update(User).where(User.email == "sam@example.com").values(is_admin=True))
+        await _seed_lanes(db)
+        await db.commit()
+    lanes = (await authed.get("/api/admin/schedule")).json()["lanes"]
+    assert [lane["queue"] for lane in lanes] == ["ai", "io"]
+    assert {k: round(v, 3) for k, v in lanes[0].items() if isinstance(v, float)} == {
+        "wait_p50": 20.0, "wait_p95": 180.0, "run_p50": 3.0, "run_p95": 4.8}
+    assert (lanes[0]["tasks"], lanes[0]["slow_waits"]) == (5, 2)
+    assert (lanes[1]["queue"], lanes[1]["tasks"], lanes[1]["run_p95"]) == ("io", 1, None)
+
+
 async def test_a_passed_graduation_date_gets_the_user_planned_again(maker):
     async with maker() as db:
         u = await _setup(db, "grad@x.com", last_run_ago=timedelta(hours=5))

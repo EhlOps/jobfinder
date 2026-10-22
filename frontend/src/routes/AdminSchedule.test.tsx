@@ -14,6 +14,10 @@ const schedule = {
   ],
   ingest: { adaptive: true, tick_minutes: 15, interval_hours: 6,
     tiers: [{ tier: 1, boards: 12, due: 3 }, { tier: null, boards: 600, due: 40 }] },
+  lanes: [
+    { queue: "ai", tasks: 31, wait_p50: 2.25, wait_p95: 74.4, run_p50: 11, run_p95: 236.2, slow_waits: 3 },
+    { queue: "io", tasks: 2111, wait_p50: 0.1, wait_p95: 1.5, run_p50: null, run_p95: null, slow_waits: 0 },
+  ],
 };
 
 describe("admin schedule", () => {
@@ -29,6 +33,19 @@ describe("admin schedule", () => {
     expect(screen.getByText(/adaptive, tick every 15 min/)).toBeInTheDocument();
     expect(screen.getByText(/tier 1: 12 boards \(3 due\)/)).toBeInTheDocument();
     expect(screen.getByText(/untiered: 600 boards \(40 due\)/)).toBeInTheDocument();
+  });
+
+  it("shows each queue's waits and runs over the last day", async () => {
+    mockApi({ "GET /api/auth/me": () => ({ ...USER, is_admin: true }), "GET /api/admin/schedule": () => schedule });
+    renderApp(<AdminSchedule />);
+    expect(await screen.findByText("Queues (last 24h)")).toBeInTheDocument();
+    const ai = screen.getByText("ai").closest("tr")!;
+    expect(ai).toHaveTextContent("31");
+    expect(ai).toHaveTextContent("2.3s / 74s");
+    expect(ai).toHaveTextContent("236s");
+    const io = screen.getByText("io").closest("tr")!;
+    expect(io).toHaveTextContent("0.1s / 1.5s");
+    expect(io).toHaveTextContent("—");
   });
 
   it("says when planning is paused by a rate limit", async () => {

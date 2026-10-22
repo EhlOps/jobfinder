@@ -2,7 +2,8 @@
 (`python -m jobfinder.tasks io`), so a long ingest run never holds up an `ai` delivery: the two queues
 are separate streams consumed by separate processes.
 
-Handlers are `(db, ai, task, payload) -> dict` like tasks.ai's; `ai` is unused here.
+Handlers are `(db, ai, task, payload) -> dict` like tasks.ai's, registered with @ledger_task(kind) on
+the io broker (tasks.kinds); `ai` is unused here.
 """
 from datetime import timedelta
 from typing import Literal
@@ -65,7 +66,7 @@ class IngestSourceArgs(BaseModel):
     source: Literal["jobspy", "usajobs"]
 
 
-@ledger_task(io_broker, "ingest_tick", ai=False)
+@ledger_task("ingest_tick", ai=False)
 async def ingest_tick(db: AsyncSession, ai, task: Task, _: None) -> dict:
     """The scheduled ingest (#50): pick the due boards (the adaptive cadence and the discovered-board cap)
     and queue one ingest_board per board, plus one ingest_source per due extra source, all committed
@@ -85,7 +86,7 @@ async def ingest_tick(db: AsyncSession, ai, task: Task, _: None) -> dict:
     return {"due": len(ids), "sources": sources}
 
 
-@ledger_task(io_broker, "ingest_board", payload=IngestBoardArgs, ai=False)
+@ledger_task("ingest_board", payload=IngestBoardArgs, ai=False)
 async def ingest_board(db: AsyncSession, ai, task: Task, p: IngestBoardArgs) -> dict:
     """Fetch one board. The board commits in its own session (services.ingestion.ingest_board), which
     records a failed fetch on the board (its backoff is the board's retry); this task's session holds
@@ -98,7 +99,7 @@ async def ingest_board(db: AsyncSession, ai, task: Task, p: IngestBoardArgs) -> 
     return await _changed(db, stats)
 
 
-@ledger_task(io_broker, "ingest_source", payload=IngestSourceArgs, ai=False)
+@ledger_task("ingest_source", payload=IngestSourceArgs, ai=False)
 async def ingest_source(db: AsyncSession, ai, task: Task, p: IngestSourceArgs) -> dict:
     """Fetch jobspy or usajobs (the sources without boards), on their own so a long scrape never holds
     a board up. Like ingest_board, it commits in its own sessions (services.ingestion)."""
@@ -124,14 +125,14 @@ async def _plan(db: AsyncSession, run_after=None) -> None:
     await ledger.add(db, "plan_work", run_after=run_after, rerun=True)  # a running plan missed these jobs
 
 
-@ledger_task(io_broker, "plan_work", ai=False)
+@ledger_task("plan_work", ai=False)
 async def plan_work(db: AsyncSession, ai, task: Task, _: None) -> dict:
     from jobfinder.services import planner
 
     return await planner.plan(db)
 
 
-@ledger_task(io_broker, "daily_emails", ai=False)
+@ledger_task("daily_emails", ai=False)
 async def daily_emails(db: AsyncSession, ai, task: Task, _: None) -> dict:
     """Hourly tick: queue question collection on `ai` for users whose digest is coming up, then send the
     daily email to every user whose chosen hour has come, with the questions collected so far (#50)."""
@@ -144,14 +145,14 @@ async def daily_emails(db: AsyncSession, ai, task: Task, _: None) -> dict:
     return {**await digest.send_due(db, now), "questions_queued": queued}
 
 
-@ledger_task(io_broker, "discover_boards", ai=False)
+@ledger_task("discover_boards", ai=False)
 async def discover_boards(db: AsyncSession, ai, task: Task, _: None) -> dict:
     from jobfinder.services import discovery
 
     return (await discovery.discover_boards(db, checkpoint=db.commit)).as_dict()  # keep each board as it's added
 
 
-@ledger_task(io_broker, "score_coveted", payload=ScoreCovetedArgs, ai=False)
+@ledger_task("score_coveted", payload=ScoreCovetedArgs, ai=False)
 async def score_coveted(db: AsyncSession, ai, task: Task, p: ScoreCovetedArgs) -> dict:
     """Weekly: recompute how sought-after each employer is, then audit coverage of the top tiers."""
     from jobfinder.services import coverage
@@ -166,7 +167,7 @@ async def score_coveted(db: AsyncSession, ai, task: Task, p: ScoreCovetedArgs) -
 # ---------------------------------------------------------------- resolver (deterministic rungs, #50)
 
 
-@ledger_task(io_broker, "resolve_job_link", payload=ResolveLinkArgs, ai=False)
+@ledger_task("resolve_job_link", payload=ResolveLinkArgs, ai=False)
 async def resolve_job_link(db: AsyncSession, ai, task: Task, p: ResolveLinkArgs) -> dict:
     """A pasted job link whose board is new: add it, fetch it now, then let the planner match the new jobs.
     When no deterministic rung reads the site, induce_recipe asks Claude on the ai queue (#50); the link
@@ -184,7 +185,7 @@ async def resolve_job_link(db: AsyncSession, ai, task: Task, p: ResolveLinkArgs)
     return out
 
 
-@ledger_task(io_broker, "audit_coverage", payload=AuditCoverageArgs, ai=False)
+@ledger_task("audit_coverage", payload=AuditCoverageArgs, ai=False)
 async def audit_coverage(db: AsyncSession, ai, task: Task, p: AuditCoverageArgs) -> dict:
     """Send coveted employers with no working board through the resolver (payload may name just one).
     Deterministic rungs only: services.coverage never hands the resolver Claude (#50)."""
