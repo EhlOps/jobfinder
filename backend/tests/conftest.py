@@ -29,6 +29,10 @@ assert len(RC_DB_NAME) <= 63, f"TEST_DB={TEST_DB!r} is too long for a per-worker
 TEST_URL = ADMIN_URL.rsplit("/", 1)[0] + f"/{TEST_DB_NAME}"
 RC_URL = ADMIN_URL.rsplit("/", 1)[0] + f"/{RC_DB_NAME}"
 
+# The valkey tests/test_claude_gate.py runs against: by default the one `jobfinder dev` port-forwards to
+# :6380; CI points it at its service container. Every other test gets an in-memory gate (below).
+TEST_VALKEY_URL = os.environ.get("TEST_VALKEY_URL") or "redis://127.0.0.1:6380/0"
+
 os.environ["DATABASE_URL"] = RC_URL
 os.environ["SECRET_KEY"] = "test-secret-key-0123456789-abcdefghijklmnop"
 # An https value in backend/.env would make the session cookie Secure, which the http test client drops.
@@ -39,9 +43,10 @@ from jobfinder.context import build_context, default_context
 from jobfinder.core import context as core_context
 from jobfinder.core.config import get_settings
 from jobfinder.core.db import Base
+from jobfinder.integrations.claude import gate as claude_gate
 from jobfinder.storage.documents import DocumentStore
 from jobfinder.tasks import ledger
-from tests.fakes import MockWeb
+from tests.fakes import LocalGate, MockWeb
 
 
 async def _drop_leaked_connections(name):
@@ -234,6 +239,14 @@ async def _close_shared_http():
 
 
 @pytest.fixture(autouse=True)
+def local_claude_gate(monkeypatch):
+    """Claude permits in memory, so a test's Claude calls never need valkey (test_claude_gate.py does)."""
+    gate = LocalGate()
+    monkeypatch.setattr(claude_gate, "default_gate", lambda: gate)
+    return gate
+
+
+@pytest.fixture(autouse=True)
 def isolated_claude_auth(tmp_path, monkeypatch):
     """Never let a test read or write a real credentials directory."""
     s = get_settings()
@@ -357,7 +370,7 @@ def published(request, monkeypatch, no_publish):
 # resolving a name other than localhost, raises at once (and fails the test even if the code under test
 # swallows the error), so an HTTP call that respx or MockWeb doesn't mock fails loudly instead of fetching.
 # respx intercepts httpx before any socket is opened. Postgres and valkey are on localhost, or on the hosts
-# TEST_ADMIN_URL and VALKEY_URL name, which are let through too.
+# TEST_ADMIN_URL, VALKEY_URL and TEST_VALKEY_URL name, which are let through too.
 _blocked: list[str] = []
 
 
@@ -384,8 +397,8 @@ def _ip_literal(host) -> bool:
 
 
 def _service_hosts(urls) -> set[str]:
-    """The hosts of the test's own services (Postgres from TEST_ADMIN_URL, valkey from VALKEY_URL) that
-    aren't loopback: CI or a developer may point them at another machine."""
+    """The hosts of the test's own services (Postgres from TEST_ADMIN_URL, valkey from VALKEY_URL and
+    TEST_VALKEY_URL) that aren't loopback: CI or a developer may point them at another machine."""
     return {h for h in (urlsplit(u).hostname for u in urls if u) if h and not _loopback(h)}
 
 
@@ -415,7 +428,7 @@ def _refuse(what: str):
 @pytest.fixture(scope="session", autouse=True)
 def _deny_network():
     real_connect, real_connect_ex, real_getaddrinfo = socket.socket.connect, socket.socket.connect_ex, socket.getaddrinfo
-    allowed = _addresses(_service_hosts([ADMIN_URL, get_settings().valkey_url]), real_getaddrinfo)
+    allowed = _addresses(_service_hosts([ADMIN_URL, get_settings().valkey_url, TEST_VALKEY_URL]), real_getaddrinfo)
 
     def check(sock, address):
         if sock.family != getattr(socket, "AF_UNIX", None) and not (

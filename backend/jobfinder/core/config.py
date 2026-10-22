@@ -104,6 +104,7 @@ class Settings(BaseSettings):
     task_prune_days: int
     worker_reap_seconds: float
     valkey_url: str
+    worker_ai_concurrency: int
     worker_io_concurrency: int
     relay_seconds: float
     password_link_ttl_minutes: int

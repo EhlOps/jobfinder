@@ -363,7 +363,9 @@ API key, and you never need to open a pod to set it up:
 
 Until it's connected, analysis steps show an "AI isn't connected" notice (with a link for admins).
 `CLAUDE_CODE_OAUTH_TOKEN` still works as a fallback. Usage limits are shared by everyone using your instance, and
-worker-ai runs at most `AI_MAX_CONCURRENCY` Claude calls at once (it is never scaled past one pod).
+at most `AI_MAX_CONCURRENCY` Claude calls run at once across the whole cluster, however many pods call Claude:
+every call first takes a permit from the Claude gate, shared through valkey (`integrations/claude/gate.py`).
+Calls someone is waiting on (the api, the priority worker) get the next free permit before background work.
 
 ## Deploy
 

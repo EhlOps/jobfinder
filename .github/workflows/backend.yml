@@ -42,10 +42,21 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+      # tests/test_claude_gate.py runs the Claude gate against it (every other test uses an in-memory gate).
+      valkey:
+        image: valkey/valkey:8.1
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     env:
       # tests/conftest.py creates the test database from this admin URL and sets DATABASE_URL,
       # SECRET_KEY and PUBLIC_BASE_URL itself. No .env is needed.
       TEST_ADMIN_URL: postgresql+asyncpg://jobfinder:jobfinder@localhost:5432/postgres
+      TEST_VALKEY_URL: redis://localhost:6379/0
       UV_PYTHON: "3.11"  # matches the python:3.11 base of the Dockerfiles
     steps:
       - uses: actions/checkout@v7
