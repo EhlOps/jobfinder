@@ -217,6 +217,17 @@ export interface Schedule {
   next_tick: string | null;
   users: ScheduleRow[];
   ingest: IngestCadence;
+  lanes: LaneStats[];
+}
+/** One queue's tasks claimed in the last 24h: wait before claim and run time, in seconds. */
+export interface LaneStats {
+  queue: string;
+  tasks: number;
+  wait_p50: number;
+  wait_p95: number;
+  run_p50: number | null; // null while none has finished
+  run_p95: number | null;
+  slow_waits: number; // waits over 60s
 }
 export interface IngestCadence {
   adaptive: boolean;

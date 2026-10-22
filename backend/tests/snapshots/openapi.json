@@ -1073,6 +1073,64 @@
         "title": "JobOut",
         "type": "object"
       },
+      "LaneStats": {
+        "description": "One queue's tasks claimed in the last 24h (tasks.started_at): how long they waited to be claimed\n(started_at - run_after) and ran (finished_at - started_at), in seconds. #124's PRD 1 is measured here.",
+        "properties": {
+          "queue": {
+            "title": "Queue",
+            "type": "string"
+          },
+          "run_p50": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run P50"
+          },
+          "run_p95": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run P95"
+          },
+          "slow_waits": {
+            "title": "Slow Waits",
+            "type": "integer"
+          },
+          "tasks": {
+            "title": "Tasks",
+            "type": "integer"
+          },
+          "wait_p50": {
+            "title": "Wait P50",
+            "type": "number"
+          },
+          "wait_p95": {
+            "title": "Wait P95",
+            "type": "number"
+          }
+        },
+        "required": [
+          "queue",
+          "tasks",
+          "wait_p50",
+          "wait_p95",
+          "run_p50",
+          "run_p95",
+          "slow_waits"
+        ],
+        "title": "LaneStats",
+        "type": "object"
+      },
       "LastCall": {
         "properties": {
           "at": {
@@ -2173,6 +2231,13 @@
           "ingest": {
             "$ref": "#/components/schemas/IngestCadence"
           },
+          "lanes": {
+            "items": {
+              "$ref": "#/components/schemas/LaneStats"
+            },
+            "title": "Lanes",
+            "type": "array"
+          },
           "max_per_tick": {
             "title": "Max Per Tick",
             "type": "integer"
@@ -2202,7 +2267,8 @@
           "max_per_tick",
           "next_tick",
           "users",
-          "ingest"
+          "ingest",
+          "lanes"
         ],
         "title": "Schedule",
         "type": "object"

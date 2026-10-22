@@ -674,6 +674,29 @@ from (values ('plan_work', 'io'), ('ai_check', 'ai')) v(k, q), generate_series(1
 
 Record the results (date, commit, timings) on the PR that changed the platform.
 
+### Scheduling baseline (#124)
+
+#124's PRD 1 is that every profile task returns within 2 minutes of being queued. Since migration 0027, `ledger.claim` stamps `tasks.started_at` on each claim, so a task's wait (`started_at - run_after`, the latest attempt's) and its run (`finished_at - started_at`) are recorded separately. The **Queues (last 24h)** table on `/settings/schedule` shows them per queue: tasks, wait p50/p95, run p95, and waits over 60s. A worker also logs a warning for every task that waited more than 60s before its claim (`task <id> (<kind>) on <queue> waited <n>s before claim`). The wait runs from `run_after`, so a task the reaper requeued counts its dead worker's run as wait, and a rerun held behind its running twin counts only from the twin's finish (its `run_after` moves while it is held). Retries waiting out their backoff are left out of the table until they are claimed again.
+
+This is prod over the 7 days to 2026-10-22, before #124's changes. `started_at` did not exist yet, so wait-before-claim was not recorded and these are end-to-end times only. The owner wants to revisit the match_user slice size against this baseline: compare it with the Queues table once #124 is on prod.
+
+| Task (`tasks`, created → finished) | Runs | p50 | p95 | Max |
+|---|---|---|---|---|
+| `extract_profile` | 4 | 14.4s | 22.6s | |
+| `audit_profile` | 1 | 39s | | |
+| `match_user` | 12 | 236s | 2621s | 3911s |
+| `collect_questions` | 15 | 0.1s | 96s | 297s |
+| `ingest_board` | 2111 | 5.9s | 74s | 245s |
+
+| Claude call (`ai_calls`) | Calls | p50 | p95 | Max |
+|---|---|---|---|---|
+| `score_match` | 1329 | 11.0s | 13.7s | 31.1s |
+| `extract_profile` | | 14.0s | 22.5s | |
+| `audit_profile` | | 38s | | |
+
+- **match_user** scored 21–245 jobs per run. User 2 had a daily budget of 1000 with about 34.7k matches pending.
+- **Jobs.** 111,248 active jobs.
+
 ## Scale
 
 | Workload | How it scales |
