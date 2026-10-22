@@ -168,7 +168,7 @@ kubectl -n jobfinder-staging get pods,pvc,networkpolicy
 To check the policy, run a throwaway `postgres:16.15` pod with and without `jobfinder.io/postgres-client: "true"` and try `pg_isready -h postgres -t 5`: the labelled one answers `accepting connections`, the unlabelled one `no response`.
 
 **Rotate the password:** reseal (`deploy/k8s/README.md`, "Secrets"), apply, then set it inside the database too, since `POSTGRES_PASSWORD` only applies at `initdb`:
-`kubectl -n $NS exec -it postgres-0 -- psql -U jobfinder -d jobfinder -c '\password jobfinder'`, then restart the app (`kubectl -n $NS rollout restart deploy/api deploy/scheduler deploy/worker-ai deploy/worker-io`).
+`kubectl -n $NS exec -it postgres-0 -- psql -U jobfinder -d jobfinder -c '\password jobfinder'`, then restart the app (`kubectl -n $NS rollout restart deploy/api deploy/scheduler deploy/worker-priority deploy/worker-ai deploy/worker-io`).
 
 ## Workloads (#43, #48)
 
@@ -176,7 +176,7 @@ Both namespaces run the same workloads from the same base; the overlays differ o
 
 ```text
 browser → host Caddy (TLS) → Traefik 127.0.0.1:8280 → web (Caddy :8080) → api:8000 (2 pods)
-                                                      scheduler (1) · worker-ai (1) · worker-io (1–4) · renderer (0) · smtp
+                                                      scheduler (1) · worker-priority (1–3) · worker-ai (1) · worker-io (1–4) · renderer (0) · smtp
 ```
 
 | Workload | Image | Notes |
@@ -184,8 +184,9 @@ browser → host Caddy (TLS) → Traefik 127.0.0.1:8280 → web (Caddy :8080) �
 | `web` | `jobfinder-web` | nobody (65534), `SITE_ADDRESS=:8080`, `TRUSTED_PROXIES=10.42.0.0/16` |
 | `api` ×2 | `jobfinder-api` | uid 10001, `/readyz` readiness, `/healthz` liveness, `MIGRATE_ON_START=false` |
 | `scheduler` ×1 | `jobfinder-api` | cron, relay, reaper ("Task platform"); `strategy: Recreate`, heartbeat-file liveness |
-| `worker-ai` ×1 | `jobfinder-worker` | stream `jobfinder:ai`, `WORKER_AI_CONCURRENCY`; the only one with Claude (store and claude-auth volumes) |
-| `worker-io` ×1–4 | `jobfinder-worker` | stream `jobfinder:io`, `WORKER_IO_CONCURRENCY`; store volume (it parses uploads and fetches links, #51); replicas by KEDA ("KEDA") |
+| `worker-priority` ×1–3 | `jobfinder-worker` | the priority lane (#124): stream `jobfinder:priority`, `WORKER_PRIORITY_CONCURRENCY`; profile work, cover letters, resumes, uploads and links; runs Claude (store and claude-auth volumes), first in line at the Claude gate; replicas by KEDA (staging 1–2) |
+| `worker-ai` ×1 | `jobfinder-worker` | stream `jobfinder:ai`, `WORKER_AI_CONCURRENCY`; bulk Claude work (match slices, questions, recipes; store and claude-auth volumes) |
+| `worker-io` ×1–4 | `jobfinder-worker` | stream `jobfinder:io`, `WORKER_IO_CONCURRENCY`; ingest, planning, email, no Claude (store volume); replicas by KEDA ("KEDA") |
 | `renderer` ×0 | `jobfinder-renderer` | opt-in, stream `jobfinder:render`; patch replicas to 1 and merge `RENDERER_ENABLED=true` |
 | `smtp` | `boky/postfix:5.1.0` | root (postfix needs it); prod relays to Gmail, staging to mailpit only (egress NetworkPolicy) |
 | `mailpit` | `axllent/mailpit:v1.31.3` | staging only; the app's `SMTP_HOST` |
@@ -397,6 +398,7 @@ That works as long as no migration ran in between.
 OLD=sha-<older>      # per image: web is often an older tag than api/worker
 kubectl -n jobfinder set image deploy/api api=ghcr.io/ehlops/jobfinder-api:$OLD
 kubectl -n jobfinder set image deploy/scheduler scheduler=ghcr.io/ehlops/jobfinder-api:$OLD
+kubectl -n jobfinder set image deploy/worker-priority worker-priority=ghcr.io/ehlops/jobfinder-worker:$OLD
 kubectl -n jobfinder set image deploy/worker-ai worker-ai=ghcr.io/ehlops/jobfinder-worker:$OLD
 kubectl -n jobfinder set image deploy/worker-io worker-io=ghcr.io/ehlops/jobfinder-worker:$OLD
 kubectl -n jobfinder set image deploy/renderer renderer=ghcr.io/ehlops/jobfinder-renderer:$OLD
@@ -438,7 +440,7 @@ After a change to `deploy.sh` or `deploy-ssh.sh`, reinstall the root-owned copie
 deploy/k8s/staging-restore.sh            # asks first; --yes to skip the prompt
 ```
 
-It takes the deploy lock (refusing while a deploy runs), pauses worker-io's ScaledObject and scales staging's app (api, renderer, scheduler, worker-ai, worker-io) to 0, drops and recreates the staging database, streams `pg_dump -Fc` from prod's `postgres-0` (namespace `jobfinder`; prod is only read) into `pg_restore` in staging's `postgres-0` (no file on disk), empties staging's task streams (their ids belong to the dropped database; the relay re-sends the copy's queued rows) and scales the app back. The schema is then at prod's revision: if staging's image is newer, the api stays unready until you redeploy (which migrates). Documents in prod's `store` PVC are not copied, so files uploaded on prod are missing on staging. It refuses to restore into `jobfinder`.
+It takes the deploy lock (refusing while a deploy runs), pauses worker-io's ScaledObject and scales staging's app (api, renderer, scheduler, worker-priority, worker-ai, worker-io) to 0, drops and recreates the staging database, streams `pg_dump -Fc` from prod's `postgres-0` (namespace `jobfinder`; prod is only read) into `pg_restore` in staging's `postgres-0` (no file on disk), empties staging's task streams (their ids belong to the dropped database; the relay re-sends the copy's queued rows) and scales the app back. The schema is then at prod's revision: if staging's image is newer, the api stays unready until you redeploy (which migrates). Documents in prod's `store` PVC are not copied, so files uploaded on prod are missing on staging. It refuses to restore into `jobfinder`.
 
 ### Read staging's mail
 
@@ -486,9 +488,12 @@ Background work runs on a Postgres **ledger**, with **valkey** for delivery, a *
 api / workers ──(1) INSERT the tasks row, in the caller's transaction──▶ Postgres `tasks` (the ledger: the truth)
       │ (2) after COMMIT: XADD the row's id to its queue's stream
       ▼
-valkey  jobfinder:ai     ──▶ worker-ai  (WORKER_AI_CONCURRENCY=2; the only one with the claude CLI)
-        jobfinder:io     ──▶ worker-io  (WORKER_IO_CONCURRENCY=10: ingest, planning, discovery, coverage scores, uploads, links)
-        jobfinder:render ──▶ renderer   (RENDERER_CONCURRENCY; opt-in, 0 replicas)
+valkey  jobfinder:priority ──▶ worker-priority (WORKER_PRIORITY_CONCURRENCY=2: profile, letters, resumes, uploads, links)
+        jobfinder:ai       ──▶ worker-ai       (WORKER_AI_CONCURRENCY=2: match slices, questions, recipe induction)
+        jobfinder:io       ──▶ worker-io       (WORKER_IO_CONCURRENCY=10: ingest, planning, discovery, coverage scores)
+        jobfinder:render   ──▶ renderer        (RENDERER_CONCURRENCY; opt-in, 0 replicas)
+        worker-priority and worker-ai run Claude; each call waits for a ClaudeGate permit (AI_MAX_CONCURRENCY
+        in all, shared through valkey), and a waiting worker-priority call gets the next one before any bulk call
         worker: (3) claim the row (one atomic UPDATE, queued → running) → run → finish → XACK
 
 scheduler (1 replica, Recreate)
@@ -499,6 +504,8 @@ scheduler (1 replica, Recreate)
 ```
 
 Which kind runs on which queue is in `backend/jobfinder/tasks/kinds.py`.
+
+**The priority lane (#124).** `priority` carries the work someone is waiting on: `extract_profile`, `followup_questions`, `audit_profile`, `cover_letter`, `resume_tailor`, `ai_check`, `parse_document` and `fetch_link`. Its own stream means these are *delivered* at once instead of waiting behind match slices on `jobfinder:ai` or an ingest fan-out on `jobfinder:io`; the Claude gate then serves its calls ahead of worker-ai's, so a profile task waits at most for one in-flight Claude call to finish. Nothing is reserved: with no priority work waiting, worker-ai's bulk calls use every permit, and an idle worker-priority costs one pod's memory request. The document kinds call no Claude; they are on the lane only to skip io's queue. Migration 0028 moved the rows already queued.
 
 **How does the api hand work to the workers? Through valkey as well?** Yes, but valkey only delivers. The api writes the ledger row in the request's own transaction. After the commit, it publishes the row's id to the queue's valkey stream, so a worker never sees an uncommitted row. Suppose the publish is lost (valkey is down, or the pod is killed between the commit and the publish). The row is still queued in Postgres, and the scheduler's relay re-sends it on a later tick. A duplicate delivery does no harm: the worker's claim is a single `UPDATE … WHERE status = 'queued'`, so one delivery wins and the others are acked and dropped. Workers enqueue their follow-ups the same way (ingest → `plan_work`, matching → `collect_questions`).
 
@@ -512,12 +519,13 @@ Which kind runs on which queue is in `backend/jobfinder/tasks/kinds.py`.
 | Deployment | Image | Command | Replicas | Volumes |
 |---|---|---|---|---|
 | `scheduler` | `jobfinder-api` | `python -m jobfinder.scheduler` | 1, Recreate, never more than 1 | `/tmp` (heartbeat) |
+| `worker-priority` | `jobfinder-worker` | `python -m jobfinder.tasks priority` | 1–3 by KEDA (staging 1–2), one per unread message; RollingUpdate | store, claude-auth, `/tmp`, `$HOME` |
 | `worker-ai` | `jobfinder-worker` | `python -m jobfinder.tasks ai` | 1, Recreate (the Claude cap is the cluster-wide gate, `AI_MAX_CONCURRENCY`) | store, claude-auth, `/tmp`, `$HOME` |
 | `worker-io` | `jobfinder-worker` | `python -m jobfinder.tasks io` | 1–4 by KEDA, Recreate | store, `/tmp` |
 | `renderer` | `jobfinder-renderer` | `python -m jobfinder.renderer` | 0 (opt-in) | `/tmp`, `/dev/shm` |
 
 - **Labels.** All of them carry `jobfinder.io/postgres-client` and `jobfinder.io/valkey-client`, so the NetworkPolicies let them in.
-- **Claude.** Only worker-ai runs Claude. worker-io uses the worker image only for ingestion's dependencies, and never reads the Claude token. It does mount the store: `parse_document` and `fetch_link` read uploads and profile links there off the api, which saves them as "processing" (#51).
+- **Claude.** worker-priority and worker-ai run Claude, both through the gate (worker-priority in its priority lane), so the subscription sees at most `AI_MAX_CONCURRENCY` calls at once whatever the pod count. worker-priority also runs `parse_document` and `fetch_link`, which read uploads and profile links in the store off the api, which saves them as "processing" (#51). worker-io uses the worker image only for ingestion's dependencies, and never reads the Claude token.
 - **Liveness.** The scheduler touches `/tmp/scheduler-alive` on every relay tick and is restarted when the file is more than 2 minutes old. The workers have no HTTP endpoint, so their probe checks that the `jobfinder.tasks` process is there.
 - **Shutdown.** The workers get `terminationGracePeriodSeconds: 60`, so an in-flight task can finish and ack.
 - **Scaling.** Only worker-io scales ("Scale", "KEDA"). worker-ai stays at exactly 1: its process is the cap on parallel Claude calls, and CI fails a render that autoscales it or gives it more replicas.
@@ -525,7 +533,7 @@ Which kind runs on which queue is in `backend/jobfinder/tasks/kinds.py`.
 ### Check the streams
 
 ```sh
-kubectl -n $NS exec sts/valkey -- valkey-cli xinfo groups jobfinder:ai    # also jobfinder:io, jobfinder:render
+kubectl -n $NS exec sts/valkey -- valkey-cli xinfo groups jobfinder:ai    # also jobfinder:priority, :io, :render
 kubectl -n $NS exec sts/valkey -- valkey-cli xinfo consumers jobfinder:ai jobfinder-ai
 kubectl -n $NS exec sts/valkey -- valkey-cli xpending jobfinder:ai jobfinder-ai
 kubectl -n $NS exec sts/valkey -- valkey-cli xlen jobfinder:ai
@@ -535,8 +543,8 @@ kubectl -n $NS exec deploy/scheduler -- ls -l --time-style=+%T /tmp/scheduler-al
 ```
 
 What healthy looks like:
-- **Groups:** one per stream (`jobfinder-ai`, `jobfinder-io`, `jobfinder-render`), with `lag` at 0 or falling. `jobfinder-io`'s lag is what KEDA scales worker-io on.
-- **Pending:** no higher than about twice the worker's concurrency per pod (each read takes at most the concurrency, and the next read comes when a slot frees: 4 for ai, 20 for each worker-io replica), apart from messages of killed pods. Those come back within 10 minutes and are dropped.
+- **Groups:** one per stream (`jobfinder-priority`, `jobfinder-ai`, `jobfinder-io`, `jobfinder-render`), with `lag` at 0 or falling. `jobfinder-priority`'s lag should be 0 within a minute (any lag adds a worker-priority pod); `jobfinder-io`'s lag is what KEDA scales worker-io on.
+- **Pending:** no higher than about twice the worker's concurrency per pod (each read takes at most the concurrency, and the next read comes when a slot frees: 4 for priority and ai, 20 for each worker-io replica), apart from messages of killed pods. Those come back within 10 minutes and are dropped.
 - **Length:** `xlen` stays under 10,000, the length the streams are trimmed to (each entry is only an id).
 - **Consumers:** a killed pod's consumer stays listed in `xinfo consumers`. Once its `pending` is 0, `valkey-cli xgroup delconsumer jobfinder:ai jobfinder-ai <name>` removes it.
 
@@ -738,7 +746,7 @@ kubectl -n $NS describe pod <pod>                                            # e
 kubectl -n $NS get events --sort-by=.lastTimestamp | tail -20
 ```
 
-Deployments: `web`, `api`, `scheduler`, `worker-ai`, `worker-io`, `renderer`, `smtp` (and `mailpit` in staging).
+Deployments: `web`, `api`, `scheduler`, `worker-priority`, `worker-ai`, `worker-io`, `renderer`, `smtp` (and `mailpit` in staging).
 
 **Stuck or failed tasks.** Start with the CLI, then the ledger:
 
@@ -815,11 +823,11 @@ kubectl -n $NS delete pod backup-copy
 
 This replaces the namespace's data:
 
-1. Stop the app: pause worker-io's ScaledObject, marked so the final deploy resumes it (`kubectl -n $NS annotate scaledobject worker-io autoscaling.keda.sh/paused-replicas=0 jobfinder.io/paused-by=restore --overwrite`), and `kubectl -n $NS scale deploy api renderer scheduler worker-ai --replicas=0`.
+1. Stop the app: pause the worker-priority and worker-io ScaledObjects, marked so the final deploy resumes them (`for so in worker-priority worker-io; do kubectl -n $NS annotate scaledobject $so autoscaling.keda.sh/paused-replicas=0 jobfinder.io/paused-by=restore --overwrite; done`), and `kubectl -n $NS scale deploy api renderer scheduler worker-ai --replicas=0`.
 2. In `postgres-0`: `dropdb -U jobfinder --force jobfinder && createdb -U jobfinder -O jobfinder jobfinder`.
 3. Run `pg_restore -h postgres -U jobfinder -d jobfinder --no-owner --no-privileges --exit-on-error --single-transaction /backups/db-<ts>.dump` (or `pre-db-<ts>.dump`) from a pod like the drill's (`backup-restore.sh` shows the spec: uid 10001, `jobfinder.io/postgres-client`, `PGPASSWORD` from `postgres-credentials`, `backups` read-only). Don't stream a dump out through `kubectl exec` stdout: large outputs break off with a websocket EOF; stdin is fine.
 4. Untar the matching `files-<ts>.tar.gz` (or `pre-files-<ts>.tar.gz`) into the PVCs (`store/` into `store`, `claude/` into `claude-auth`) from a root helper pod with `--numeric-owner`.
-5. Empty the task streams: `for q in ai io render; do kubectl -n $NS exec valkey-0 -- valkey-cli XTRIM jobfinder:$q MAXLEN 0; done`.
+5. Empty the task streams: `for q in priority ai io render; do kubectl -n $NS exec valkey-0 -- valkey-cli XTRIM jobfinder:$q MAXLEN 0; done`.
 6. `deploy.sh <overlay> <running tag>` (it migrates if the dump is older than the image, restores the replicas and lifts the pause).
 
 ## Resources

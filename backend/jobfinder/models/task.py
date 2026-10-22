@@ -38,7 +38,7 @@ class Task(Base):
         ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True
     )
     kind: Mapped[str] = mapped_column(String(64))
-    # The valkey stream that delivers it (tasks.kinds.QUEUES): ai | io | render.
+    # The valkey stream that delivers it (tasks.kinds.QUEUES): priority | ai | io | render.
     queue: Mapped[str] = mapped_column(String(16), default="io", server_default="io")
     payload: Mapped[dict] = mapped_column(JSONType, default=dict)
     status: Mapped[str] = mapped_column(String(16), default="queued", index=True)  # queued|running|done|failed

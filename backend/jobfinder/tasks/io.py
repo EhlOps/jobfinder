@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from taskiq import TaskiqEvents, TaskiqState
 
-import jobfinder.tasks.documents  # noqa: F401  (registers parse_document and fetch_link on io, #51)
+import jobfinder.tasks.documents  # noqa: F401  (registers parse_document and fetch_link, on priority since #124)
 from jobfinder.core.context import default_context
 from jobfinder.models import Task
 from jobfinder.tasks import ledger

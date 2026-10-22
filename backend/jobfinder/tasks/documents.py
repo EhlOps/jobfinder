@@ -1,9 +1,10 @@
-"""worker-io's document handlers (#51): parse_document reads an upload, fetch_link fetches a profile link,
+"""worker-priority's document handlers (#51, #124): parse_document reads an upload, fetch_link fetches a profile link,
 off the api. Both write the text and the document's status (ready or error) into the store; a file that
 can't be read or a link that can't be fetched is recorded there, so the task itself still finishes. If the
 task fails for good anyway, tasks.failures marks the item error.
-@ledger_task registers both on their queue's broker (tasks.kinds); tasks.io imports this module, so
-worker-io has them."""
+@ledger_task registers both on their queue's broker (tasks.kinds), `priority`, so an upload is never
+queued behind io's ingest fan-out. worker-priority imports this module; tasks.io still does too, but what
+it registers lands on the priority broker, which worker-io never reads."""
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 

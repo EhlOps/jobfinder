@@ -150,11 +150,11 @@ def tasks_list(
 async def _tasks_list(status: str | None, kind: str | None, limit: int) -> None:
     async with transaction() as db:
         rows = await task_admin.recent(db, status=status, kind=kind, limit=limit)
-    typer.echo(f"{'id':<8} {'kind':<24} {'queue':<7} {'status':<8} {'att':<4} {'user':<6} "
+    typer.echo(f"{'id':<8} {'kind':<24} {'queue':<8} {'status':<8} {'att':<4} {'user':<6} "
                f"{'created':<17} finished")
     for t in rows:
         finished = f"{t.finished_at:%Y-%m-%d %H:%M}" if t.finished_at else "-"
-        typer.echo(f"{t.id:<8} {t.kind:<24} {t.queue:<7} {t.status:<8} {t.attempts:<4} "
+        typer.echo(f"{t.id:<8} {t.kind:<24} {t.queue:<8} {t.status:<8} {t.attempts:<4} "
                    f"{t.user_id or '-':<6} {t.created_at:%Y-%m-%d %H:%M} {finished}")
     typer.echo(f"\n{len(rows)} tasks")
 

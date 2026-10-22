@@ -24,7 +24,7 @@ NS=${NS:-jobfinder-staging}
 SRC_NS=${SRC_NS:-jobfinder}
 SRC_POD=${SRC_POD:-postgres-0}
 # Every app Deployment that touches the database, scaled to 0 and back.
-APP_DEPLOYMENTS=(api renderer scheduler worker-ai worker-io)
+APP_DEPLOYMENTS=(api renderer scheduler worker-priority worker-ai worker-io)
 
 log() { printf '[staging-restore] %s\n' "$*" >&2; }
 die() { log "ERROR: $*"; exit 1; }

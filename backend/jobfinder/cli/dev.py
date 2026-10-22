@@ -269,6 +269,7 @@ def processes(p: Ports) -> list[tuple[str, list[str]]]:
         ("api", [py, "-m", "uvicorn", "jobfinder.api.app:create_app", "--factory", "--reload",
                  "--reload-dir", "jobfinder", "--host", "127.0.0.1", "--port", str(p.api)]),
         ("scheduler", watched([py, "-m", "jobfinder.scheduler"])),
+        ("worker-priority", watched([py, "-m", "jobfinder.tasks", "priority"])),
         ("worker-ai", watched([py, "-m", "jobfinder.tasks", "ai"])),
         ("worker-io", watched([py, "-m", "jobfinder.tasks", "io"])),
     ]

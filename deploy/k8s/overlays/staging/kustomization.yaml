@@ -89,3 +89,14 @@ patches:
       - op: replace
         path: /spec/triggers/0/metadata/address
         value: valkey.jobfinder-staging.svc.cluster.local:6379
+  # The priority lane (#124): this namespace's valkey, and at most 2 pods (staging's own users only).
+  - target:
+      kind: ScaledObject
+      name: worker-priority
+    patch: |-
+      - op: replace
+        path: /spec/triggers/0/metadata/address
+        value: valkey.jobfinder-staging.svc.cluster.local:6379
+      - op: replace
+        path: /spec/maxReplicaCount
+        value: 2

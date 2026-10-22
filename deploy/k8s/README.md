@@ -18,7 +18,8 @@ deploy/k8s/
     data/               # #47: backup CronJob and PVC backups; #118: pre-deploy runs (BACKUP_PREFIX=pre-)
     app/                # #43: web, api, renderer, smtp, migrate Job, Ingress, config overrides;
                         # #48: scheduler, worker-ai, worker-io (the task platform);
-                        # #52: worker-io's KEDA ScaledObject (1-4 replicas on the io backlog)
+                        # #52: worker-io's KEDA ScaledObject (1-4 replicas on the io backlog);
+                        # #124: worker-priority (the priority lane) and its ScaledObject
   overlays/
     staging/            # namespace `jobfinder-staging`; sealed secrets, mailpit, staging config
     prod/               # namespace `jobfinder` (the base default); sealed secrets, Gmail relay, prod config
@@ -167,4 +168,5 @@ kubectl create secret generic jobfinder-env --namespace jobfinder-staging \
 ```
 
 Pods read the Secret at start: after applying a new one, `kubectl -n
-jobfinder-staging rollout restart deploy/api deploy/scheduler deploy/worker-ai deploy/worker-io`.
+jobfinder-staging rollout restart deploy/api deploy/scheduler deploy/worker-priority deploy/worker-ai
+deploy/worker-io`.

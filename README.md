@@ -30,15 +30,18 @@ Production: https://jobs.ehlops.com (namespace `jobfinder`). Staging: https://st
 browser → host Caddy (TLS) → Traefik 127.0.0.1:8280 → web (Caddy, the SPA) → api (FastAPI, 2 pods)
                                                                               │ writes a ledger row, then publishes its id
                                     Postgres `tasks` (the truth) ◀────────────┤
-                                    valkey streams jobfinder:ai / :io / :render
+                                    valkey streams jobfinder:priority / :ai / :io / :render
                                                  │
-                     worker-ai (Claude, 1 pod) · worker-io (ingest, uploads, links; 1–4 pods by KEDA) · renderer (opt-in)
+                     worker-priority (profile, letters, uploads, links; Claude first; 1–3 pods by KEDA)
+                     worker-ai (bulk Claude: matching, 1 pod) · worker-io (ingest; 1–4 pods by KEDA) · renderer (opt-in)
                      scheduler (1 pod): cron, relay (re-sends unpublished rows), reaper (requeues stuck rows)
 ```
 
 Every piece of background work is a row in the `tasks` table, written in the same transaction as the request
 that caused it. valkey only delivers the row's id to a worker; if a publish is lost, the scheduler's relay sends
-it again. Details: [docs/k3s.md, "Task platform"](docs/k3s.md#task-platform-48).
+it again. Work someone is waiting on (profile analysis, cover letters, resumes, uploads) has its own `priority`
+queue and worker, so it never waits behind matching or ingest (#124). Details:
+[docs/k3s.md, "Task platform"](docs/k3s.md#task-platform-48).
 
 ### Backend layout
 
@@ -55,7 +58,7 @@ Each package name links to its docstring, which lists its modules.
 | [`repositories/`](backend/jobfinder/repositories/__init__.py) | SQL (SQLAlchemy queries), one module per aggregate. |
 | [`models/`](backend/jobfinder/models/__init__.py) | SQLAlchemy ORM models. Migrations are in `backend/alembic/`. |
 | [`integrations/`](backend/jobfinder/integrations/__init__.py) | External systems: ATS boards (`ats/`), Claude (`claude/`), SMTP, GitHub, careers-site recipes (`recipes/`), board directories, USAJobs, jobspy. |
-| [`tasks/`](backend/jobfinder/tasks/__init__.py) | The task ledger, the taskiq brokers and the handlers for each queue (`ai`, `io`, `render`). |
+| [`tasks/`](backend/jobfinder/tasks/__init__.py) | The task ledger, the taskiq brokers and the handlers for each queue (`priority`, `ai`, `io`, `render`). |
 | [`scheduler/`](backend/jobfinder/scheduler/__init__.py) | The scheduler process: cron table, relay and reaper. |
 | [`cli/`](backend/jobfinder/cli/__init__.py) | The Typer CLI, `jobfinder <group> <verb>`. |
 | [`core/`](backend/jobfinder/core/__init__.py) | Config, database engine, request context and small helpers; kept tiny and imports nothing else from `jobfinder`. |
@@ -130,7 +133,7 @@ cd backend && uv sync && uv run jobfinder dev
 
 - the api on `127.0.0.1:8100` (`/healthz`, `/docs`),
 - the scheduler,
-- worker-ai and worker-io.
+- worker-priority, worker-ai and worker-io.
 
 Their output is interleaved with a prefix per process. Ctrl-C stops them; the cluster keeps running, so the next
 `jobfinder dev` starts quickly.
@@ -156,8 +159,8 @@ Local notes:
   with `--email you@example.com`; the last prints a link to set your password (see [Access](#access-invite-only)).
 - **Mail.** The dev stack has no mail server. Point `SMTP_*` in `backend/.env` at a relay you can use, or rely on
   `users reset-link`.
-- **Claude.** worker-ai runs your own `claude` CLI (`CLAUDE_BIN`) with the token from the AI setup page or
-  `CLAUDE_CODE_OAUTH_TOKEN` in `backend/.env`.
+- **Claude.** worker-priority and worker-ai run your own `claude` CLI (`CLAUDE_BIN`) with the token from the AI
+  setup page or `CLAUDE_CODE_OAUTH_TOKEN` in `backend/.env`.
 - **Files.** Uploads land in `backend/store/` (`STORE_DIR`).
 
 ### Tests and checks
@@ -342,8 +345,8 @@ jobfinder digest send --email you@example.com --preview    # sends without marki
 ## Files
 
 Uploaded documents and fetched link text are stored under `STORE_DIR` (the `store` PVC in the clusters), not in
-Postgres. Each document has an ID (`doc_...`) and tags. Uploads return at once as "processing"; worker-io parses
-them and fetches profile links.
+Postgres. Each document has an ID (`doc_...`) and tags. Uploads return at once as "processing"; worker-priority
+parses them and fetches profile links.
 
 ## Email
 
@@ -353,8 +356,8 @@ receive anything.
 
 ## AI
 
-All AI runs through the Claude Code CLI (`claude -p`) on your Claude subscription, in worker-ai only. There is no
-API key, and you never need to open a pod to set it up:
+All AI runs through the Claude Code CLI (`claude -p`) on your Claude subscription, in worker-priority and
+worker-ai only. There is no API key, and you never need to open a pod to set it up:
 
 1. Sign in as an admin (see [Admins](#admins)).
 2. Open **AI setup** in the header.

@@ -59,7 +59,7 @@ async def test_link_crud_and_fetch_error_recorded(authed, maker, monkeypatch):
     assert link["id"].startswith("doc_") and link["kind"] == "portfolio"
     async with maker() as db:
         task = await db.get(Task, r.json()["task_id"])
-    assert (task.kind, task.queue, task.payload) == ("fetch_link", "io", {"doc_id": link["id"]})
+    assert (task.kind, task.queue, task.payload) == ("fetch_link", "priority", {"doc_id": link["id"]})
     assert (await _run(maker, task.id)).status == "done"
     link = (await authed.get("/api/links")).json()[0]
     assert link["status"] == "error" and link["fetch_error"] == "HTTP 500" and not link["fetched"]

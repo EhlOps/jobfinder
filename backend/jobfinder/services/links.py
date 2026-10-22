@@ -1,7 +1,7 @@
 """Profile links (GitHub, portfolio, LinkedIn, ...): fetch what we may, and keep each link and its text
 in the document store as a "link" document.
 
-Adding or refreshing a link saves it as "processing" and queues worker-io's fetch_link task (`fetch`), the
+Adding or refreshing a link saves it as "processing" and queues worker-priority's fetch_link task (`fetch`), the
 only database write (#51); LinkedIn and X links are only saved. The fetchers are imported where they run,
 so the api process doesn't load them.
 """
@@ -80,7 +80,7 @@ async def refresh(db: AsyncSession, store: DocumentStore, user_id: int, link_id:
 
 
 async def fetch(store: DocumentStore, user_id: int, link_id: str) -> dict:
-    """worker-io's fetch_link: fetch the link (SSRF-guarded) and record its text, or the error. A link
+    """worker-priority's fetch_link: fetch the link (SSRF-guarded) and record its text, or the error. A link
     deleted meanwhile is left alone."""
     try:
         meta = _link(store, user_id, link_id)

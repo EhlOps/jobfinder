@@ -1,4 +1,4 @@
-"""The three valkey-stream brokers (taskiq-redis; valkey speaks the Redis protocol) and `publish`.
+"""The four valkey-stream brokers (taskiq-redis; valkey speaks the Redis protocol) and `publish`.
 
 A message carries only the ledger id: the worker claims the row and reads everything else from it.
 Each kind is its own taskiq task name, registered on its queue's broker by @ledger_task. Building a
@@ -25,7 +25,8 @@ KEEPALIVE_OPTIONS = {getattr(socket, name): value
 
 
 # The setting that caps each queue's tasks at once in one worker process (tasks/__main__.py).
-CONCURRENCY = {"ai": "worker_ai_concurrency", "io": "worker_io_concurrency", "render": "renderer_concurrency"}
+CONCURRENCY = {"priority": "worker_priority_concurrency", "ai": "worker_ai_concurrency",
+               "io": "worker_io_concurrency", "render": "renderer_concurrency"}
 
 
 def _broker(queue: str) -> RedisStreamBroker:
@@ -43,10 +44,12 @@ def _broker(queue: str) -> RedisStreamBroker:
                              socket_keepalive_options=KEEPALIVE_OPTIONS)
 
 
+priority_broker = _broker("priority")
 ai_broker = _broker("ai")
 io_broker = _broker("io")
 render_broker = _broker("render")
-BROKERS: dict[str, AsyncBroker] = {"ai": ai_broker, "io": io_broker, "render": render_broker}
+BROKERS: dict[str, AsyncBroker] = {"priority": priority_broker, "ai": ai_broker,
+                                    "io": io_broker, "render": render_broker}
 
 _started: set[str] = set()
 _lock = asyncio.Lock()

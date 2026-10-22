@@ -1,5 +1,5 @@
-"""tasks.runtime (#48): what a delivery does with every outcome, and that the ai and io queues are
-separate consumers (a long io task never holds up an ai one)."""
+"""tasks.runtime (#48): what a delivery does with every outcome, and that the queues are separate
+consumers (a long io task never holds up an ai one, nor bulk ai work a priority one)."""
 import asyncio
 from datetime import timedelta
 
@@ -32,7 +32,8 @@ async def _row(maker, task_id) -> Task:
 
 
 def test_each_queue_broker_carries_exactly_its_kinds():
-    """worker-ai imports tasks.ai on ai_broker, worker-io tasks.io on io_broker: no kind is on two."""
+    """Each worker consumes its own queue's broker (worker-priority priority_broker, worker-ai ai_broker,
+    worker-io io_broker, ...): no kind is on two."""
     assert ai_tasks and io_tasks and render_tasks  # imported: registered
     for queue in brokers.BROKERS:
         registered = set(brokers.BROKERS[queue].local_task_registry)
@@ -51,6 +52,22 @@ def test_every_kind_is_registered_on_exactly_its_queues_broker():
     for kind in runtime.REGISTRY:
         on = [queue for queue, broker in brokers.BROKERS.items() if kind in broker.get_all_tasks()]
         assert on == [QUEUES[kind]], kind
+
+
+def test_the_priority_lane_carries_the_work_someone_waits_on():
+    """#124: profile, document, cover-letter and resume kinds skip the bulk ai and io streams; the
+    priority worker asks the Claude gate in the priority lane, every other worker in bulk."""
+    from jobfinder.tasks.__main__ import PRIORITY_QUEUES
+
+    assert {k for k, q in QUEUES.items() if q == "priority"} == {
+        "extract_profile", "followup_questions", "audit_profile", "cover_letter", "resume_tailor", "ai_check",
+        "parse_document", "fetch_link"}
+    assert {k for k, q in QUEUES.items() if q == "ai"} == {
+        "match_user", "collect_questions", "induce_recipe", "reinduce_recipe"}
+    assert PRIORITY_QUEUES == {"priority"} and "priority" in brokers.BROKERS
+    assert brokers.priority_broker.queue_name == "jobfinder:priority"
+    argv = worker_argv("priority")
+    assert argv[argv.index("--max-async-tasks") + 1] == str(brokers.settings.worker_priority_concurrency)
 
 
 def test_each_worker_imports_the_handlers_of_every_kind_on_its_queue():

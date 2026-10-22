@@ -17,8 +17,9 @@ PRIORITY_QUEUES = {"priority"}
 # The modules each queue's worker imports: those holding its kinds' @ledger_task handlers. A module may
 # register kinds of other queues too; they land on those queues' brokers, which this process never reads.
 WORKER_MODULES = {
+    "priority": ["jobfinder.tasks.ai", "jobfinder.tasks.documents"],  # #124
     "ai": ["jobfinder.tasks.ai"],
-    "io": ["jobfinder.tasks.io"],  # which imports tasks.documents (parse_document, fetch_link)
+    "io": ["jobfinder.tasks.io"],  # its tasks.documents import lands on the priority broker, unread here
     "render": ["jobfinder.tasks.render"],
 }
 
