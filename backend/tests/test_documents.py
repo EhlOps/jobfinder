@@ -48,7 +48,7 @@ async def test_upload_is_processing_until_the_worker_reads_it(authed, maker):
     async with maker() as db:
         task = await db.get(Task, task_id)
     me = (await authed.get("/api/auth/me")).json()["id"]
-    assert (task.kind, task.queue, task.user_id, task.payload) == ("parse_document", "io", me, {"doc_id": doc["id"]})
+    assert (task.kind, task.queue, task.user_id, task.payload) == ("parse_document", "priority", me, {"doc_id": doc["id"]})
 
     done = await _run(maker, task_id)
     assert done.status == "done" and done.result["status"] == "ready"
@@ -66,10 +66,10 @@ async def test_upload_txt_and_docx(authed, maker):
     assert len((await authed.get("/api/documents")).json()) == 2
 
 
-async def test_upload_is_published_on_io_under_the_ledger(authed, published):
+async def test_upload_is_published_on_priority_under_the_ledger(authed, published):
     r = await _post(authed, "a.txt", b"hi")
     await published.settle()
-    assert published == [("io", "parse_document", r.json()["task_id"])]
+    assert published == [("priority", "parse_document", r.json()["task_id"])]
 
 
 async def test_unreadable_file_marks_the_document_error_and_the_task_still_finishes(authed, maker):

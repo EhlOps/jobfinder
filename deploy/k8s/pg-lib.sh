@@ -44,7 +44,7 @@ compare_row_counts() {
 # a worker must not claim; the scheduler's relay re-sends the restored database's queued rows.
 k8s_trim_task_streams() {
   local q
-  for q in ai io render; do
+  for q in priority ai io render; do
     kubectl -n "$1" exec valkey-0 -- valkey-cli XTRIM "jobfinder:$q" MAXLEN 0 >/dev/null || return 1
   done
 }

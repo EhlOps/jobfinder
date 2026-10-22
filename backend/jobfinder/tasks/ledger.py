@@ -271,10 +271,14 @@ async def prune(db: AsyncSession, *, batch: int = PRUNE_BATCH) -> int:
 
 async def due_for_relay(db: AsyncSession, now: datetime, *, limit: int = 500) -> list[tuple[int, str, str]]:
     """(id, queue, kind) of queued, due rows the relay should publish: never relayed and older than the
-    after-commit publish's grace, or relayed more than RELAY_RESEND ago and still queued."""
+    after-commit publish's grace, or relayed more than RELAY_RESEND ago and still queued.
+
+    The queue is the kind's current one (tasks.kinds), not only the column: a row written by the previous
+    release during a deploy that moved its kind (#124) still names the old stream, whose worker has no
+    handler for it any more and would drop it on every resend."""
     resend = now - RELAY_RESEND
     rows = await db.execute(
-        select(Task.id, Task.queue, Task.kind)
+        select(Task.id, case(QUEUES, value=Task.kind, else_=Task.queue), Task.kind)
         .where(Task.status == "queued", Task.run_after <= now,
                or_(Task.sent_at.is_(None) & (Task.created_at < now - RELAY_GRACE), Task.sent_at < resend))
         .order_by(Task.run_after, Task.id).limit(limit)

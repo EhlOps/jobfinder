@@ -1,4 +1,4 @@
-"""`python -m jobfinder.tasks ai|io|render`: run one queue's taskiq worker (one process).
+"""`python -m jobfinder.tasks priority|ai|io|render`: run one queue's taskiq worker (one process).
 
 It imports the queue's handler modules (WORKER_MODULES; @ledger_task registers each kind on its own
 queue's broker, so the process consumes only this queue's kinds), runs up to the queue's concurrency
@@ -17,8 +17,9 @@ PRIORITY_QUEUES = {"priority"}
 # The modules each queue's worker imports: those holding its kinds' @ledger_task handlers. A module may
 # register kinds of other queues too; they land on those queues' brokers, which this process never reads.
 WORKER_MODULES = {
+    "priority": ["jobfinder.tasks.ai", "jobfinder.tasks.documents"],  # #124
     "ai": ["jobfinder.tasks.ai"],
-    "io": ["jobfinder.tasks.io"],  # which imports tasks.documents (parse_document, fetch_link)
+    "io": ["jobfinder.tasks.io"],  # its tasks.documents import lands on the priority broker, unread here
     "render": ["jobfinder.tasks.render"],
 }
 

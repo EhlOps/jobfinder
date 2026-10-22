@@ -104,3 +104,14 @@ patches:
       - op: replace
         path: /spec/maxReplicaCount
         value: 2
+  # worker-priority 2: staging's own users only.
+  - target:
+      kind: ScaledObject
+      name: worker-priority
+    patch: |-
+      - op: replace
+        path: /spec/triggers/0/metadata/address
+        value: valkey.jobfinder-staging.svc.cluster.local:6379
+      - op: replace
+        path: /spec/maxReplicaCount
+        value: 2

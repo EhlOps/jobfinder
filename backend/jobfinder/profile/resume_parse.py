@@ -11,7 +11,7 @@ MAX_CHARS = 60_000
 MAX_PDF_PAGES = 30  # a resume is a few pages; anything longer is cut off, not parsed to the end
 PARSE_TIMEOUT_S = 20.0
 MAX_PARSES = 2
-SLOT_POLL_S = 0.25  # how often worker-io looks for a free slot
+SLOT_POLL_S = 0.25  # how often worker-priority looks for a free slot
 _slots = threading.BoundedSemaphore(MAX_PARSES)
 _pool = ThreadPoolExecutor(max_workers=MAX_PARSES, thread_name_prefix="parse")
 
@@ -46,7 +46,7 @@ def extract_text(data: bytes, ext: str) -> str:
 
 
 async def extract_text_in_worker(data: bytes, ext: str) -> str:
-    """extract_text for worker-io's parse_document (#51) on a dedicated two-thread pool with a time limit,
+    """extract_text for worker-priority's parse_document (#51) on a dedicated two-thread pool with a time limit,
     waiting for a free slot. A thread can't be killed, so a slot is released only when its parse really
     finishes (not on timeout): slow files make later parses wait instead of piling up more threads, and
     ingestion's DNS lookups and to_thread calls on the default executor never queue behind a stuck parse."""

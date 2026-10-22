@@ -19,7 +19,7 @@ deploy/k8s/
     app/                # #43: web, api, renderer, smtp, migrate Job, Ingress, config overrides;
                         # #48: scheduler, worker-ai, worker-io (the task platform);
                         # #52, #124: a KEDA ScaledObject per worker (on its stream's backlog;
-                        # prod's maxima, overlays/staging lowers them)
+                        # prod's maxima, overlays/staging lowers them); #124: worker-priority, the priority lane
   overlays/
     staging/            # namespace `jobfinder-staging`; sealed secrets, mailpit, staging config
     prod/               # namespace `jobfinder` (the base default); sealed secrets, Gmail relay, prod config
@@ -168,4 +168,5 @@ kubectl create secret generic jobfinder-env --namespace jobfinder-staging \
 ```
 
 Pods read the Secret at start: after applying a new one, `kubectl -n
-jobfinder-staging rollout restart deploy/api deploy/scheduler deploy/worker-ai deploy/worker-io`.
+jobfinder-staging rollout restart deploy/api deploy/scheduler deploy/worker-priority deploy/worker-ai
+deploy/worker-io`.

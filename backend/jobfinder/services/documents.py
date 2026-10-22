@@ -1,6 +1,6 @@
 """Uploaded documents: what may be uploaded, reading its text, and the user's files in the document store.
 
-The store holds the files. An upload is saved as "processing" and read by worker-io's parse_document task
+The store holds the files. An upload is saved as "processing" and read by worker-priority's parse_document task
 (`parse`), the upload's only database write (#51). The store's NotFound becomes the API's 404, and every failure keeps the status and wording the
 routers always answered with.
 """
@@ -134,7 +134,7 @@ async def upload(
 
 
 async def parse(store: DocumentStore, user_id: int, doc_id: str) -> dict:
-    """worker-io's parse_document: read the stored original and record its text (ready), or mark the
+    """worker-priority's parse_document: read the stored original and record its text (ready), or mark the
     document unreadable (error). A document deleted meanwhile, or already read, is left alone."""
     from jobfinder.profile.resume_parse import extract_text_in_worker
 

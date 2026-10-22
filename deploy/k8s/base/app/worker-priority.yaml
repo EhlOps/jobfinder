@@ -1,0 +1,109 @@
+# worker-priority (#124): the taskiq worker on stream `jobfinder:priority`, the priority lane. It carries
+# the work someone is waiting on (tasks/kinds.py): profile extract, follow-up questions and audit, cover
+# letters, resume tailoring, the AI check, and reading uploads and profile links. Its own stream, so
+# these are delivered at once instead of queueing behind match slices on `jobfinder:ai` or the ingest
+# fan-out on `jobfinder:io`.
+# It runs Claude, so the same image and volumes as worker-ai: the worker image, the claude-auth volume,
+# a $HOME for the CLI's state and the store (uploads, tailored documents). One process runs up to
+# WORKER_PRIORITY_CONCURRENCY tasks at once. It holds no Claude permits of its own: every call waits for
+# one of the cluster's AI_MAX_CONCURRENCY permits (integrations/claude/gate.py), and this worker asks in
+# the priority lane (tasks/__main__.py PRIORITY_QUEUES), so it gets the next free one ahead of
+# worker-ai's bulk calls. An idle lane costs one pod's memory request, not Claude capacity.
+# No `replicas`: KEDA owns them (worker-priority-scaledobject.yaml, 1 up to the overlay's max).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker-priority
+  labels:
+    jobfinder.io/rollout: app
+spec:
+  strategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: worker-priority
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: worker-priority
+        app.kubernetes.io/component: worker
+        jobfinder.io/postgres-client: "true"
+        jobfinder.io/valkey-client: "true"   # consumes jobfinder:priority, the Claude gate, follow-ups
+    spec:
+      automountServiceAccountToken: false
+      # Lets an in-flight task (a cover letter takes a minute or so, plus its wait for a permit) finish
+      # and ack when KEDA scales a pod in or a rollout replaces it. A task cut off is still `running` in
+      # the ledger: the scheduler's reaper requeues it, and its unacked message is redelivered (and
+      # dropped, since the claim no longer matches) or the relay re-sends it.
+      terminationGracePeriodSeconds: 200
+      securityContext:
+        # The image's `jobfinder` user (backend/Dockerfile.worker).
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: worker-priority
+          image: ghcr.io/ehlops/jobfinder-worker
+          # tini (the image's entrypoint), then one taskiq worker process for the priority queue.
+          args: ["python", "-m", "jobfinder.tasks", "priority"]
+          envFrom:
+            - configMapRef:
+                name: jobfinder-config
+            - secretRef:
+                name: jobfinder-env
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: POSTGRES_PASSWORD
+          # No HTTP endpoint (taskiq has none). tini (PID 1) exits when the worker dies, which restarts
+          # the container anyway; this checks the worker process is still there. [.] keeps the probe's
+          # own command line from matching.
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "grep -qs 'jobfinder[.]tasks' /proc/[0-9]*/cmdline"]
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              # Python plus up to WORKER_PRIORITY_CONCURRENCY node `claude` processes, and an upload's
+              # text extraction (profile/resume_parse.py).
+              memory: 2Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            # Uploads, resumes and tailored documents.
+            - name: store
+              mountPath: /data/store
+            # The OAuth token saved on "AI setup".
+            - name: claude-auth
+              mountPath: /data/claude
+            # CLAUDE_SCRATCH_DIR and temp files.
+            - name: tmp
+              mountPath: /tmp
+            # The claude CLI keeps its state under $HOME; fresh per pod.
+            - name: home
+              mountPath: /home/jobfinder
+      volumes:
+        - name: store
+          persistentVolumeClaim:
+            claimName: store
+        - name: claude-auth
+          persistentVolumeClaim:
+            claimName: claude-auth
+        - name: tmp
+          emptyDir:
+            sizeLimit: 1Gi
+        - name: home
+          emptyDir:
+            sizeLimit: 256Mi

@@ -104,9 +104,10 @@ def test_up_migrates_then_supervises_the_app_against_k3d(tools):
     [(procs, run_env)] = tools.supervised
     assert run_env == env
     names = dict(procs)
-    assert list(names) == ["api", "scheduler", "worker-ai", "worker-io"]
+    assert list(names) == ["api", "scheduler", "worker-priority", "worker-ai", "worker-io"]
     assert "--reload" in names["api"] and names["api"][-2:] == ["--port", "8100"]
     assert names["worker-io"][-2].endswith("-m jobfinder.tasks io")
+    assert names["worker-priority"][-2].endswith("-m jobfinder.tasks priority")
 
 
 def test_ports_come_from_the_environment(tools, monkeypatch):

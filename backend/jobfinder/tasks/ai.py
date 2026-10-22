@@ -1,5 +1,8 @@
-"""The `ai` queue's handlers: every kind that may call Claude (tasks.kinds). worker-ai imports this
-module (`python -m jobfinder.tasks ai`); it is the only worker image with the Claude CLI.
+"""The handlers of every kind that may call Claude (tasks.kinds), on two queues: `priority` (profile
+work, cover letters, resumes, the AI check) and `ai` (bulk: match slices, questions, recipes). Both
+worker-priority and worker-ai import this module (`python -m jobfinder.tasks priority|ai`); each consumes
+only its own queue's kinds. Theirs is the only worker image with the Claude CLI, and every call they make
+waits for a ClaudeGate permit (integrations.claude.gate), which the priority lane gets first.
 
 Each handler is `(db, ai, task, payload) -> dict`, registered with @ledger_task(kind) on its queue's
 broker (tasks.kinds): the runtime commits its result (and any follow-up `ledger.add`, which is published

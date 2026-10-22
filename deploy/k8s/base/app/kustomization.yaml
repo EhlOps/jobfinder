@@ -2,8 +2,9 @@
 #   web (Caddy, SPA + /api proxy) -> api (2 replicas) ; renderer (0, opt-in) ; smtp
 # plus the alembic Job that migrates before every rollout (deploy/k8s/deploy.sh).
 # The task platform (#48): scheduler (1, cron, relay, reaper) and the workers, each autoscaled by KEDA on
-# its stream's lag (worker-ai 1-3, #124; worker-io 1-8, #52; overlays/staging lowers the maxima),
-# on Postgres (the ledger) and valkey (delivery; docs/k3s.md, "Task platform").
+# its stream's lag (worker-priority 1-3, the priority lane, and worker-ai 1-3, #124; worker-io 1-8, #52;
+# overlays/staging lowers the maxima), on Postgres (the ledger) and valkey (delivery; docs/k3s.md,
+# "Task platform").
 #
 # Config: ConfigMap `jobfinder-config` = backend/.env.defaults (backend/kustomization.yaml) with the
 # k8s overrides below; overlays merge their own on top. Secrets: each overlay supplies Secret
@@ -21,7 +22,9 @@ resources:
   - ../../../../backend   # ConfigMap jobfinder-config from backend/.env.defaults
   - api.yaml
   - scheduler.yaml       # cron, relay, reaper
-  - worker-ai.yaml       # stream jobfinder:ai (Claude)
+  - worker-priority.yaml # stream jobfinder:priority (profile, documents, letters; Claude, #124)
+  - worker-priority-scaledobject.yaml   # KEDA: worker-priority 1-3 on the priority backlog (#124)
+  - worker-ai.yaml       # stream jobfinder:ai (bulk Claude)
   - worker-io.yaml       # stream jobfinder:io
   - worker-ai-scaledobject.yaml   # KEDA: worker-ai 1-3 on the ai backlog (#124)
   - worker-io-scaledobject.yaml   # KEDA: worker-io 1-8 on the io backlog (#52)
