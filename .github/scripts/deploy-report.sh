@@ -12,13 +12,15 @@
 #   - a table in $GITHUB_STEP_SUMMARY, for every outcome;
 #   - on `deployed`, a one-line comment on each shipped PR: the `(#N)` subjects of
 #     `git log --first-parent <previous dev side>..<dev_commit>` (titles from those subjects; the
-#     previous dev side is prod's `previous_commit^2`, or staging's `previous_commit`; with none,
+#     previous dev side is prod's `previous_commit`'s (dev-side.sh), or staging's `previous_commit`; with none,
 #     only dev_commit's own PR; at most 50);
 #   - for prod (any outcome but `skipped`), one comment on the release PR (the PR that merged
 #     `commit` into main), with the outcome, pinned images, smoke checks, backup and shipped PRs.
 # A failed lookup or comment logs ::warning:: and the script carries on; it exits non-zero only when
 # the summary file is unreadable, so it never masks the deploy step's own result.
 set -euo pipefail
+# shellcheck source=dev-side.sh
+. "$(dirname "$0")/dev-side.sh"
 
 file=${1:?usage: deploy-report.sh <summary.json>}
 if ! jq -e 'type == "object"' "$file" >/dev/null 2>&1; then
@@ -64,10 +66,10 @@ if [ -n "$dev_full" ]; then
   base=""
   if prev_full=$(resolve "$previous_commit"); then
     base=$prev_full
-    # Prod's previous commit is a release merge, whose dev side is its second parent. Staging's is a
-    # dev commit, which may itself be a merge (review-fix merges), so it stays as it is.
+    # Prod's previous commit is a release (merge or squash), so its dev side (dev-side.sh). Staging's
+    # is a dev commit, which may itself be a merge (review-fix merges), so it stays as it is.
     if [ "$env_name" = prod ]; then
-      base=$(git rev-parse -q --verify "$prev_full^2" 2>/dev/null || echo "$prev_full")
+      base=$(dev_side "$prev_full")
     fi
   fi
   if [ -n "$base" ]; then

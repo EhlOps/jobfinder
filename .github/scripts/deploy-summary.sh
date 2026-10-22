@@ -8,6 +8,8 @@
 #   DEPLOY_ENV=staging|prod TAG=sha-<7> SHA=<commit> SSH_OUTCOME=<steps.deploy.outcome> \
 #     .github/scripts/deploy-summary.sh deploy.log
 set -euo pipefail
+# shellcheck source=dev-side.sh
+. "$(dirname "$0")/dev-side.sh"
 
 log=${1:?usage: deploy-summary.sh <deploy.log>}
 line=$(grep -a '^deploy-summary: ' "$log" 2>/dev/null | tail -n1 || true)
@@ -22,9 +24,9 @@ if [ "${SSH_OUTCOME:-}" = success ]; then outcome=unknown; fi
 last=$(grep -av '^[[:space:]]*$' "$log" 2>/dev/null | tail -n1 || true)
 echo "::warning::no deploy-summary line in the deploy output; reporting the run as $outcome" >&2
 dev=${SHA:-}
-# A release merge's dev side is its second parent, as on the host; a staging commit is its own.
+# A release's dev side, as on the host (dev-side.sh); a staging commit is its own.
 if [ "${DEPLOY_ENV:-}" = prod ] && [ -n "$dev" ]; then
-  dev=$(git rev-parse -q --verify "$dev^2" 2>/dev/null || echo "$dev")
+  dev=$(dev_side "$dev")
 fi
 jq -nc --arg env "${DEPLOY_ENV:-unknown}" --arg outcome "$outcome" --arg tag "${TAG:-unknown}" \
   --arg commit "${SHA:-}" --arg dev "$dev" \
