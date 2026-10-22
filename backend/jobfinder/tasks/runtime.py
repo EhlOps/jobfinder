@@ -81,6 +81,7 @@ async def _execute(kind, handler, task_id, payload_model, wants_ai, sessions, ai
             await db.commit()  # keeps claim's deferral of a rerun behind a running twin
             log.debug("task %s (%s) not claimable; duplicate delivery dropped", task_id, kind)
             return
+        _warn_if_slow(task)
         await db.commit()
         beat = asyncio.create_task(_heartbeat_loop(task_id, sessions))
         try:
@@ -109,6 +110,14 @@ async def _execute(kind, handler, task_id, payload_model, wants_ai, sessions, ai
 def parse_payload(model: type[BaseModel] | None, raw: dict | None) -> BaseModel | None:
     """A row's payload as its kind's model (None for kinds without one). Unknown keys are ignored."""
     return model.model_validate(raw or {}) if model else None
+
+
+def _warn_if_slow(task: Task) -> None:
+    """Log a claimed task that waited longer than ledger.SLOW_WAIT to be picked up (#124's PRD 1)."""
+    wait = task.started_at - task.run_after
+    if wait > ledger.SLOW_WAIT:
+        log.warning("task %s (%s) on %s waited %.1fs before claim", task.id, task.kind, task.queue,
+                    wait.total_seconds())
 
 
 async def _rollback(db: AsyncSession, task_id: int) -> None:

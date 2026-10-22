@@ -34,6 +34,9 @@ DEDUPE_INDEX = "uq_tasks_dedupe_queued"  # at most one queued task per dedupe_ke
 TWIN_WAIT = timedelta(seconds=30)  # how long `claim` defers a rerun whose twin is still running
 FINISHED = ("done", "failed")
 PRUNE_BATCH = 5000  # rows one prune deletes, so a large backlog is cleared over several ticks
+# A wait before claim (started_at - run_after) longer than this is logged and counted on the admin
+# schedule page: half of #124's PRD 1 budget (a profile task returns within 2 minutes of queuing).
+SLOW_WAIT = timedelta(seconds=60)
 
 
 def dedupe_key(kind: str, user_id: int | None, payload: dict) -> str:
@@ -93,7 +96,8 @@ async def add(
 
 async def claim(db: AsyncSession, task_id: int) -> Task | None:
     """queued -> running, atomically. None when the row isn't queued and due: another delivery already
-    took it, it finished, or it was rescheduled (duplicates are normal; drop them).
+    took it, it finished, or it was rescheduled (duplicates are normal; drop them). Stamps started_at, so
+    `started_at - run_after` is this attempt's wait (a retry's next claim overwrites it).
 
     A rerun queued behind a running twin isn't claimed: its run_after moves TWIN_WAIT out for the relay
     to deliver it again (the caller commits that), unless the twin's finish wakes it first. Race-safe
@@ -103,7 +107,7 @@ async def claim(db: AsyncSession, task_id: int) -> Task | None:
     due = (Task.id == task_id, Task.status == "queued", Task.run_after <= now)
     claimed = await db.scalar(
         update(Task).where(*due, ~has_twin("running"))
-        .values(status="running", locked_at=now, attempts=Task.attempts + 1).returning(Task.id)
+        .values(status="running", locked_at=now, started_at=now, attempts=Task.attempts + 1).returning(Task.id)
     )
     if claimed:
         return await db.get(Task, claimed, populate_existing=True)
