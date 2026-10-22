@@ -1,5 +1,5 @@
-# Autoscales worker-io on the io stream's backlog (#52): 1 to 4 replicas, one per 50 undelivered
-# messages. KEDA (cluster-wide, deploy/k3s/manifests/keda.yaml) creates and owns HPA keda-hpa-worker-io,
+# Autoscales worker-io on the io stream's backlog (#52): 1 to 8 replicas (overlays/staging: 2), one per 50
+# undelivered messages. KEDA (cluster-wide, deploy/k3s/manifests/keda.yaml) creates and owns HPA keda-hpa-worker-io,
 # so worker-io.yaml has no `replicas`. Labelled rollout=app, so deploy.sh applies it in phase 2 with the
 # Deployments, after the migrate Job: unpausing it starts worker-io. deploy.sh first checks the CRD exists.
 #
@@ -14,8 +14,9 @@
 #     is supposed to size.
 # Lag needs Redis 7 semantics: valkey 8.1 reports redis_version 7.2.4.
 #
-# Only worker-io. worker-ai is never autoscaled: one process is the cap on parallel Claude calls
-# against the subscription (worker-ai.yaml); .github/workflows/k8s.yml fails a render that targets it.
+# Every worker has one of these (worker-ai-scaledobject.yaml and, with the priority lane,
+# worker-priority-scaledobject.yaml are the same shape); .github/workflows/k8s.yml fails a render where a
+# worker- Deployment has none, or sets `replicas`.
 #
 # Valkey has no password (its NetworkPolicy is the access control and lets the keda-operator pods in),
 # so no TriggerAuthentication. The operator runs in namespace keda, so the address is the Service's FQDN:
@@ -37,9 +38,10 @@ spec:
     name: worker-io
   # Never below 1: plan_work and the other quick kinds start within seconds, not after a cold start.
   minReplicaCount: 1
-  # 4 x WORKER_IO_CONCURRENCY (10) tasks at once. The fetchers' per-host caps (e.g. Workday's
-  # HOST_CONCURRENCY) are per process, so more replicas would also mean more load on each site.
-  maxReplicaCount: 4
+  # 8 x WORKER_IO_CONCURRENCY (10) tasks at once; 8 x the 1536Mi limit is 12 GiB worst case on the 24 GB
+  # node. The fetchers' per-host caps (e.g. Workday's HOST_CONCURRENCY) are per process, so more replicas
+  # also mean more load on each site. overlays/staging lowers it to 2.
+  maxReplicaCount: 8
   # No pollingInterval or cooldownPeriod: with minReplicaCount above 0 they don't affect scaling (KEDA's
   # webhook warns about both). The HPA reads the lag through KEDA's metrics server on its own 15s sync,
   # and the scale-down delay is its stabilization window below.

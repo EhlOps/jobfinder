@@ -85,6 +85,7 @@ class Settings(BaseSettings):
     renderer_max_rendered_boards: int
     renderer_concurrency: int
     match_daily_llm_budget: int
+    match_slice_jobs: int
     match_min_prefilter: float
     digest_min_score: int
     digest_max_matches: int
@@ -104,6 +105,8 @@ class Settings(BaseSettings):
     task_prune_days: int
     worker_reap_seconds: float
     valkey_url: str
+    worker_priority_concurrency: int
+    worker_ai_concurrency: int
     worker_io_concurrency: int
     relay_seconds: float
     password_link_ttl_minutes: int

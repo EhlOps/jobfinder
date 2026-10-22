@@ -3,7 +3,6 @@
 `get_owned` is the one ownership check for everything under /api/matches/{id} and for the letter
 and resume workers: a match id that isn't the user's reads as missing.
 """
-from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -172,22 +171,21 @@ async def answered_match_ids(db: AsyncSession, user_id: int) -> set[int]:
     return ids
 
 
-async def stale(
-    db: AsyncSession, user_id: int, version: int, statuses: tuple[str, ...], first: Collection[int]
-) -> list[tuple[JobMatch, Job, Company | None]]:
-    """Matches at one of `statuses`, scored against a profile older than `version`, on active jobs: the
-    ids in `first` first (none is fine), then saved ones, then the rest by score."""
+async def stale(db: AsyncSession, user_id: int, version: int, statuses: tuple[str, ...]) -> list:
+    """Light rows (no description) for the matches at one of `statuses`, scored against a profile older than
+    `version`, on active jobs. Unordered: services.matching ranks them with the new candidates."""
     rows = await db.execute(
-        sa.select(JobMatch, Job, Company)
+        sa.select(
+            JobMatch.id.label("match_id"), JobMatch.job_id, JobMatch.status, JobMatch.prefilter_score,
+            Job.posted_at, Job.dedupe_hash,
+        )
         .join(Job, Job.id == JobMatch.job_id)
-        .outerjoin(Company, Company.id == Job.company_id)
         .where(
             JobMatch.user_id == user_id, JobMatch.profile_version < version,
             JobMatch.status.in_(statuses), Job.is_active.is_(True),
         )
-        .order_by(JobMatch.id.in_(sorted(first)).desc(), (JobMatch.status == "saved").desc(), JobMatch.llm_score.desc())
     )
-    return [(m, j, c) for m, j, c in rows.all()]
+    return list(rows.all())
 
 
 async def upsert(db: AsyncSession, values: dict) -> None:

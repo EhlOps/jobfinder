@@ -1,0 +1,53 @@
+# Autoscales worker-priority on the priority stream's backlog (#124): 1 to 3 replicas (prod; staging
+# patches 2), as many as there are undelivered messages (the HPA wants ceil(lag / lagCount) pods). With
+# WORKER_PRIORITY_CONCURRENCY (2) slots per pod a message is unread only while every slot is busy, so a
+# second unread message brings a second pod (~20-30s), a third a third. The first waits for a free slot:
+# priority tasks are short (a profile extract ~15s, a letter about a minute), which keeps it inside the
+# 2-minute target (PRD 1 of #124). More pods mean more
+# priority tasks in flight, not more Claude calls: the gate's AI_MAX_CONCURRENCY permits cap those
+# cluster-wide (integrations/claude/gate.py).
+# KEDA creates and owns HPA keda-hpa-worker-priority, so worker-priority.yaml has no `replicas`.
+# Labelled rollout=app, so deploy.sh applies it in phase 2 with the Deployments, after the migrate Job.
+#
+# Same signal and setup as worker-io-scaledobject.yaml (read its header): the consumer group's lag, not
+# its pending list; no TriggerAuthentication; the address is the base namespace's (prod's) valkey, and
+# overlays/staging patches in its own.
+#
+# Pause (`kubectl scale` alone is undone within seconds):
+#   kubectl -n <ns> annotate scaledobject worker-priority autoscaling.keda.sh/paused-replicas=0 --overwrite
+#   kubectl -n <ns> annotate scaledobject worker-priority autoscaling.keda.sh/paused-replicas-   # resume
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: worker-priority
+  labels:
+    jobfinder.io/rollout: app   # deploy.sh phase 2, after the migrations
+spec:
+  scaleTargetRef:
+    name: worker-priority
+  # Never below 1: a profile extract starts within seconds, not after a cold start.
+  minReplicaCount: 1
+  # 3 x WORKER_PRIORITY_CONCURRENCY (2) priority tasks at once; their Claude calls still share the gate.
+  maxReplicaCount: 3
+  # No pollingInterval or cooldownPeriod: with minReplicaCount above 0 they don't affect scaling (KEDA's
+  # webhook warns about both). The HPA reads the lag through KEDA's metrics server on its own 15s sync,
+  # and the scale-down delay is its stabilization window below.
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        # Out at once; in only after the backlog has been empty for 5 minutes, one pod a minute. A pod
+        # stopped mid-task is safe: SIGTERM lets its tasks finish within the grace period
+        # (worker-priority.yaml), and the reaper requeues anything cut off (#48).
+        scaleDown:
+          stabilizationWindowSeconds: 300
+          policies:
+            - type: Pods
+              value: 1
+              periodSeconds: 60
+  triggers:
+    - type: redis-streams
+      metadata:
+        address: valkey.jobfinder.svc.cluster.local:6379
+        stream: jobfinder:priority            # tasks/brokers.py
+        consumerGroup: jobfinder-priority
+        lagCount: "1"                         # target lag per replica (an AverageValue)

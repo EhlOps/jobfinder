@@ -158,22 +158,22 @@ async def test_the_relay_survives_valkey_being_down(maker, published, monkeypatc
 
 async def test_one_queue_down_does_not_hold_up_the_others(maker, published, monkeypatch, caplog):
     async with maker() as db:
-        ai = await ledger.add(db, "cover_letter", {"match_id": 1})
+        lane = await ledger.add(db, "cover_letter", {"match_id": 1})
         io = await ledger.add(db, "plan_work")
         await db.commit()
     (await published.settle()).clear()
 
-    async def ai_down(queue, kind, task_id):
-        if queue == "ai":
-            raise ConnectionError("ai stream unavailable")
+    async def priority_down(queue, kind, task_id):
+        if queue == "priority":
+            raise ConnectionError("priority stream unavailable")
         published.append((queue, kind, task_id))
 
-    monkeypatch.setattr(brokers, "publish", ai_down)
+    monkeypatch.setattr(brokers, "publish", priority_down)
     assert await relay.tick(utcnow() + timedelta(seconds=30)) == 1
     assert published == [("io", "plan_work", io.id)]
     assert sum("relay: publish failed" in r.message for r in caplog.records) == 1
     async with maker() as db:
-        assert (await db.get(Task, ai.id)).sent_at is None
+        assert (await db.get(Task, lane.id)).sent_at is None
 
 
 async def test_a_failing_relay_tick_is_logged_not_raised(monkeypatch, caplog, alive_file):

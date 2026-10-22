@@ -6,9 +6,9 @@
 # induce_recipe, on the ai queue), so no claude-auth volume. The worker image anyway: it has everything ingestion needs
 # (the jobspy extra when built with it), and one image for both task workers keeps deploy.sh's pinning
 # simple. Up to WORKER_IO_CONCURRENCY tasks at once in one process.
-# Recreate like the other workers: a rollout pauses io work for a few seconds, and messages wait in the
+# Recreate: a rollout pauses io work for a few seconds, and messages wait in the
 # stream meanwhile. Claims are atomic, so overlapping consumers would be safe too.
-# Replicas: KEDA (worker-io-scaledobject.yaml, #52) scales it from 1 to 4 on the stream's backlog, so
+# Replicas: KEDA (worker-io-scaledobject.yaml, #52) scales it from 1 to 8 (staging 2) on the backlog, so
 # there is no `replicas` here: a value would reset the HPA's count on every deploy (docs/k3s.md, "KEDA").
 # No PodDisruptionBudget: on one node it only matters for a drain (a k3s upgrade), and minAvailable 1
 # would block that drain while a pod stopping mid-task costs nothing (graceful shutdown, then the reaper).

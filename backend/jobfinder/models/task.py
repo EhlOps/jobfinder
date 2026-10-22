@@ -29,6 +29,8 @@ class Task(Base):
         Index("ix_tasks_due", "run_after", "id", postgresql_where=text("status = 'queued'")),
         # Maintenance's prune: finished rows by age (tasks.ledger.prune).
         Index("ix_tasks_finished", "finished_at", postgresql_where=text("status IN ('done', 'failed')")),
+        # The admin schedule's Queues table: rows claimed in the last day (repositories.admin.lane_stats).
+        Index("ix_tasks_started", "started_at", postgresql_where=text("started_at IS NOT NULL")),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -36,7 +38,7 @@ class Task(Base):
         ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True
     )
     kind: Mapped[str] = mapped_column(String(64))
-    # The valkey stream that delivers it (tasks.kinds.QUEUES): ai | io | render.
+    # The valkey stream that delivers it (tasks.kinds.QUEUES): priority | ai | io | render.
     queue: Mapped[str] = mapped_column(String(16), default="io", server_default="io")
     payload: Mapped[dict] = mapped_column(JSONType, default=dict)
     status: Mapped[str] = mapped_column(String(16), default="queued", index=True)  # queued|running|done|failed
@@ -49,6 +51,9 @@ class Task(Base):
     # When the scheduler's relay last published it; NULL until then (the api's after-commit publish
     # doesn't record one). The relay re-sends due rows that stay queued.
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # When the latest attempt was claimed (ledger.claim); NULL until then, and on rows claimed before 0027.
+    # started_at - run_after is that attempt's wait, finished_at - started_at its run.
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 

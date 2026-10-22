@@ -1,7 +1,7 @@
 # shellcheck shell=bash
 # Shared by backup-restore.sh and staging-restore.sh (#47); source it, don't run it.
 # Exact per-table row counts, as `table|count` lines sorted by table name; emptying the task streams;
-# pausing worker-io's autoscaler.
+# pausing the workers' autoscalers.
 
 # One count(*) per base table of schema public, in a single query (query_to_xml runs each count).
 PG_ROW_COUNTS_SQL="select table_name || '|' || (xpath('/row/c/text()', query_to_xml(format('select count(*) as c from public.%I', table_name), false, true, '')))[1]::text from information_schema.tables where table_schema = 'public' and table_type = 'BASE TABLE'"
@@ -44,42 +44,47 @@ compare_row_counts() {
 # a worker must not claim; the scheduler's relay re-sends the restored database's queued rows.
 k8s_trim_task_streams() {
   local q
-  for q in ai io render; do
+  for q in priority ai io render; do
     kubectl -n "$1" exec valkey-0 -- valkey-cli XTRIM "jobfinder:$q" MAXLEN 0 >/dev/null || return 1
   done
 }
 
-# KEDA owns worker-io's replica count (#52, base/app/worker-io-scaledobject.yaml), so a script that
-# needs it at 0 pauses the ScaledObject too: `kubectl scale --replicas=0` alone is undone within a
-# polling interval. keda_pause <namespace> <who> pauses it at 0 (call it before the scale-down, so the
-# HPA can't bring a pod back in between); keda_resume <namespace> hands it back to KEDA. A pause that
-# isn't ours (no jobfinder.io/paused-by: set by hand) is
-# left alone by both. Both are no-ops where there is no ScaledObject (or no KEDA), and fail on any other
-# error, so a script never scales down believing worker-io is paused when it isn't. deploy.sh also lifts
-# a marked pause after its rollout, so a script that failed in between recovers with the redeploy.
+# KEDA owns every worker's replica count (#52, #124: base/app/worker-*-scaledobject.yaml), so a script
+# that needs them at 0 pauses the ScaledObjects too: `kubectl scale --replicas=0` alone is undone within
+# a polling interval. keda_pause <namespace> <who> pauses every ScaledObject in the namespace at 0 (call
+# it before the scale-down, so an HPA can't bring a pod back in between); keda_resume <namespace> hands
+# each one a script paused back to KEDA. A pause that isn't ours (no jobfinder.io/paused-by: set by
+# hand) is left alone by both, object by object. Both are no-ops where there is no ScaledObject (or no
+# KEDA), and fail on any other error, so a script never scales down believing the workers are paused
+# when they aren't. deploy.sh also lifts marked pauses after its rollout, so a script that failed in
+# between recovers with the redeploy.
 KEDA_PAUSED=autoscaling.keda.sh/paused-replicas
-# _keda_annotations <namespace>: worker-io's ScaledObject's "<paused-replicas>|<paused-by>"; nothing when
-# KEDA or the object is absent.
-_keda_annotations() {
+# _keda_objects <namespace>: one line per ScaledObject, "<name>|<paused-replicas>|<paused-by>"; nothing
+# when KEDA or the objects are absent.
+_keda_objects() {
   local err
   if ! err=$(kubectl get crd scaledobjects.keda.sh -o name 2>&1); then
     [[ $err == *NotFound* ]] && return 0
     printf '%s\n' "$err" >&2
     return 1
   fi
-  kubectl -n "$1" get scaledobject worker-io --ignore-not-found -o \
-    jsonpath='{.metadata.annotations.autoscaling\.keda\.sh/paused-replicas}|{.metadata.annotations.jobfinder\.io/paused-by}'
+  kubectl -n "$1" get scaledobject -o jsonpath='{range .items[*]}{.metadata.name}|{.metadata.annotations.autoscaling\.keda\.sh/paused-replicas}|{.metadata.annotations.jobfinder\.io/paused-by}{"\n"}{end}'
 }
 keda_pause() {
-  local ns=$1 who=$2 a
-  a=$(_keda_annotations "$ns") || return 1
-  [ -n "$a" ] || return 0                      # no ScaledObject
-  [ "${a%%|*}" = "" ] || [ "${a#*|}" != "" ] || return 0   # paused, not by a script: not ours
-  kubectl -n "$ns" annotate scaledobject worker-io --overwrite "$KEDA_PAUSED=0" "jobfinder.io/paused-by=$who" >/dev/null
+  local ns=$1 who=$2 objects name paused by
+  objects=$(_keda_objects "$ns") || return 1
+  while IFS='|' read -r name paused by; do
+    [ -n "$name" ] || continue                     # no ScaledObject
+    [ -z "$paused" ] || [ -n "$by" ] || continue   # paused, not by a script: not ours
+    kubectl -n "$ns" annotate scaledobject "$name" --overwrite "$KEDA_PAUSED=0" "jobfinder.io/paused-by=$who" \
+      >/dev/null || return 1
+  done <<< "$objects"
 }
 keda_resume() {
-  local ns=$1 a
-  a=$(_keda_annotations "$ns") || return 1
-  [ -n "${a#*|}" ] || return 0                 # no ScaledObject, or not paused by a script
-  kubectl -n "$ns" annotate scaledobject worker-io "$KEDA_PAUSED-" jobfinder.io/paused-by- >/dev/null
+  local ns=$1 objects name by
+  objects=$(_keda_objects "$ns") || return 1
+  while IFS='|' read -r name _ by; do
+    [ -n "$name" ] && [ -n "$by" ] || continue     # not paused by a script
+    kubectl -n "$ns" annotate scaledobject "$name" "$KEDA_PAUSED-" jobfinder.io/paused-by- >/dev/null || return 1
+  done <<< "$objects"
 }

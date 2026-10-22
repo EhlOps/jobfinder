@@ -1,4 +1,4 @@
-"""Match one user against the cached jobs: hard filters -> prefilter rank -> LLM score (budgeted)."""
+"""Match one user against the cached jobs: hard filters -> relevance rank -> LLM score, one budgeted slice at a time."""
 from __future__ import annotations
 
 import asyncio
@@ -12,7 +12,7 @@ from jobfinder.core.db import AsyncSession
 from jobfinder.integrations.claude.claude_code import AIError
 from jobfinder.integrations.claude.schemas import MatchScore, verdict_for
 from jobfinder.integrations.claude.tasks import AITasks
-from jobfinder.models import Company, Job, JobMatch, Profile, User
+from jobfinder.models import Company, Job, Profile, User
 from jobfinder.repositories import matches as matches_repo
 from jobfinder.services import profile as profile_service
 from jobfinder.services.matching import prefilter as pf
@@ -29,12 +29,14 @@ BATCH = 500  # jobs whose descriptions are loaded and scored at a time
 
 @dataclass
 class Candidate:
-    """A job that passed the filters. Deliberately light (no description); `hydrate` loads the full rows
-    for the few that actually get scored."""
+    """A job to score: one that passed the filters, or a stale match to re-score (`match_id` set).
+    Deliberately light (no description); `hydrate` loads the full rows for the few that actually get scored."""
     job_id: int
     score: float
     posted_ts: float
     dedupe_hash: str
+    match_id: int | None = None
+    saved: bool = False
 
 
 def job_payload(job: Job, company: Company | None) -> dict:
@@ -51,6 +53,8 @@ def job_payload(job: Job, company: Company | None) -> dict:
 
 
 async def remaining_budget(db: AsyncSession, user_id: int) -> int:
+    """Match scores the user has left in the rolling 24h window. The cap is on bulk scoring only: it counts
+    `job_matches.scored_at`, so profile extracts, audits, letters and resumes never spend it."""
     user = await db.get(User, user_id)
     if user is not None and user.match_budget_enabled is False:
         return UNLIMITED
@@ -118,18 +122,33 @@ async def find_candidates(db: AsyncSession, user_id: int, profile: Profile) -> l
 
 
 async def hydrate(db: AsyncSession, candidates: list[Candidate]) -> list[tuple[Job, Company | None, float, bool]]:
-    """Load the full job and company rows for the candidates that will actually be scored (order kept)."""
+    """Load the full job and company rows for the candidates that will actually be scored (order kept);
+    the last item says whether it re-scores an existing match."""
     if not candidates:
         return []
     by_id = {j.id: (j, c) for j, c in await matches_repo.jobs_with_companies(db, [c.job_id for c in candidates])}
-    return [(*by_id[c.job_id], c.score, False) for c in candidates if c.job_id in by_id]
+    return [(*by_id[c.job_id], c.score, c.match_id is not None) for c in candidates if c.job_id in by_id]
 
 
-async def find_stale(db: AsyncSession, user_id: int, version: int) -> list[tuple[JobMatch, Job, Company | None]]:
-    """Matches scored against an older profile version: ones the user answered questions about first,
-    then saved ones, then the rest by score (a low score is often just a gap the answers fill). Closed jobs are skipped."""
-    answered = await matches_repo.answered_match_ids(db, user_id)
-    return await matches_repo.stale(db, user_id, version, STALE_STATUSES, answered)
+async def find_stale(db: AsyncSession, user_id: int, version: int) -> list[Candidate]:
+    """Matches scored against an older profile version, as light candidates (closed jobs are skipped)."""
+    return [
+        Candidate(r.job_id, r.prefilter_score or 0.0, r.posted_at.timestamp() if r.posted_at else 0, r.dedupe_hash,
+                  match_id=r.match_id, saved=r.status == "saved")
+        for r in await matches_repo.stale(db, user_id, version, STALE_STATUSES)
+    ]
+
+
+def rank_work(stale: list[Candidate], candidates: list[Candidate], answered: set[int]) -> list[Candidate]:
+    """One relevance-ordered list of everything worth scoring, instead of "every stale re-score first, then
+    new jobs": stale matches the user answered questions about, then saved ones (both are on screen and the
+    user is waiting on them), then everything else, stale and new together, by prefilter score, then newest
+    posting first. A low old score is no reason to wait behind new jobs: it is often just a gap the answers fill.
+    No posting appears twice: candidates already exclude every matched posting (unmatched_jobs)."""
+    def tier(w: Candidate) -> int:
+        return 0 if w.match_id in answered else 1 if w.saved else 2
+
+    return sorted(stale + candidates, key=lambda w: (tier(w), -w.score, -w.posted_ts))
 
 
 def stage_info(status: dict, today=None) -> dict | None:
@@ -206,27 +225,36 @@ async def _nothing() -> None:
 
 
 async def match_user(
-    db: AsyncSession, ai: AITasks, user_id: int, *, budget: int | None = None, checkpoint: Checkpoint | None = None,
+    db: AsyncSession, ai: AITasks, user_id: int, *, budget: int | None = None, limit: int | None = None,
+    checkpoint: Checkpoint | None = None,
 ) -> dict:
-    """Score as many promising jobs as the daily budget allows. Never commits itself: `checkpoint` (the task
-    handler passes the session's commit) runs after each scored job and before the summary is returned or the
-    AIError re-raised, so a rate limit or crash mid-run loses nothing and the task can retry where it stopped."""
+    """Score one slice: the most relevant jobs (rank_work), at most `limit` of them (the task handler passes
+    MATCH_SLICE_JOBS) and at most what the daily budget allows. The budget is re-read every slice, so it holds
+    across a chain and an admin lowering it stops the chain at the next slice.
+
+    Never commits itself: `checkpoint` (the task handler passes the session's commit) runs after each scored
+    job and before the summary is returned or the AIError re-raised, so a rate limit or crash mid-slice loses
+    nothing and the task can retry where it stopped.
+
+    The summary says what's left: `pending` is the work still unscored after this slice (not counting the
+    jobs whose answer couldn't be parsed: those wait for the next run, not the next slice) and `budget_left`
+    what the budget allows after it; the handler chains the next slice from those."""
     checkpoint = checkpoint or _nothing
     profile = await db.get(Profile, user_id)
     if not profile or not profile.status:
-        return {"scored": 0, "pending": 0, "skipped": "profile not set up"}
+        return {"scored": 0, "pending": 0, "budget_left": 0, "skipped": "profile not set up"}
     facts = await matches_repo.facts(db, user_id)
     if sync_career_stage(profile):
         await checkpoint()
     version = profile.version
     left = await remaining_budget(db, user_id) if budget is None else budget
 
-    # (job, company, prefilter, is_rescore): stale re-scores first, then new candidates, as many as the budget allows
-    stale = await find_stale(db, user_id, version)
-    work: list[tuple[Job, Company | None, float, bool]] = [(j, c, m.prefilter_score, True) for m, j, c in stale][:left]
-    candidates = await find_candidates(db, user_id, profile)
-    total_work, batch_size = len(stale) + len(candidates), max(1, settings.ai_max_concurrency)
-    work += await hydrate(db, candidates[: max(0, left - len(work))])
+    # Ranked afresh every slice, so jobs that arrived since the last one compete right away.
+    answered = await matches_repo.answered_match_ids(db, user_id)
+    ranked = rank_work(await find_stale(db, user_id, version), await find_candidates(db, user_id, profile), answered)
+    take = min(left, limit) if limit is not None else left
+    work = await hydrate(db, ranked[: max(0, take)])  # only what gets scored is loaded in full
+    batch_size = max(1, settings.ai_max_concurrency)
 
     scored = failed = 0
     fatal: AIError | None = None
@@ -250,9 +278,14 @@ async def match_user(
         if fatal:
             break
 
+    # Written every slice, not only when the chain ends: the matches page shows progress, and the planner's
+    # "new jobs since last_run_at" stays right because each slice ranked every job seen before it. The
+    # planner never plans a user mid-chain anyway: the queued next slice makes them in flight.
     summary = {
-        "last_run_at": datetime.now(UTC).isoformat(), "scored": scored,
-        "pending": max(0, total_work - scored - failed), "failed": failed,
+        "last_run_at": datetime.now(UTC).isoformat(), "scored": scored, "failed": failed,
+        "pending": max(0, len(ranked) - scored - failed),
+        # Re-read, not left - scored: re-scoring a match already scored inside the window spends nothing.
+        "budget_left": await remaining_budget(db, user_id) if budget is None else max(0, budget - scored),
     }
     profile.match_summary = summary
     await checkpoint()

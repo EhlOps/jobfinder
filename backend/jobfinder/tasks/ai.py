@@ -1,9 +1,12 @@
-"""The `ai` queue's handlers: every kind that may call Claude (tasks.kinds). worker-ai imports this
-module (`python -m jobfinder.tasks ai`); it is the only worker image with the Claude CLI.
+"""The handlers of every kind that may call Claude (tasks.kinds), on two queues: `priority` (profile
+work, cover letters, resumes, the AI check) and `ai` (bulk: match slices, questions, recipes). Both
+worker-priority and worker-ai import this module (`python -m jobfinder.tasks priority|ai`); each consumes
+only its own queue's kinds. Theirs is the only worker image with the Claude CLI, and every call they make
+waits for a ClaudeGate permit (integrations.claude.gate), which the priority lane gets first.
 
-Each handler is `(db, ai, task, payload) -> dict`, registered with @ledger_task: the runtime commits its
-result (and any follow-up `ledger.add`, which is published once that commit lands). The commits a
-handler makes itself are its own boundaries.
+Each handler is `(db, ai, task, payload) -> dict`, registered with @ledger_task(kind) on its queue's
+broker (tasks.kinds): the runtime commits its result (and any follow-up `ledger.add`, which is published
+once that commit lands). The commits a handler makes itself are its own boundaries.
 """
 from datetime import UTC, datetime, timedelta
 
@@ -17,7 +20,6 @@ from jobfinder.integrations.claude.tasks import AITasks
 from jobfinder.models import Profile, ProfileFact, Task
 from jobfinder.storage.documents import is_tailored
 from jobfinder.tasks import ledger
-from jobfinder.tasks.brokers import ai_broker
 from jobfinder.tasks.runtime import ledger_task
 
 MAX_LINK_CHARS = 8_000
@@ -60,7 +62,7 @@ class ReinduceArgs(BaseModel):
 # ---------------------------------------------------------------- profile
 
 
-@ledger_task(ai_broker, "extract_profile")
+@ledger_task("extract_profile")
 async def extract_profile(db: AsyncSession, ai: AITasks, task: Task, _: None) -> dict:
     store = default_context().store
     sources = []
@@ -80,7 +82,7 @@ async def extract_profile(db: AsyncSession, ai: AITasks, task: Task, _: None) ->
     return (await ai.extract_profile(sources)).model_dump()
 
 
-@ledger_task(ai_broker, "followup_questions")
+@ledger_task("followup_questions")
 async def followup_questions(db: AsyncSession, ai: AITasks, task: Task, _: None) -> dict:
     uid = task.user_id
     profile = await db.get(Profile, uid)
@@ -93,7 +95,7 @@ async def followup_questions(db: AsyncSession, ai: AITasks, task: Task, _: None)
     return {"questions": [q.model_dump() for q in qs]}
 
 
-@ledger_task(ai_broker, "audit_profile")
+@ledger_task("audit_profile")
 async def audit_profile(db: AsyncSession, ai: AITasks, task: Task, _: None) -> dict:
     """The runtime's completion commit is the boundary; run_audit explains when its row lock ends."""
     from jobfinder.services import interview
@@ -104,19 +106,30 @@ async def audit_profile(db: AsyncSession, ai: AITasks, task: Task, _: None) -> d
 # ---------------------------------------------------------------- matching and questions
 
 
-@ledger_task(ai_broker, "match_user")
+@ledger_task("match_user")
 async def match_user(db: AsyncSession, ai: AITasks, task: Task, _: None) -> dict:
+    """One slice of MATCH_SLICE_JOBS scores. While it scored something and work and budget remain, it
+    queues the next slice at the back of the ai stream, so other users' slices take turns with it. The
+    rerun dedupe folds a profile edit made mid-chain into that one queued slice (services.questions).
+    The payload stays empty for that reason: a per-chain counter would give the slices their own dedupe key."""
+    from jobfinder.core.config import settings
+    from jobfinder.services import questions
     from jobfinder.services.matching import service
 
-    # Commit after each scored job: a rate limit mid-run keeps what was scored (the runtime rolls back the rest).
-    summary = await service.match_user(db, ai, task.user_id, checkpoint=db.commit)
-    if summary.get("scored"):
-        # New assessments may have raised questions worth asking.
+    # Commit after each scored job: a rate limit mid-slice keeps what was scored (the runtime rolls back the rest).
+    limit = max(1, settings.match_slice_jobs)  # 0 would score nothing, ever
+    summary = await service.match_user(db, ai, task.user_id, limit=limit, checkpoint=db.commit)
+    if summary.get("scored") and summary.get("pending") and summary.get("budget_left"):
+        # The id lets the matches page follow the chain (frontend routes/Matches.tsx).
+        summary["next_slice"] = (await ledger.add(db, "match_user", user_id=task.user_id, rerun=True)).id
+    elif summary.get("scored") or await questions.has_unreviewed(db, task.user_id):
+        # The chain ends here: its new assessments may have raised questions worth asking. The second check
+        # covers a chain whose last slice scored nothing, or an earlier chain that stopped on an error.
         await ledger.add(db, "collect_questions", user_id=task.user_id, dedupe=True)
     return summary
 
 
-@ledger_task(ai_broker, "collect_questions")
+@ledger_task("collect_questions")
 async def collect_questions(db: AsyncSession, ai: AITasks, task: Task, _: None) -> dict:
     """The runtime's completion commit is the boundary: the new questions and the reviewed flags go together.
     The payload is empty, or names the digest it runs ahead of (services.digest.schedule_questions)."""
@@ -128,7 +141,7 @@ async def collect_questions(db: AsyncSession, ai: AITasks, task: Task, _: None) 
 # ---------------------------------------------------------------- documents
 
 
-@ledger_task(ai_broker, "cover_letter", payload=CoverLetterArgs)
+@ledger_task("cover_letter", payload=CoverLetterArgs)
 async def cover_letter(db: AsyncSession, ai: AITasks, task: Task, p: CoverLetterArgs) -> dict:
     """The draft is written in the task's transaction; the runtime commits it with the task's result."""
     from jobfinder.services import letters as service
@@ -136,14 +149,14 @@ async def cover_letter(db: AsyncSession, ai: AITasks, task: Task, p: CoverLetter
     return await service.generate(db, ai, task.user_id, p.match_id, p.tone, p.notes)
 
 
-@ledger_task(ai_broker, "resume_tailor", payload=ResumeTailorArgs)
+@ledger_task("resume_tailor", payload=ResumeTailorArgs)
 async def resume_tailor(db: AsyncSession, ai: AITasks, task: Task, p: ResumeTailorArgs) -> dict:
     from jobfinder.services import resumes as service
 
     return await service.tailor(db, ai, default_context().store, task.user_id, p.match_id, force=p.force)
 
 
-@ledger_task(ai_broker, "ai_check")
+@ledger_task("ai_check")
 async def ai_check(db: AsyncSession, ai: AITasks, task: Task, _: None) -> dict:
     """Report whether Claude is connected. Failures are returned, not raised, so the admin page
     shows the real reason and nothing is retried."""
@@ -157,7 +170,7 @@ async def ai_check(db: AsyncSession, ai: AITasks, task: Task, _: None) -> dict:
 # ---------------------------------------------------------------- resolver's LLM rung
 
 
-@ledger_task(ai_broker, "induce_recipe", payload=InduceRecipeArgs)
+@ledger_task("induce_recipe", payload=InduceRecipeArgs)
 async def induce_recipe(db: AsyncSession, ai: AITasks, task: Task, p: InduceRecipeArgs) -> dict:
     """A pasted link no deterministic rung could read (queued by resolve_job_link on io, #50): ask Claude for
     a recipe, then finish the link, fetch a new board now and let the planner match its jobs."""
@@ -181,7 +194,7 @@ async def induce_recipe(db: AsyncSession, ai: AITasks, task: Task, p: InduceReci
     return out
 
 
-@ledger_task(ai_broker, "reinduce_recipe", payload=ReinduceArgs)
+@ledger_task("reinduce_recipe", payload=ReinduceArgs)
 async def reinduce_recipe(db: AsyncSession, ai: AITasks, task: Task, p: ReinduceArgs) -> dict:
     """Self-heal a degraded recipe board (queued by ingest_company): ask Claude for a new recipe, at most
     twice a week per domain (integrations.recipes.health)."""

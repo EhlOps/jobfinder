@@ -1,0 +1,27 @@
+# Merges main back into dev after every release (a push to main), so the next dev -> main PR shows
+# only new work, whether the release was squashed or merged. .github/scripts/sync-dev.sh explains the
+# rules. dev has no ruleset, so the workflow's GITHUB_TOKEN can push to it.
+name: sync-dev
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: sync-dev
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: dev
+          fetch-depth: 0
+      - run: .github/scripts/sync-dev.sh

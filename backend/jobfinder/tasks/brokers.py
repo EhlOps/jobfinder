@@ -1,4 +1,4 @@
-"""The three valkey-stream brokers (taskiq-redis; valkey speaks the Redis protocol) and `publish`.
+"""The four valkey-stream brokers (taskiq-redis; valkey speaks the Redis protocol) and `publish`.
 
 A message carries only the ledger id: the worker claims the row and reads everything else from it.
 Each kind is its own taskiq task name, registered on its queue's broker by @ledger_task. Building a
@@ -25,7 +25,8 @@ KEEPALIVE_OPTIONS = {getattr(socket, name): value
 
 
 # The setting that caps each queue's tasks at once in one worker process (tasks/__main__.py).
-CONCURRENCY = {"ai": "ai_max_concurrency", "io": "worker_io_concurrency", "render": "renderer_concurrency"}
+CONCURRENCY = {"priority": "worker_priority_concurrency", "ai": "worker_ai_concurrency",
+               "io": "worker_io_concurrency", "render": "renderer_concurrency"}
 
 
 def _broker(queue: str) -> RedisStreamBroker:
@@ -35,7 +36,7 @@ def _broker(queue: str) -> RedisStreamBroker:
     # xread_count: one XREADGROUP takes at most what the process runs at once (taskiq-redis's default is
     # 100). Everything read is pending on this consumer, and no other can claim it for 10 minutes, so a
     # big read-ahead would strand the unstarted rest when KEDA scales a pod in, and hide it from the
-    # group's lag that KEDA scales worker-io on (#52, deploy/k8s/base/app/worker-io-scaledobject.yaml).
+    # group's lag that KEDA scales the workers on (#52, #124, deploy/k8s/base/app/worker-*-scaledobject.yaml).
     return RedisStreamBroker(url=settings.valkey_url, queue_name=f"jobfinder:{queue}",
                              consumer_group_name=f"jobfinder-{queue}", maxlen=STREAM_MAXLEN,
                              xread_count=max(1, getattr(settings, CONCURRENCY[queue])),
@@ -43,10 +44,12 @@ def _broker(queue: str) -> RedisStreamBroker:
                              socket_keepalive_options=KEEPALIVE_OPTIONS)
 
 
+priority_broker = _broker("priority")
 ai_broker = _broker("ai")
 io_broker = _broker("io")
 render_broker = _broker("render")
-BROKERS: dict[str, AsyncBroker] = {"ai": ai_broker, "io": io_broker, "render": render_broker}
+BROKERS: dict[str, AsyncBroker] = {"priority": priority_broker, "ai": ai_broker,
+                                    "io": io_broker, "render": render_broker}
 
 _started: set[str] = set()
 _lock = asyncio.Lock()

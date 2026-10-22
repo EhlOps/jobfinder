@@ -54,6 +54,18 @@ class IngestCadence(BaseModel):
     tiers: list[TierCount]
 
 
+class LaneStats(BaseModel):
+    """One queue's tasks claimed in the last 24h (tasks.started_at): how long they waited to be claimed
+    (started_at - run_after) and ran (finished_at - started_at), in seconds. #124's PRD 1 is measured here."""
+    queue: str
+    tasks: int
+    wait_p50: float
+    wait_p95: float
+    run_p50: float | None  # null while none of them has finished
+    run_p95: float | None
+    slow_waits: int  # waits over ledger.SLOW_WAIT (60s)
+
+
 class Schedule(BaseModel):
     backoff_until: str | None
     in_flight: int
@@ -61,6 +73,7 @@ class Schedule(BaseModel):
     next_tick: str | None
     users: list[ScheduleRow]
     ingest: IngestCadence
+    lanes: list[LaneStats]
 
 
 class SourceRow(BaseModel):

@@ -53,7 +53,7 @@ class DocumentMeta:
     has_original: bool = False
     fetch_error: str | None = None
     fetched_at: str | None = None
-    # processing while worker-io reads the file or fetches the link, then ready or error (#51). Files
+    # processing while worker-priority reads the file or fetches the link, then ready or error (#51). Files
     # written before that have no key and read back as ready.
     status: str = "ready"
 

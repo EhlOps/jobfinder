@@ -18,10 +18,10 @@ from tests.rollback import Boom, count
 async def test_add_flushes_and_publishes_only_after_commit(maker, published):
     async with maker() as db:
         t = await ledger.add(db, "cover_letter", {"match_id": 1})
-        assert t.id and t.queue == "ai" and t.status == "queued"
+        assert t.id and t.queue == "priority" and t.status == "queued"
         assert await published.settle() == []  # not committed yet
         await db.commit()
-    assert await published.settle() == [("ai", "cover_letter", t.id)]
+    assert await published.settle() == [("priority", "cover_letter", t.id)]
 
 
 async def test_a_rollback_discards_the_row_and_its_publish(maker, published):
@@ -52,23 +52,23 @@ async def test_a_failed_publish_leaves_its_queue_to_the_relay(maker, published, 
 
     calls = []
 
-    async def ai_down(queue, kind, task_id):
+    async def priority_down(queue, kind, task_id):
         calls.append(queue)
-        if queue == "ai":
+        if queue == "priority":
             raise TimeoutError
 
-    monkeypatch.setattr(brokers, "publish", ai_down)
+    monkeypatch.setattr(brokers, "publish", priority_down)
     async with maker() as db:
-        ai = [await ledger.add(db, "cover_letter", {"match_id": i}) for i in range(3)]
+        lane = [await ledger.add(db, "cover_letter", {"match_id": i}) for i in range(3)]
         io = await ledger.add(db, "plan_work")
         await db.commit()
     await published.settle()
-    assert calls == ["ai", "io"]  # one try per down queue, not one per row
+    assert calls == ["priority", "io"]  # one try per down queue, not one per row
     assert "the relay will retry: TimeoutError" in caplog.text
     async with maker() as db:
-        assert [(await db.get(Task, t.id)).sent_at for t in ai] == [None] * 3
+        assert [(await db.get(Task, t.id)).sent_at for t in lane] == [None] * 3
         assert (await db.get(Task, io.id)).sent_at is not None
-        assert {r[0] for r in await ledger.due_for_relay(db, utcnow() + timedelta(minutes=1))} == {t.id for t in ai}
+        assert {r[0] for r in await ledger.due_for_relay(db, utcnow() + timedelta(minutes=1))} == {t.id for t in lane}
 
 
 async def test_a_claimed_row_is_not_marked_sent_late(db):
@@ -144,6 +144,22 @@ async def test_a_duplicate_delivery_claims_nothing(maker):
     assert len(claimed) == 1 and claimed[0].status == "running" and claimed[0].attempts == 1
 
 
+async def test_claim_stamps_started_at_for_each_attempt(db):
+    """started_at is the latest attempt's claim (#124): a retry keeps it until its own claim overwrites it."""
+    t = await ledger.add(db, "plan_work")
+    assert t.started_at is None
+    before = utcnow()
+    t = await ledger.claim(db, t.id)
+    first = t.started_at
+    assert first is not None and before <= first <= utcnow()
+    await ledger.fail(db, t, "rate limited", retry=True)
+    assert (t.status, t.started_at) == ("queued", first)
+    t.run_after = utcnow()
+    await db.flush()
+    t = await ledger.claim(db, t.id)
+    assert t.attempts == 2 and t.started_at > first
+
+
 async def test_claim_skips_rows_not_due(db):
     t = await ledger.add(db, "plan_work", run_after=utcnow() + timedelta(minutes=1))
     assert await ledger.claim(db, t.id) is None
@@ -176,7 +192,7 @@ async def test_a_row_queued_before_its_kind_moved_publishes_to_the_new_stream(db
     await db.flush()
     await ledger.requeue(db, t.id)
     await db.commit()
-    assert t.queue == "io"  # the column is the truth again (the relay reads only it)
+    assert t.queue == "io"  # the column is the truth again (the relay routes by kind as well)
     assert (await published.settle()) == [("io", "daily_emails", t.id)]
 
 
@@ -198,13 +214,13 @@ async def test_a_retry_or_reap_moves_the_row_to_its_kinds_queue(db, how):
 
 
 def test_the_latest_queue_backfill_matches_the_kinds():
-    """Migration 0026 rewrote every row's queue from tasks.kinds.QUEUES. If this fails, a kind moved
+    """Migration 0028 rewrote every row's queue from tasks.kinds.QUEUES. If this fails, a kind moved
     queues: add a migration that rewrites its rows, and point this test at it."""
     import importlib.util
     from pathlib import Path
 
-    path = Path(__file__).resolve().parents[1] / "alembic" / "versions" / "0026_task_queue_backfill.py"
-    spec = importlib.util.spec_from_file_location("m0026", path)
+    path = Path(__file__).resolve().parents[1] / "alembic" / "versions" / "0028_task_queue_priority.py"
+    spec = importlib.util.spec_from_file_location("m0028", path)
     m = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(m)
     assert {kind: queue for queue, kinds in m.QUEUES.items() for kind in kinds} == QUEUES
@@ -235,6 +251,15 @@ async def test_reap_requeues_stale_running_rows_for_the_relay(db):
     assert await ledger.reap(db) == 1
     await db.refresh(t)
     assert (t.status, t.sent_at) == ("queued", None)
+
+
+async def test_the_relay_sends_a_row_to_its_kinds_queue_not_a_stale_column(db):
+    """The previous release, still serving during a deploy that moved a kind (#124), writes the old queue:
+    its worker no longer has the handler, so the relay must route by kind or the row never runs."""
+    t = await ledger.add(db, "parse_document", {"doc_id": "doc_1"})
+    t.queue = "io"  # as the release before the priority lane wrote it
+    await db.flush()
+    assert await ledger.due_for_relay(db, utcnow() + timedelta(minutes=1)) == [(t.id, "priority", "parse_document")]
 
 
 async def test_due_for_relay(db):

@@ -5,7 +5,7 @@ from pydantic import BaseModel
 
 from jobfinder.storage.documents import DocumentMeta
 
-# processing while worker-io reads the file (or fetches the link), then ready or error (#51)
+# processing while worker-priority reads the file (or fetches the link), then ready or error (#51)
 DocumentStatus = Literal["processing", "ready", "error"]
 
 

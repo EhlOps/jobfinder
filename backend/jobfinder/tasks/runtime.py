@@ -1,5 +1,9 @@
 """@ledger_task: the worker side of a task kind.
 
+`@ledger_task(kind)` registers its handler on the broker of the kind's queue, looked up from
+tasks.kinds.QUEUES, so which stream delivers a kind is set in that one place. Importing a handler module
+registers its kinds; a worker process only consumes its own queue's broker (tasks/__main__.py).
+
 On delivery of a ledger id: claim the row (a duplicate delivery finds it already taken and is dropped)
 and commit, so the SPA sees "running" and the reaper has a heartbeat to watch; validate the payload; run
 the handler in the same session; then finish and commit. The handler's own `ledger.add` follow-ups are
@@ -27,13 +31,13 @@ from typing import Any
 
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from taskiq import AsyncBroker
 
 from jobfinder.core.config import settings
 from jobfinder.core.context import default_context
 from jobfinder.integrations.claude.claude_code import AIError
 from jobfinder.models import Task
 from jobfinder.tasks import failures, ledger
+from jobfinder.tasks.brokers import BROKERS
 from jobfinder.tasks.kinds import queue_for
 
 log = logging.getLogger("jobfinder.tasks")
@@ -44,9 +48,9 @@ REGISTRY: dict[str, LedgerHandler] = {}
 PAYLOADS: dict[str, type[BaseModel] | None] = {}  # kind -> its payload model
 
 
-def ledger_task(broker: AsyncBroker, kind: str, *, payload: type[BaseModel] | None = None, ai: bool = True):
-    """Register `handler` for `kind` on `broker` (which must be its queue's broker, tasks.kinds)."""
-    queue_for(kind)  # an unknown kind fails at import, not at first delivery
+def ledger_task(kind: str, *, payload: type[BaseModel] | None = None, ai: bool = True):
+    """Register `handler` for `kind` on its queue's broker (tasks.kinds.QUEUES)."""
+    broker = BROKERS[queue_for(kind)]  # an unknown kind fails at import, not at first delivery
 
     def register(handler: LedgerHandler) -> LedgerHandler:
         async def deliver(task_id: int) -> None:
@@ -77,6 +81,7 @@ async def _execute(kind, handler, task_id, payload_model, wants_ai, sessions, ai
             await db.commit()  # keeps claim's deferral of a rerun behind a running twin
             log.debug("task %s (%s) not claimable; duplicate delivery dropped", task_id, kind)
             return
+        _warn_if_slow(task)
         await db.commit()
         beat = asyncio.create_task(_heartbeat_loop(task_id, sessions))
         try:
@@ -105,6 +110,14 @@ async def _execute(kind, handler, task_id, payload_model, wants_ai, sessions, ai
 def parse_payload(model: type[BaseModel] | None, raw: dict | None) -> BaseModel | None:
     """A row's payload as its kind's model (None for kinds without one). Unknown keys are ignored."""
     return model.model_validate(raw or {}) if model else None
+
+
+def _warn_if_slow(task: Task) -> None:
+    """Log a claimed task that waited longer than ledger.SLOW_WAIT to be picked up (#124's PRD 1)."""
+    wait = task.started_at - task.run_after
+    if wait > ledger.SLOW_WAIT:
+        log.warning("task %s (%s) on %s waited %.1fs before claim", task.id, task.kind, task.queue,
+                    wait.total_seconds())
 
 
 async def _rollback(db: AsyncSession, task_id: int) -> None:

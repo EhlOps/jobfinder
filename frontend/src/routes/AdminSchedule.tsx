@@ -6,6 +6,7 @@ import { ErrorText } from "../components/fields";
 import type { Schedule, ScheduleRow } from "../lib/types";
 
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : "—");
+const secs = (s: number | null) => (s === null ? "—" : s < 9.95 ? `${s.toFixed(1)}s` : `${Math.round(s)}s`);
 
 function status(r: ScheduleRow): string {
   if (r.active.length) return r.active.map((t) => `${t.kind} (${t.status})`).join(", ");
@@ -73,6 +74,30 @@ export default function AdminSchedule() {
                 </tr>
               ))}
               {s.users.length === 0 && <tr><td colSpan={6} className="muted">No active users yet.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {s && (
+        <div className="card" style={{ overflowX: "auto" }}>
+          <h3>Queues (last 24h)</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Queue</th><th>Tasks</th><th>Wait p50 / p95</th><th>Run p95</th><th>Waits &gt;60s</th>
+              </tr>
+            </thead>
+            <tbody>
+              {s.lanes.map((l) => (
+                <tr key={l.queue}>
+                  <td>{l.queue}</td>
+                  <td>{l.tasks}</td>
+                  <td>{secs(l.wait_p50)} / {secs(l.wait_p95)}</td>
+                  <td>{secs(l.run_p95)}</td>
+                  <td>{l.slow_waits}</td>
+                </tr>
+              ))}
+              {s.lanes.length === 0 && <tr><td colSpan={5} className="muted">No tasks claimed in the last day.</td></tr>}
             </tbody>
           </table>
         </div>
