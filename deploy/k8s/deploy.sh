@@ -11,8 +11,8 @@
 #      points at now. Everything ends up pinned by an immutable tag or digest, never a moving tag.
 #   2. Applies everything except the app Deployments, with a fresh migrate Job, and waits for the Job.
 #      A failed migration stops here: no pod has rolled.
-#   3. Applies the Deployments (label jobfinder.io/rollout=app; worker-io's ScaledObject too) and waits
-#      for every rollout. Then lifts a KEDA pause a script left behind (pg-lib.sh, keda_pause).
+#   3. Applies the Deployments (label jobfinder.io/rollout=app; the workers' ScaledObjects too) and
+#      waits for every rollout. Then lifts the KEDA pauses a script left behind (pg-lib.sh, keda_pause).
 #
 # Uses the manifests in DEPLOY_K8S_DIR (default: next to this script); they must be that commit's.
 # At the end it records the tag (and DEPLOY_COMMIT, when given) as annotations on the namespace.
@@ -141,7 +141,7 @@ trap 'rm -rf "$work"' EXIT
   for name in api worker renderer web; do pin_image "$name"; done
 } > "$work/kustomization.yaml"
 kubectl kustomize "$work" > "$work/rendered.yaml"
-# worker-io's ScaledObject (#52) needs KEDA's CRD, which the cluster install provides; without it phase 1
+# The workers' ScaledObjects (#52, #124) need KEDA's CRD, which the cluster install provides; without it phase 1
 # would apply everything else and then fail.
 if grep -q '^kind: ScaledObject$' "$work/rendered.yaml" && ! kubectl get crd scaledobjects.keda.sh >/dev/null 2>&1; then
   die "KEDA is not installed (no CRD scaledobjects.keda.sh): kubectl apply -f deploy/k3s/manifests/keda.yaml (docs/k3s.md, \"KEDA\")"
@@ -164,16 +164,18 @@ kubectl apply -f "$work/rendered.yaml" -l 'jobfinder.io/rollout=app'
 for d in $(kubectl -n "$ns" get deployments -l jobfinder.io/rollout=app -o name); do
   kubectl -n "$ns" rollout status "$d" --timeout="$ROLLOUT_TIMEOUT"
 done
-# A pause of worker-io's autoscaler that a script set to take the app down (jobfinder.io/paused-by,
-# pg-lib.sh's keda_pause) ends with the deploy that brings the app back, also when that script failed
-# halfway and the runbook says to redeploy. A pause set by hand (no marker) stays.
+# A pause of a worker's autoscaler that a script set to take the app down (jobfinder.io/paused-by,
+# pg-lib.sh's keda_pause, which pauses every ScaledObject) ends with the deploy that brings the app
+# back, also when that script failed halfway and the runbook says to redeploy. A pause set by hand (no
+# marker) stays. Every ScaledObject in the namespace, not only the rendered ones.
 if grep -q '^kind: ScaledObject$' "$work/rendered.yaml"; then
-  paused_by=$(kubectl -n "$ns" get scaledobject worker-io --ignore-not-found \
-              -o jsonpath='{.metadata.annotations.jobfinder\.io/paused-by}')
-  if [ -n "$paused_by" ]; then
-    kubectl -n "$ns" annotate scaledobject worker-io autoscaling.keda.sh/paused-replicas- jobfinder.io/paused-by- >/dev/null
-    log "worker-io's autoscaler resumed (paused by $paused_by)"
-  fi
+  paused=$(kubectl -n "$ns" get scaledobject \
+           -o jsonpath='{range .items[*]}{.metadata.name}|{.metadata.annotations.jobfinder\.io/paused-by}{"\n"}{end}')
+  while IFS='|' read -r so paused_by; do
+    [ -n "$so" ] && [ -n "$paused_by" ] || continue
+    kubectl -n "$ns" annotate scaledobject "$so" autoscaling.keda.sh/paused-replicas- jobfinder.io/paused-by- >/dev/null
+    log "$so's autoscaler resumed (paused by $paused_by)"
+  done <<< "$paused"
 fi
 kubectl annotate namespace "$ns" --overwrite \
   jobfinder.io/deployed-tag="$tag" jobfinder.io/deployed-commit="${DEPLOY_COMMIT:-unknown}" >/dev/null

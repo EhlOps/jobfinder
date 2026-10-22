@@ -50,8 +50,9 @@ if ! $yes; then
   read -r -p "Drop staging's database in $NS and replace it with a dump of $SRC_NS/$SRC_POD? [y/N] " answer
   [[ $answer =~ ^[Yy]$ ]] || die "aborted"
 fi
-
-# Scale the app down (remembering the counts) so nothing holds connections or writes mid-restore.
+# Scale the app down (remembering the counts) so nothing holds connections or writes mid-restore. For
+# the workers, which KEDA scales, the saved count is only where they restart: keda_resume then hands
+# them back to their autoscalers.
 declare -A replicas=()
 for d in "${APP_DEPLOYMENTS[@]}"; do
   if n=$(kubectl -n "$NS" get deployment "$d" -o jsonpath='{.spec.replicas}' 2>/dev/null); then
@@ -62,16 +63,17 @@ restore_replicas() {
   for d in "${!replicas[@]}"; do
     kubectl -n "$NS" scale deployment "$d" --replicas="${replicas[$d]}" >/dev/null || true
   done
-  keda_resume "$NS" || log "WARNING: worker-io's autoscaler is still paused; the next deploy.sh resumes it"
+  keda_resume "$NS" || log "WARNING: the workers' autoscalers may still be paused; the next deploy.sh resumes them"
   log "app scaled back: $(for d in "${!replicas[@]}"; do printf '%s=%s ' "$d" "${replicas[$d]}"; done)"
 }
 if [ ${#replicas[@]} -gt 0 ]; then
   trap restore_replicas EXIT
   log "scaling ${!replicas[*]} to 0"
-  # worker-io's autoscaler (#52) would scale it back up mid-restore.
+  # The workers' autoscalers (#52, #124) would scale them back up mid-restore.
   keda_pause "$NS" staging-restore
   kubectl -n "$NS" scale deployment "${!replicas[@]}" --replicas=0 >/dev/null
-  kubectl -n "$NS" wait --for=delete pod -l "app.kubernetes.io/name in ($(IFS=,; echo "${APP_DEPLOYMENTS[*]}"))" --timeout=180s \
+  # 240s: a worker-ai (or worker-priority) pod may use its whole 200s grace to finish a matching slice.
+  kubectl -n "$NS" wait --for=delete pod -l "app.kubernetes.io/name in ($(IFS=,; echo "${APP_DEPLOYMENTS[*]}"))" --timeout=240s \
     >/dev/null 2>&1 || true
 fi
 
