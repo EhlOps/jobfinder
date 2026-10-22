@@ -42,11 +42,11 @@ async def close_renderer(state: TaskiqState | None = None) -> None:
         await renderer.close()
 
 
-@ledger_task(render_broker, CAPTURE, payload=CapturePayload, ai=False)
+@ledger_task(CAPTURE, payload=CapturePayload, ai=False)
 async def render_capture(db, ai, task, payload: CapturePayload) -> dict:
     return await browser.render_capture(shared_renderer(), str(payload.url or ""))
 
 
-@ledger_task(render_broker, LIST, payload=ListPayload, ai=False)
+@ledger_task(LIST, payload=ListPayload, ai=False)
 async def render_list(db, ai, task, payload: ListPayload) -> dict:
     return await browser.render_list(shared_renderer(), payload.recipe or {})
