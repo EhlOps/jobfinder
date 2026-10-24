@@ -772,6 +772,17 @@ kubectl -n $NS exec deploy/api -- jobfinder tasks retry <id>      # a done or fa
 - **Queued and due for minutes:** that queue's worker isn't running, or the relay isn't (scheduler down, or its heartbeat stale). Check `kubectl -n $NS get pods`, the scheduler log, and the SQL in "Check the streams".
 - **Running for more than 5 minutes** with no progress: the reaper requeues it once the heartbeat is stale; if it doesn't, the scheduler isn't running.
 - **Failed:** the error is on the row (`select id, kind, error from tasks where status = 'failed' order by id desc limit 20;`). Fix the cause, then `tasks retry`.
+- **Running, heartbeat fresh, but never finishing** (a handler hung inside a live worker, #136): dump the worker's stacks before restarting anything. Each worker pod runs `tini` (pid 1) → taskiq's main process → one worker child, which runs the tasks; the image has no `ps`, `pgrep` or `kill` binary, so list pid, parent pid and command from `/proc`. The child is the `python -m jobfinder.tasks` whose parent is the other one (the main's parent is 1; `claude`/`node` processes are the child's children):
+
+  ```sh
+  kubectl -n $NS exec deploy/worker-priority -- sh -c \
+    'for d in /proc/[0-9]*; do echo "${d#/proc/} $(grep -m1 PPid $d/status | cut -f2) $(tr "\0" " " <$d/cmdline)"; done'
+  kubectl -n $NS exec deploy/worker-priority -- sh -c 'kill -USR1 <child pid>' # each asyncio task's stack, down its await chain
+  kubectl -n $NS logs deploy/worker-priority --since=1m                  # WARNING jobfinder.tasks: stack dump (SIGUSR1) ...
+  kubectl -n $NS exec deploy/worker-priority -- sh -c 'kill -USR2 <child pid>' # every thread's stack, to stderr (same log)
+  ```
+
+  USR1 is answered on the event loop, so it shows which `await` each running handler is parked in (look for the `jobfinder/` frames); a handler awaiting other tasks (`gather`, `wait_for`) ends at that await, and those tasks are listed in the same dump. If USR1 logs nothing, a synchronous call is blocking the loop: USR2 (faulthandler) still answers and shows it. Both leave the worker running; the main process ignores them (and tini, pid 1, forwards them to it), so sending one to either by mistake is harmless. With more than one pod, `exec deploy/...` picks one: name the pod (`kubectl -n $NS get pods -l app.kubernetes.io/name=worker-priority`) and dump each.
 - **Claude errors:** `kubectl -n $NS exec deploy/worker-ai -- jobfinder ai check` (exits 1 when Claude doesn't answer: a bad or expired token, or a rate limit). Replace the token on the AI setup page.
 - **valkey:** `kubectl -n $NS exec valkey-0 -- valkey-cli ping` (PONG), then the stream and consumer checks in "Check the streams". Lag that grows while a worker is at its maximum (`kubectl -n $NS get hpa`) is a backlog; lag that grows with 0 consumers listed means the workers can't reach valkey (NetworkPolicy label, or valkey restarting).
 
