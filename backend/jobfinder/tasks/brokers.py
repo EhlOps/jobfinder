@@ -7,11 +7,12 @@ broker does no I/O; the first publish in a process starts it.
 import asyncio
 import socket
 
-from taskiq import AsyncBroker
+from taskiq import AsyncBroker, TaskiqEvents
 from taskiq.kicker import AsyncKicker
 from taskiq_redis import RedisStreamBroker
 
 from jobfinder.core.config import settings
+from jobfinder.tasks import diagnostics
 
 STREAM_MAXLEN = 10_000  # ids only; trimmed approximately, so valkey memory stays flat
 PUBLISH_TIMEOUT = 5  # seconds; a valkey that hangs rather than refuses must not stall the caller
@@ -50,6 +51,9 @@ io_broker = _broker("io")
 render_broker = _broker("render")
 BROKERS: dict[str, AsyncBroker] = {"priority": priority_broker, "ai": ai_broker,
                                     "io": io_broker, "render": render_broker}
+# WORKER_STARTUP fires only in taskiq's worker child, so the api and the scheduler never install these.
+for _b in BROKERS.values():
+    _b.add_event_handler(TaskiqEvents.WORKER_STARTUP, diagnostics.on_worker_startup)  # stack dumps (#136)
 
 _started: set[str] = set()
 _lock = asyncio.Lock()

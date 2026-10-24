@@ -6,6 +6,9 @@ import { ErrorText, Field, ListInput } from "../../components/fields";
 import { useTask } from "../../lib/useTask";
 import { AiErrorNotice } from "../../components/AiErrorNotice";
 
+/** After this long without a result, say it's slow rather than promising "under a minute". */
+const SLOW_AFTER_MS = 3 * 60_000;
+
 const KINDS = ["internship", "co-op", "full-time", "part-time", "research", "other"];
 
 function Section<T>({ title, items, onChange, blank, render, addLabel }: {
@@ -32,6 +35,7 @@ export default function BackgroundStep({ initial, onDone, onBack, submitLabel = 
   const [taskId, setTaskId] = useState<number | null>(null);
   const [extracted, setExtracted] = useState(hasInitial);
   const started = useRef(false);
+  const [slow, setSlow] = useState(false);
 
   const start = useMutation({ mutationFn: () => api<{ task_id: number }>("/api/onboarding/extract", { method: "POST" }), onSuccess: (r) => setTaskId(r.task_id) });
   const task = useTask<Background>(taskId);
@@ -46,6 +50,14 @@ export default function BackgroundStep({ initial, onDone, onBack, submitLabel = 
       setExtracted(true);
     }
   }, [task.data, extracted]);
+
+  // Restart the clock for each new task (Try again / Re-read my documents).
+  useEffect(() => {
+    setSlow(false);
+    if (extracted) return;
+    const t = setTimeout(() => setSlow(true), SLOW_AFTER_MS);
+    return () => clearTimeout(t);
+  }, [taskId, extracted]);
 
   const save = useMutation({ mutationFn: () => api<Profile>("/api/profile/background", { method: "PUT", json: bg }), onSuccess: onDone });
   const reanalyze = () => { setExtracted(false); setTaskId(null); start.mutate(); };
@@ -62,7 +74,7 @@ export default function BackgroundStep({ initial, onDone, onBack, submitLabel = 
             <div className="actions">{onBack && <button className="secondary" onClick={onBack}>Back</button>}<button onClick={reanalyze}>Try again</button></div>
           </>
         ) : (
-          <p className="muted">This usually takes under a minute.</p>
+          <p className="muted">{slow ? "This is taking longer than usual. We'll keep trying; you can leave this page." : "This usually takes under a minute."}</p>
         )}
         <ErrorText error={start.error} />
       </div>

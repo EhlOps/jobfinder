@@ -74,7 +74,7 @@ async def test_a_failed_publish_leaves_its_queue_to_the_relay(maker, published, 
 async def test_a_claimed_row_is_not_marked_sent_late(db):
     t = await ledger.add(db, "plan_work")
     await ledger.claim(db, t.id)
-    await ledger.fail(db, t, "fast", retry=True)  # sent_at NULL: the relay must deliver the retry
+    await ledger.fail(db, t, "fast", retry=True, attempt=t.attempts)  # sent_at NULL: the relay must deliver the retry
     await ledger.mark_sent(db, [t.id], utcnow(), unclaimed_only=True)
     await db.refresh(t)
     assert t.sent_at is None
@@ -152,7 +152,7 @@ async def test_claim_stamps_started_at_for_each_attempt(db):
     t = await ledger.claim(db, t.id)
     first = t.started_at
     assert first is not None and before <= first <= utcnow()
-    await ledger.fail(db, t, "rate limited", retry=True)
+    await ledger.fail(db, t, "rate limited", retry=True, attempt=t.attempts)
     assert (t.status, t.started_at) == ("queued", first)
     t.run_after = utcnow()
     await db.flush()
@@ -169,17 +169,19 @@ async def test_fail_retries_with_backoff_then_gives_up(db):
     t = await ledger.add(db, "plan_work")
     t = await ledger.claim(db, t.id)
     t.sent_at = utcnow()
-    await ledger.fail(db, t, "rate limited", retry=True)
+    await ledger.fail(db, t, "rate limited", retry=True, attempt=t.attempts)
     assert (t.status, t.sent_at) == ("queued", None) and t.run_after > utcnow() + timedelta(seconds=20)
-    t.attempts = get_settings().task_max_attempts
-    await ledger.fail(db, t, "still", retry=True)
+    t.run_after, t.attempts = utcnow(), get_settings().task_max_attempts - 1
+    await db.flush()
+    t = await ledger.claim(db, t.id)  # the last attempt
+    await ledger.fail(db, t, "still", retry=True, attempt=t.attempts)
     assert t.status == "failed" and t.finished_at
 
 
 async def test_requeue_runs_a_failed_task_again_once(db, published):
     t = await ledger.add(db, "ai_check", dedupe=True)
     t = await ledger.claim(db, t.id)
-    await ledger.fail(db, t, "bad", retry=False)
+    await ledger.fail(db, t, "bad", retry=False, attempt=t.attempts)
     again = await ledger.requeue(db, t.id)
     assert (again.status, again.attempts, again.error) == ("queued", 0, None)
     with pytest.raises(Conflict):
@@ -203,7 +205,7 @@ async def test_a_retry_or_reap_moves_the_row_to_its_kinds_queue(db, how):
     t.queue = "ai"  # as 0022 backfilled it, before #50 moved the kind to io
     await db.flush()
     if how == "retry":
-        await ledger.fail(db, t, "busy", retry=True)
+        await ledger.fail(db, t, "busy", retry=True, attempt=t.attempts)
     else:
         t.locked_at = utcnow() - timedelta(hours=1)
         await db.flush()
@@ -229,7 +231,7 @@ def test_the_latest_queue_backfill_matches_the_kinds():
 async def test_requeue_turns_a_twin_racing_the_check_into_a_conflict(db, monkeypatch):
     t = await ledger.add(db, "ai_check", dedupe=True)
     t = await ledger.claim(db, t.id)
-    await ledger.fail(db, t, "bad", retry=False)
+    await ledger.fail(db, t, "bad", retry=False, attempt=t.attempts)
     twin = await ledger.add(db, "ai_check", dedupe=True)  # queued since: only the unique index stops it now
     real_scalar = db.scalar
 
@@ -251,6 +253,76 @@ async def test_reap_requeues_stale_running_rows_for_the_relay(db):
     assert await ledger.reap(db) == 1
     await db.refresh(t)
     assert (t.status, t.sent_at) == ("queued", None)
+
+
+async def test_a_heartbeat_only_refreshes_its_own_attempt(db):
+    """#136: a run the reaper took back must not keep the next attempt's row looking alive."""
+    t = await ledger.add(db, "plan_work")
+    t = await ledger.claim(db, t.id)
+    stale = utcnow() - timedelta(hours=1)
+    t.locked_at, t.attempts = stale, 2  # the reaper took attempt 1 back and attempt 2 claimed it
+    await db.flush()
+    await ledger.heartbeat(db, t.id, attempt=1)
+    await db.refresh(t)
+    assert t.locked_at == stale
+    await ledger.heartbeat(db, t.id, attempt=2)
+    await db.refresh(t)
+    assert t.locked_at > stale
+
+
+async def _reaped(db) -> tuple[Task, int]:
+    """A claimed task whose heartbeat went stale and that the reaper queued again: (row, its old attempt)."""
+    t = await ledger.claim(db, (await ledger.add(db, "plan_work", dedupe=True)).id)
+    attempt, t.locked_at = t.attempts, utcnow() - timedelta(hours=1)
+    await db.flush()
+    assert await ledger.reap(db) == 1
+    await db.refresh(t)
+    return t, attempt
+
+
+def _row(t: Task) -> tuple:
+    return t.status, t.attempts, t.result, t.error, t.finished_at, t.run_after
+
+
+@pytest.mark.parametrize("outcome", ["finish", "retry", "fail"])
+async def test_an_attempt_that_ends_after_the_reaper_took_its_row_records_nothing(db, outcome, caplog):
+    """#136: a hung run outlives its row's reap; its late outcome must not overwrite the requeued row."""
+    t, attempt = await _reaped(db)
+    before = _row(t)
+    if outcome == "finish":
+        assert await ledger.finish(db, t, {"late": True}, attempt=attempt) is False
+    else:
+        assert await ledger.fail(db, t, "late", retry=outcome == "retry", attempt=attempt) is False
+    await db.refresh(t)
+    assert _row(t) == before and t.status == "queued"
+    assert f"task {t.id} (plan_work): attempt 1 ended after its row was taken back" in caplog.text
+
+
+async def test_only_the_current_attempt_records_its_outcome(db):
+    """Once the next attempt claimed the row, the old one's outcome is dropped and the new one's lands."""
+    t, old = await _reaped(db)
+    t.run_after = utcnow()
+    await db.flush()
+    t = await ledger.claim(db, t.id)
+    assert t.attempts == 2
+    assert await ledger.fail(db, t, "late", retry=False, attempt=old) is False
+    assert await ledger.finish(db, t, {"late": True}, attempt=old) is False
+    assert t.status == "running"
+    assert await ledger.finish(db, t, {"ok": True}, attempt=2) is True
+    await db.refresh(t)
+    assert (t.status, t.result) == ("done", {"ok": True})
+
+
+async def test_a_late_outcome_after_the_reaper_failed_the_row_records_nothing(db):
+    t = await ledger.claim(db, (await ledger.add(db, "plan_work")).id)
+    t.attempts, t.locked_at = get_settings().task_max_attempts, utcnow() - timedelta(hours=1)
+    await db.flush()
+    await ledger.reap(db)
+    await db.refresh(t)
+    error = t.error
+    assert await ledger.finish(db, t, {"late": True}, attempt=t.attempts) is False
+    await db.refresh(t)
+    assert (t.status, t.result, t.error) == ("failed", None, error)
 
 
 async def test_the_relay_sends_a_row_to_its_kinds_queue_not_a_stale_column(db):

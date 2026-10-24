@@ -191,11 +191,11 @@ async def test_the_reaper_giving_up_on_induce_recipe_leaves_the_link_unresolved(
 async def test_fail_says_when_it_is_the_end(db):
     t = await ledger.add(db, "plan_work", rerun=True)
     await ledger.claim(db, t.id)
-    assert await ledger.fail(db, t, "busy", retry=True) is False  # retried
+    assert await ledger.fail(db, t, "busy", retry=True, attempt=t.attempts) is False  # retried
     t2 = await ledger.add(db, "fetch_link", {"doc_id": "x"}, user_id=None, rerun=True)
     await ledger.claim(db, t2.id)
     await ledger.add(db, "fetch_link", {"doc_id": "x"}, user_id=None, rerun=True)  # a rerun waits behind it
-    assert await ledger.fail(db, t2, "bad", retry=False) is False  # the rerun does the work
+    assert await ledger.fail(db, t2, "bad", retry=False, attempt=t2.attempts) is False  # the rerun does the work
     t3 = await ledger.add(db, "fetch_link", {"doc_id": "y"}, user_id=None)
     await ledger.claim(db, t3.id)
-    assert await ledger.fail(db, t3, "bad", retry=False) is True
+    assert await ledger.fail(db, t3, "bad", retry=False, attempt=t3.attempts) is True

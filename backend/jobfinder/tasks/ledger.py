@@ -12,7 +12,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
 
-from sqlalchemy import case, delete, event, exists, literal_column, or_, select, update
+from sqlalchemy import case, delete, event, exists, inspect, literal_column, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -122,17 +122,41 @@ def has_twin(status: str):
     return exists().where(other.dedupe_key == Task.dedupe_key, other.id != Task.id, other.status == status)
 
 
-async def finish(db: AsyncSession, task: Task, result: dict) -> None:
+async def _still_ours(db: AsyncSession, task: Task, attempt: int) -> bool:
+    """Lock the row if it is still `running` as `attempt` (#136). The reaper may have taken it back while
+    this run was still alive (queued again, failed, or claimed by the next attempt); a late outcome must
+    not overwrite that. FOR UPDATE waits out a concurrent reap and re-checks, and holds the row until
+    the caller commits, so nothing can take it back between this check and the write. The id comes from
+    the identity key: a handler's rollback may have expired `task`, and reading it would lazy-load."""
+    task_id = inspect(task).identity[0]
+    row = (await db.execute(
+        select(Task.kind, Task.status, Task.attempts).where(Task.id == task_id).with_for_update()
+    )).one_or_none()
+    if row is not None and (row.status, row.attempts) == ("running", attempt):
+        return True
+    log.warning("task %s (%s): attempt %d ended after its row was taken back; not recording it",
+                task_id, row.kind if row else "deleted", attempt)
+    return False
+
+
+async def finish(db: AsyncSession, task: Task, result: dict, *, attempt: int) -> bool:
+    """Record the result of `attempt`. False (and nothing written) when the row was taken back (#136)."""
+    if not await _still_ours(db, task, attempt):
+        return False
     task.status, task.result, task.error, task.finished_at = "done", result, None, utcnow()
     await db.flush()
     await _wake_rerun(db, task.dedupe_key)
+    return True
 
 
-async def fail(db: AsyncSession, task: Task, error: str, *, retry: bool) -> bool:
+async def fail(db: AsyncSession, task: Task, error: str, *, retry: bool, attempt: int) -> bool:
     """Record a failure; with retry, queue it again after a backoff (TASK_BACKOFF_SECONDS x4 per attempt:
     30s, 2m, 8m) until TASK_MAX_ATTEMPTS. The relay delivers the retry once it's due. A queued twin (a
     rerun) does the same work again, so it replaces the retry. Returns True when this is the end of it:
-    failed, with no retry or rerun left to do the work (the cue for tasks.failures)."""
+    failed, with no retry or rerun left to do the work (the cue for tasks.failures). Writes nothing and
+    returns False when the row is no longer `running` as `attempt`: the reaper took it back (#136)."""
+    if not await _still_ours(db, task, attempt):
+        return False
     key, attempts, now = task.dedupe_key, task.attempts, utcnow()
     task.error = error[:2000]
     replaced = bool(await db.scalar(select(Task.id).where(Task.id == task.id, has_twin("queued"))))
@@ -165,9 +189,11 @@ async def _wake_rerun(db: AsyncSession, key: str | None) -> None:
         _note(db, rerun, now)
 
 
-async def heartbeat(db: AsyncSession, task_id: int) -> None:
-    """Called periodically while a task runs so `reap` can tell it from one whose worker died."""
-    await db.execute(update(Task).where(Task.id == task_id, Task.status == "running").values(locked_at=utcnow()))
+async def heartbeat(db: AsyncSession, task_id: int, *, attempt: int) -> None:
+    """Called periodically while a task runs so `reap` can tell it from one whose worker died. Only for
+    `attempt`: a run the reaper took back must not keep the next attempt's row looking alive (#136)."""
+    await db.execute(update(Task).where(Task.id == task_id, Task.status == "running", Task.attempts == attempt)
+                     .values(locked_at=utcnow()))
 
 
 UNCLAIMED = {"unclaimed": True}  # the result of a task expire_queued failed: no worker ever took it
