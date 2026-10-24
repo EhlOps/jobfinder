@@ -255,6 +255,21 @@ async def test_reap_requeues_stale_running_rows_for_the_relay(db):
     assert (t.status, t.sent_at) == ("queued", None)
 
 
+async def test_a_heartbeat_only_refreshes_its_own_attempt(db):
+    """#136: a run the reaper took back must not keep the next attempt's row looking alive."""
+    t = await ledger.add(db, "plan_work")
+    t = await ledger.claim(db, t.id)
+    stale = utcnow() - timedelta(hours=1)
+    t.locked_at, t.attempts = stale, 2  # the reaper took attempt 1 back and attempt 2 claimed it
+    await db.flush()
+    await ledger.heartbeat(db, t.id, attempt=1)
+    await db.refresh(t)
+    assert t.locked_at == stale
+    await ledger.heartbeat(db, t.id, attempt=2)
+    await db.refresh(t)
+    assert t.locked_at > stale
+
+
 async def _reaped(db) -> tuple[Task, int]:
     """A claimed task whose heartbeat went stale and that the reaper queued again: (row, its old attempt)."""
     t = await ledger.claim(db, (await ledger.add(db, "plan_work", dedupe=True)).id)

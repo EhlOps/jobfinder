@@ -189,9 +189,11 @@ async def _wake_rerun(db: AsyncSession, key: str | None) -> None:
         _note(db, rerun, now)
 
 
-async def heartbeat(db: AsyncSession, task_id: int) -> None:
-    """Called periodically while a task runs so `reap` can tell it from one whose worker died."""
-    await db.execute(update(Task).where(Task.id == task_id, Task.status == "running").values(locked_at=utcnow()))
+async def heartbeat(db: AsyncSession, task_id: int, *, attempt: int) -> None:
+    """Called periodically while a task runs so `reap` can tell it from one whose worker died. Only for
+    `attempt`: a run the reaper took back must not keep the next attempt's row looking alive (#136)."""
+    await db.execute(update(Task).where(Task.id == task_id, Task.status == "running", Task.attempts == attempt)
+                     .values(locked_at=utcnow()))
 
 
 UNCLAIMED = {"unclaimed": True}  # the result of a task expire_queued failed: no worker ever took it

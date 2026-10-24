@@ -62,7 +62,8 @@ class ReinduceArgs(BaseModel):
 # ---------------------------------------------------------------- profile
 
 
-@ledger_task("extract_profile")
+# Its worst case is a 600s wait for a Claude permit plus two 240s CLI calls; 20 minutes leaves a margin (#136).
+@ledger_task("extract_profile", deadline=timedelta(minutes=20))
 async def extract_profile(db: AsyncSession, ai: AITasks, task: Task, _: None) -> dict:
     store = default_context().store
     sources = []

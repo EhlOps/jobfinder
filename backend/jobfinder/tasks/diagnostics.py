@@ -21,13 +21,19 @@ from taskiq import TaskiqState
 
 log = logging.getLogger("jobfinder.tasks")
 
+MAX_DEPTH = 200  # await_stack stops after this many frames
+
 
 def await_stack(task: asyncio.Task) -> str:
     """The task's stack down its await chain, outermost first (the task's repr names the future it
     waits on). Task.print_stack shows only the task's own coroutine frame, so a handler stuck several
     awaits deep would show only as the taskiq frame that awaits it."""
     frames, obj = [], task.get_coro()
-    while (frame := _frame(obj)) is not None:
+    for _ in range(MAX_DEPTH):  # bounded: a chain is never this deep, and a cycle mustn't hang the worker
+        if isinstance(obj, asyncio.Task):  # awaiting another task (a handler run by its deadline, #136)
+            obj = obj.get_coro()
+        if (frame := _frame(obj)) is None:
+            break
         frames.append((frame, frame.f_lineno))
         obj = _awaited(obj, frame)
     return "".join(traceback.StackSummary.extract(frames).format()).rstrip()
