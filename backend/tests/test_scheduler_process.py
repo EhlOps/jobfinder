@@ -119,7 +119,7 @@ async def test_the_relay_leaves_a_row_claimed_meanwhile_unsent(maker, published,
             row = await db.get(Task, task_id)
             if outcome == "retry":
                 await ledger.claim(db, task_id)
-                await ledger.fail(db, row, "fast", retry=True)
+                await ledger.fail(db, row, "fast", retry=True, attempt=row.attempts)
             else:  # claim's deferral of a rerun behind a running twin
                 row.run_after, row.sent_at = utcnow() + ledger.TWIN_WAIT, None
             await db.commit()
