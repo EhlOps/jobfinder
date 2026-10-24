@@ -81,6 +81,7 @@ async def _execute(kind, handler, task_id, payload_model, wants_ai, sessions, ai
             await db.commit()  # keeps claim's deferral of a rerun behind a running twin
             log.debug("task %s (%s) not claimable; duplicate delivery dropped", task_id, kind)
             return
+        attempt = task.attempts  # finish and fail write only while the row is still this attempt (#136)
         _warn_if_slow(task)
         await db.commit()
         beat = asyncio.create_task(_heartbeat_loop(task_id, sessions))
@@ -93,16 +94,18 @@ async def _execute(kind, handler, task_id, payload_model, wants_ai, sessions, ai
 
                 ai = default_context().claude  # built once per process (cached); records every call in ai_calls
             result = await handler(db, ai if wants_ai else None, task, args)
-            await ledger.finish(db, task, result)
-            await db.commit()
+            if await ledger.finish(db, task, result, attempt=attempt):
+                await db.commit()
+            else:  # the reaper took the row back: this run's writes and follow-ups are not ours to keep
+                await _rollback(db, task_id)
         except AIError as e:
             log.warning("task %s (%s) AI error: %s", task_id, kind, e)
             await _rollback(db, task_id)
-            await _fail(sessions, task_id, str(e), retry=e.retryable)
+            await _fail(sessions, task_id, str(e), retry=e.retryable, attempt=attempt)
         except Exception as e:
             log.exception("task %s (%s) failed", task_id, kind)
             await _rollback(db, task_id)
-            await _fail(sessions, task_id, f"{type(e).__name__}: {e}", retry=False)
+            await _fail(sessions, task_id, f"{type(e).__name__}: {e}", retry=False, attempt=attempt)
         finally:
             beat.cancel()
 
@@ -140,14 +143,14 @@ async def _heartbeat_loop(task_id: int, sessions) -> None:
             log.exception("heartbeat for task %s failed", task_id)
 
 
-async def _fail(sessions, task_id: int, error: str, *, retry: bool) -> None:
+async def _fail(sessions, task_id: int, error: str, *, retry: bool, attempt: int) -> None:
     """Record a failure on a fresh session: the handler's may be in a failed transaction. A task that
     failed for good settles what it leaves behind (tasks.failures) in the same commit."""
     try:
         async with sessions() as db:
             task = await db.get(Task, task_id)
             if task:
-                if await ledger.fail(db, task, error, retry=retry):
+                if await ledger.fail(db, task, error, retry=retry, attempt=attempt):
                     await failures.settle(db, [task])
                 await db.commit()
     except Exception:
