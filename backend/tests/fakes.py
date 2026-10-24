@@ -252,9 +252,9 @@ class FakeRenderer:
                 if t:
                     self.seen.append((t.kind, t.payload))
                     if self.fail:
-                        await ledger.fail(db, t, self.fail, retry=False)
+                        await ledger.fail(db, t, self.fail, retry=False, attempt=t.attempts)
                     else:
-                        await ledger.finish(db, t, self.results[t.kind])
+                        await ledger.finish(db, t, self.results[t.kind], attempt=t.attempts)
                 await db.commit()
                 if t:
                     continue

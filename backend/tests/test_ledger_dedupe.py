@@ -48,7 +48,7 @@ async def test_claim_defers_a_rerun_until_its_twin_finishes(db):
     assert (rerun.status, rerun.sent_at) == ("queued", None)
     assert rerun.run_after > utcnow() + timedelta(seconds=20)
 
-    await ledger.finish(db, first, {})
+    await ledger.finish(db, first, {}, attempt=first.attempts)
     rerun.run_after = utcnow() - timedelta(seconds=1)
     await db.flush()
     assert (await ledger.claim(db, rerun.id)).status == "running"
@@ -69,7 +69,7 @@ async def test_a_delivered_rerun_waits_and_its_twin_finishing_publishes_it(maker
     await runtime.execute("plan_work", handler, rerun.id, wants_ai=False)
     async with maker() as db:
         assert (await db.get(Task, rerun.id)).run_after > utcnow() + timedelta(seconds=20)  # committed
-        await ledger.finish(db, await db.get(Task, first.id), {})
+        await ledger.finish(db, await db.get(Task, first.id), {}, attempt=1)
         await db.commit()
     assert (await published.settle())[2:] == [("io", "plan_work", rerun.id)]  # woken: due now, sent again
     await runtime.execute("plan_work", handler, rerun.id, wants_ai=False)
@@ -79,7 +79,7 @@ async def test_a_delivered_rerun_waits_and_its_twin_finishing_publishes_it(maker
 async def test_a_retry_behind_a_queued_rerun_fails_instead(db):
     first = await _running(db)
     rerun = await ledger.add(db, "audit_profile", rerun=True)
-    await ledger.fail(db, first, "rate limited", retry=True)
+    await ledger.fail(db, first, "rate limited", retry=True, attempt=first.attempts)
     assert first.status == "failed"
     await db.refresh(rerun)
     assert rerun.status == "queued"

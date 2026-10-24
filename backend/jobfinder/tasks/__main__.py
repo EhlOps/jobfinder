@@ -6,6 +6,7 @@ at once (WORKER_AI_CONCURRENCY, WORKER_IO_CONCURRENCY, RENDERER_CONCURRENCY) and
 after its task has run, so a killed worker's messages are redelivered. A worker for a queue in
 PRIORITY_QUEUES asks the Claude gate for permits in the priority lane, every other in bulk.
 """
+import signal
 import sys
 
 from jobfinder.core import logging as core_logging
@@ -53,6 +54,10 @@ def main(argv: list[str]) -> int:
     # Set before taskiq starts the worker process, which inherits it: taskiq forks on Linux (the images);
     # under spawn (macOS) the child would start in bulk.
     gate.set_lane("priority" if argv[0] in PRIORITY_QUEUES else "bulk")
+    # The stack-dump signals (tasks/diagnostics.py, #136) are for the worker child, which installs its own
+    # handlers at WORKER_STARTUP; sent to this process by mistake, they would kill the pod and its evidence.
+    for sig in (signal.SIGUSR1, signal.SIGUSR2):
+        signal.signal(sig, signal.SIG_IGN)
     return run_worker(WorkerArgs.from_cli(worker_argv(argv[0]))) or 0
 
 

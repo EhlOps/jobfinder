@@ -262,6 +262,29 @@ async def test_a_failed_handler_publishes_no_follow_up(maker, published):
     assert await count(maker, Task, kind="plan_work") == 0
 
 
+@pytest.mark.real_commit
+@pytest.mark.parametrize("outcome", ["finish", "fail"])
+async def test_a_run_that_ends_after_its_row_was_reaped_keeps_nothing(maker, published, outcome):
+    """#136: the reaper took the row back mid-run; the late run's outcome, writes and follow-ups are dropped."""
+    async def handler(db, ai, task, payload):
+        async with maker() as other:  # the reaper, while this run is still alive
+            await other.execute(sa.update(Task).where(Task.id == task.id)
+                                .values(locked_at=utcnow() - timedelta(hours=1)))
+            assert await ledger.reap(other) == 1
+            await other.commit()
+        await ledger.add(db, "plan_work")
+        if outcome == "fail":
+            raise RuntimeError("late")
+        return {"late": True}
+
+    tid = await _queued(maker, "ingest_tick")
+    await runtime.execute("ingest_tick", handler, tid, wants_ai=False)
+    row = await _row(maker, tid)
+    assert (row.status, row.attempts, row.result, row.error) == ("queued", 1, None, None)
+    assert await count(maker, Task, kind="plan_work") == 0
+    assert await published.settle() == [("io", "ingest_tick", tid)]
+
+
 async def _follow_up(maker, kind) -> Task:
     async with maker() as db:
         return await db.scalar(sa.select(Task).where(Task.kind == kind))
@@ -372,12 +395,12 @@ async def test_the_heartbeat_stops_at_its_cap(maker, monkeypatch):
     monkeypatch.setattr(get_settings(), "task_heartbeat_seconds", 0.01)
     beats = []
 
-    async def heartbeat(db, task_id):
+    async def heartbeat(db, task_id, *, attempt):
         beats.append(time.monotonic())
 
     monkeypatch.setattr(ledger, "heartbeat", heartbeat)
     until = time.monotonic() + 0.1
-    await asyncio.wait_for(runtime._heartbeat_loop(1, maker, until=until), 2)  # returns: it stopped
+    await asyncio.wait_for(runtime._heartbeat_loop(1, maker, attempt=1, until=until), 2)  # returns: it stopped
     assert beats and max(beats) < until
 
 

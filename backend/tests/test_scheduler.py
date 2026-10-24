@@ -162,7 +162,7 @@ async def test_recently_planned_users_wait_for_the_gap(maker):
         u = await _setup(db, "a@x.com", last_run_ago=timedelta(hours=30))
         await planner.plan(db, NOW)
         for t in await _tasks(db):
-            await ledger.finish(db, t, {})
+            await ledger.finish(db, await ledger.claim(db, t.id), {}, attempt=1)
         await db.commit()
         await planner.plan(db, NOW + timedelta(minutes=15))  # still stale, but planned a moment ago
         assert len(await _tasks(db)) == 1
