@@ -7,7 +7,13 @@ registers its kinds; a worker process only consumes its own queue's broker (task
 On delivery of a ledger id: claim the row (a duplicate delivery finds it already taken and is dropped)
 and commit, so the SPA sees "running" and the reaper has a heartbeat to watch; validate the payload; run
 the handler in the same session; then finish and commit. The handler's own `ledger.add` follow-ups are
-published once that commit lands.
+published once that commit lands. Every claimed run logs one outcome line at INFO (done, will retry, failed).
+
+Every run ends by its kind's deadline (#136): `@ledger_task(kind, deadline=...)`, else TASK_DEADLINE_MINUTES.
+A run still going then has its await stack logged, is cancelled, and is recorded as a retryable failure
+(`timeout: ...`), so a hung handler can't hold its row `running` (and every rerun deduped onto it) forever.
+The heartbeat stops HEARTBEAT_GRACE after the deadline in any case, so a delivery that can't even record
+that outcome goes stale and the reaper requeues the row.
 
 taskiq acks the message after `deliver` returns (--ack-type when_executed), and `deliver` always
 returns: every outcome, failures included, is recorded on the row, and an error the runtime can't even
@@ -25,8 +31,12 @@ what gets the work done, so an ack never loses anything:
     their rows stay queued, so the relay re-sends them.
 """
 import asyncio
+import contextlib
+import gc
 import logging
+import time
 from collections.abc import Awaitable, Callable
+from datetime import timedelta
 from typing import Any
 
 from pydantic import BaseModel
@@ -46,10 +56,19 @@ log = logging.getLogger("jobfinder.tasks")
 LedgerHandler = Callable[[AsyncSession, Any, Task, Any], Awaitable[dict]]
 REGISTRY: dict[str, LedgerHandler] = {}
 PAYLOADS: dict[str, type[BaseModel] | None] = {}  # kind -> its payload model
+DEADLINES: dict[str, timedelta | None] = {}  # kind -> its own deadline; None: TASK_DEADLINE_MINUTES
+HEARTBEAT_GRACE = timedelta(minutes=2)  # beats stop this long after the deadline (#136)
+CANCEL_WAIT_SECONDS = 5  # how long a run past its deadline gets to unwind after its cancellation
 
 
-def ledger_task(kind: str, *, payload: type[BaseModel] | None = None, ai: bool = True):
-    """Register `handler` for `kind` on its queue's broker (tasks.kinds.QUEUES)."""
+class DeadlineExceeded(Exception):
+    """A run went past its kind's deadline and was cancelled (#136)."""
+
+
+def ledger_task(kind: str, *, payload: type[BaseModel] | None = None, ai: bool = True,
+                deadline: timedelta | None = None):
+    """Register `handler` for `kind` on its queue's broker (tasks.kinds.QUEUES). A run of it is cancelled
+    and retried after `deadline` (None: TASK_DEADLINE_MINUTES, read at run time)."""
     broker = BROKERS[queue_for(kind)]  # an unknown kind fails at import, not at first delivery
 
     def register(handler: LedgerHandler) -> LedgerHandler:
@@ -57,7 +76,7 @@ def ledger_task(kind: str, *, payload: type[BaseModel] | None = None, ai: bool =
             await execute(kind, handler, int(task_id), payload_model=payload, wants_ai=ai)
 
         broker.register_task(deliver, task_name=kind)
-        REGISTRY[kind], PAYLOADS[kind] = handler, payload
+        REGISTRY[kind], PAYLOADS[kind], DEADLINES[kind] = handler, payload, deadline
         return handler
 
     return register
@@ -74,6 +93,12 @@ async def execute(kind: str, handler: LedgerHandler, task_id: int, *, payload_mo
                       "the relay or the reaper will recover it", task_id, kind)
 
 
+def deadline_for(kind: str) -> timedelta:
+    """How long a run of `kind` may take before it is cancelled and retried (#136)."""
+    own = DEADLINES.get(kind)
+    return own if own is not None else timedelta(minutes=settings.task_deadline_minutes)
+
+
 async def _execute(kind, handler, task_id, payload_model, wants_ai, sessions, ai) -> None:
     async with sessions() as db:
         task = await ledger.claim(db, task_id)
@@ -83,7 +108,9 @@ async def _execute(kind, handler, task_id, payload_model, wants_ai, sessions, ai
             return
         _warn_if_slow(task)
         await db.commit()
-        beat = asyncio.create_task(_heartbeat_loop(task_id, sessions))
+        deadline, started = deadline_for(kind), time.monotonic()
+        until = started + (deadline + HEARTBEAT_GRACE).total_seconds()
+        beat = asyncio.create_task(_heartbeat_loop(task_id, sessions, until=until))
         try:
             if task.kind != kind:
                 raise ValueError(f"task {task_id} is a {task.kind!r}, delivered as {kind!r}")
@@ -92,19 +119,88 @@ async def _execute(kind, handler, task_id, payload_model, wants_ai, sessions, ai
                 from jobfinder.context import default_context
 
                 ai = default_context().claude  # built once per process (cached); records every call in ai_calls
-            result = await handler(db, ai if wants_ai else None, task, args)
+            result = await _run_by_deadline(handler(db, ai if wants_ai else None, task, args), deadline,
+                                            task_id, kind)
             await ledger.finish(db, task, result)
             await db.commit()
+            log.info("task %s (%s) done in %.1fs", task_id, kind, time.monotonic() - started)
+        except DeadlineExceeded:
+            await _rollback(db, task_id)
+            error = f"timeout: task exceeded its {deadline} deadline"
+            _log_outcome(task_id, kind, started, error, await _fail(sessions, task_id, error, retry=True))
         except AIError as e:
             log.warning("task %s (%s) AI error: %s", task_id, kind, e)
             await _rollback(db, task_id)
-            await _fail(sessions, task_id, str(e), retry=e.retryable)
+            _log_outcome(task_id, kind, started, str(e), await _fail(sessions, task_id, str(e), retry=e.retryable))
         except Exception as e:
             log.exception("task %s (%s) failed", task_id, kind)
             await _rollback(db, task_id)
-            await _fail(sessions, task_id, f"{type(e).__name__}: {e}", retry=False)
+            error = f"{type(e).__name__}: {e}"
+            _log_outcome(task_id, kind, started, error, await _fail(sessions, task_id, error, retry=False))
         finally:
             beat.cancel()
+
+
+async def _run_by_deadline(handler_run: Awaitable[dict], deadline: timedelta, task_id: int, kind: str) -> dict:
+    """The handler's result, or DeadlineExceeded once it has run for `deadline` (#136). The handler runs as
+    its own asyncio task so it can be cancelled, with its await stack logged first: that stack is where
+    the run hung. A cancellation of the delivery itself (worker shutdown) cancels the handler too."""
+    run = asyncio.ensure_future(handler_run)
+    try:
+        done, _ = await asyncio.wait({run}, timeout=deadline.total_seconds())
+    except asyncio.CancelledError:
+        run.cancel()
+        await asyncio.wait({run}, timeout=CANCEL_WAIT_SECONDS)  # let it unwind before its session closes
+        raise
+    if done:
+        return run.result()
+    log.error("task %s (%s) passed its %s deadline; its stack:\n%s", task_id, kind, deadline, _await_stack(run))
+    run.cancel()
+    await asyncio.wait({run}, timeout=CANCEL_WAIT_SECONDS)
+    if not run.done():  # it swallowed the cancellation, or blocks in its cleanup: left behind
+        log.warning("task %s (%s) did not unwind within %ss of its cancellation; recording the timeout anyway",
+                    task_id, kind, CANCEL_WAIT_SECONDS)
+    elif not run.cancelled():
+        with contextlib.suppress(BaseException):
+            run.exception()  # retrieved, so asyncio doesn't log "exception was never retrieved"
+    raise DeadlineExceeded
+
+
+def _await_stack(run: asyncio.Task) -> str:
+    """The chain of awaits `run` is suspended in, outermost first. Task.print_stack shows only the
+    handler's own frame, not the await deep inside it that is actually stuck."""
+    lines, aw = [], run.get_coro()
+    for _ in range(200):  # bounded: a chain is never this deep, and a cycle mustn't hang the worker
+        if aw is None:
+            break
+        if isinstance(aw, asyncio.Task):  # awaiting another task: follow it into its coroutine
+            aw = aw.get_coro()
+            continue
+        if type(aw).__name__ in ("async_generator_asend", "async_generator_athrow"):
+            # an `async with` on an @asynccontextmanager, or an `async for`: step into the generator,
+            # which these wrappers expose only to the garbage collector
+            aw = next(iter(gc.get_referents(aw)), None)
+            continue
+        frame = getattr(aw, "cr_frame", None) or getattr(aw, "gi_frame", None) or getattr(aw, "ag_frame", None)
+        if frame is None:  # the end of the chain: a future, or a coroutine that already returned
+            lines.append(f"  awaiting {aw!r}")
+            break
+        lines.append(f'  File "{frame.f_code.co_filename}", line {frame.f_lineno}, in {frame.f_code.co_name}')
+        aw = getattr(aw, "cr_await", None) or getattr(aw, "gi_yieldfrom", None) or getattr(aw, "ag_await", None)
+    return "\n".join(lines)
+
+
+def _log_outcome(task_id: int, kind: str, started: float, error: str, status: str | None) -> None:
+    """The one INFO line of a run that failed: queued again (a retry), failed for good, or not recorded
+    (`_fail` logged why; the row stays running until the reaper requeues it)."""
+    took = time.monotonic() - started
+    if status == "queued":
+        log.info("task %s (%s) will retry, failed after %.1fs: %s", task_id, kind, took, error)
+    elif status is None:
+        log.info("task %s (%s) failed after %.1fs, not recorded (the reaper will requeue it): %s",
+                 task_id, kind, took, error)
+    else:
+        log.info("task %s (%s) failed after %.1fs: %s", task_id, kind, took, error)
 
 
 def parse_payload(model: type[BaseModel] | None, raw: dict | None) -> BaseModel | None:
@@ -129,9 +225,17 @@ async def _rollback(db: AsyncSession, task_id: int) -> None:
         log.warning("rollback after task %s failed (connection lost?)", task_id, exc_info=True)
 
 
-async def _heartbeat_loop(task_id: int, sessions) -> None:
+async def _heartbeat_loop(task_id: int, sessions, *, until: float) -> None:
+    """Refresh the row's lock every TASK_HEARTBEAT_SECONDS, but not past `until` (time.monotonic(): the
+    deadline plus HEARTBEAT_GRACE). The delivery normally records the timeout itself and stops this loop;
+    the cap is for a delivery that can't get that far (stuck in its rollback or the failure record), whose
+    beats would otherwise keep the row `running`, out of the reaper's reach, for good (#136)."""
     while True:
         await asyncio.sleep(settings.task_heartbeat_seconds)
+        if time.monotonic() >= until:
+            log.warning("task %s: heartbeat stopped %s past its deadline; the reaper will requeue it",
+                        task_id, HEARTBEAT_GRACE)
+            return
         try:
             async with sessions() as db:
                 await ledger.heartbeat(db, task_id)
@@ -140,15 +244,20 @@ async def _heartbeat_loop(task_id: int, sessions) -> None:
             log.exception("heartbeat for task %s failed", task_id)
 
 
-async def _fail(sessions, task_id: int, error: str, *, retry: bool) -> None:
+async def _fail(sessions, task_id: int, error: str, *, retry: bool) -> str | None:
     """Record a failure on a fresh session: the handler's may be in a failed transaction. A task that
-    failed for good settles what it leaves behind (tasks.failures) in the same commit."""
+    failed for good settles what it leaves behind (tasks.failures) in the same commit. Returns the row's
+    new status (`queued`: a retry), or None when nothing was recorded."""
     try:
         async with sessions() as db:
             task = await db.get(Task, task_id)
             if task:
-                if await ledger.fail(db, task, error, retry=retry):
+                ended = await ledger.fail(db, task, error, retry=retry)
+                status = task.status  # set by fail; read before anything expires it
+                if ended:
                     await failures.settle(db, [task])
                 await db.commit()
+                return status
     except Exception:
         log.exception("could not record failure of task %s; the reaper will recover it", task_id)
+    return None

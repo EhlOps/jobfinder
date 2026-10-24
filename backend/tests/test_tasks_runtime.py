@@ -1,6 +1,7 @@
 """tasks.runtime (#48): what a delivery does with every outcome, and that the queues are separate
 consumers (a long io task never holds up an ai one, nor bulk ai work a priority one)."""
 import asyncio
+import contextlib
 from datetime import timedelta
 
 import pytest
@@ -290,3 +291,149 @@ async def test_an_ai_task_finishes_while_an_io_task_is_in_flight(maker, monkeypa
     release.set()
     await io_run
     assert (await _row(maker, ingest)).status == "done"
+
+
+# ---------------------------------------------------------------- deadline (#136)
+
+
+@contextlib.asynccontextmanager
+async def _slot_like():  # like ClaudeGate.slot: an async context manager that waits on entry
+    await asyncio.sleep(60)
+    yield
+
+
+async def _stuck_deep():
+    async with _slot_like():
+        pass
+
+
+async def hangs_past_its_deadline(db, ai, task, payload):
+    await _stuck_deep()
+    return {}
+
+
+async def test_a_run_past_its_deadline_is_cancelled_logged_and_retried(maker, monkeypatch, caplog):
+    """#136: a hung handler no longer holds its row `running` behind fresh heartbeats. At the deadline its
+    await stack is logged (down to where it hung), it is cancelled, and the row is queued again."""
+    monkeypatch.setattr(get_settings(), "task_deadline_minutes", 0.002)  # 0.12s
+    tid = await _queued(maker, "ai_check")
+    with caplog.at_level("INFO", logger="jobfinder.tasks"):
+        await asyncio.wait_for(runtime.execute("ai_check", hangs_past_its_deadline, tid, ai=object()), 5)
+    row = await _row(maker, tid)
+    assert (row.status, row.attempts) == ("queued", 1) and row.error.startswith("timeout: ")
+    passed = [r for r in caplog.records if "passed its" in r.getMessage()]
+    assert len(passed) == 1 and passed[0].levelname == "ERROR"
+    stack = passed[0].getMessage()
+    assert "in hangs_past_its_deadline" in stack and "in _stuck_deep" in stack
+    assert stack.index("hangs_past_its_deadline") < stack.index("_stuck_deep")  # outermost first
+    assert "in _slot_like" in stack  # through the context manager's generator, down to where it waits
+
+
+async def test_a_run_past_its_deadline_on_its_last_attempt_fails(maker, monkeypatch):
+    monkeypatch.setattr(get_settings(), "task_deadline_minutes", 0.002)
+    tid = await _queued(maker, "ai_check")
+    async with maker() as db:
+        (await db.get(Task, tid)).attempts = get_settings().task_max_attempts - 1
+        await db.commit()
+    await asyncio.wait_for(runtime.execute("ai_check", hangs_past_its_deadline, tid, ai=object()), 5)
+    row = await _row(maker, tid)
+    assert (row.status, row.attempts) == ("failed", 3) and row.error.startswith("timeout: ")
+
+
+async def test_a_handler_that_ignores_its_cancellation_does_not_hold_the_delivery(maker, monkeypatch):
+    """The delivery gives a cancelled run CANCEL_WAIT_SECONDS to unwind, then records the timeout anyway;
+    the heartbeat cap (below) lets the reaper recover the row if even that record fails."""
+    monkeypatch.setattr(get_settings(), "task_deadline_minutes", 0.002)
+    monkeypatch.setattr(runtime, "CANCEL_WAIT_SECONDS", 0.1)
+    released = asyncio.Event()
+
+    async def stubborn(db, ai, task, payload):
+        while not released.is_set():
+            try:
+                await asyncio.sleep(0.05)
+            except asyncio.CancelledError:
+                pass  # swallowed
+        return {}
+
+    tid = await _queued(maker, "ai_check")
+    try:
+        await asyncio.wait_for(runtime.execute("ai_check", stubborn, tid, ai=object()), 3)
+    finally:
+        released.set()
+    row = await _row(maker, tid)
+    assert row.status == "queued" and row.error.startswith("timeout: ")
+
+
+async def test_the_heartbeat_stops_at_its_cap(maker, monkeypatch):
+    """Beats past the deadline + HEARTBEAT_GRACE would keep a run whose cancellation never landed out of
+    the reaper's reach forever (#136)."""
+    import time
+
+    monkeypatch.setattr(get_settings(), "task_heartbeat_seconds", 0.01)
+    beats = []
+
+    async def heartbeat(db, task_id):
+        beats.append(time.monotonic())
+
+    monkeypatch.setattr(ledger, "heartbeat", heartbeat)
+    until = time.monotonic() + 0.1
+    await asyncio.wait_for(runtime._heartbeat_loop(1, maker, until=until), 2)  # returns: it stopped
+    assert beats and max(beats) < until
+
+
+async def test_a_delivery_cancelled_mid_run_cancels_its_handler(maker):
+    """Worker shutdown cancels the delivery; the handler must not run on with a closed session."""
+    started, ended = asyncio.Event(), []
+
+    async def handler(db, ai, task, payload):
+        started.set()
+        try:
+            await asyncio.sleep(60)
+        except asyncio.CancelledError:
+            ended.append("cancelled")
+            raise
+        return {}
+
+    tid = await _queued(maker, "ai_check")
+    delivery = asyncio.create_task(runtime.execute("ai_check", handler, tid, ai=object()))
+    await asyncio.wait_for(started.wait(), 5)
+    delivery.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await delivery
+    assert ended == ["cancelled"]
+
+
+async def test_each_claimed_run_logs_one_outcome_line(maker, caplog):
+    async def done(db, ai, task, payload):
+        return {}
+
+    async def rate_limited(db, ai, task, payload):
+        raise AIError("rate_limited", "slow down")
+
+    async def broken(db, ai, task, payload):
+        raise RuntimeError("broken")
+
+    ids = [await _queued(maker, "ai_check") for _ in range(3)]
+    with caplog.at_level("INFO", logger="jobfinder.tasks"):
+        for tid, handler in zip(ids, (done, rate_limited, broken), strict=True):
+            await runtime.execute("ai_check", handler, tid, ai=object())
+        await runtime.execute("ai_check", done, ids[0], ai=object())  # a duplicate: dropped, no outcome
+    outcomes = [r.getMessage() for r in caplog.records if r.levelname == "INFO"]
+    assert len(outcomes) == 3
+    assert outcomes[0].startswith(f"task {ids[0]} (ai_check) done in ")
+    assert outcomes[1].startswith(f"task {ids[1]} (ai_check) will retry, failed after ")
+    assert outcomes[1].endswith("slow down")
+    assert outcomes[2].startswith(f"task {ids[2]} (ai_check) failed after ")
+    assert outcomes[2].endswith("RuntimeError: broken")
+
+
+def test_extract_profile_has_its_own_deadline_and_every_other_kind_the_default(monkeypatch):
+    """extract_profile's worst case is a 600s gate wait plus two 240s CLI calls: 20 minutes. Every other
+    kind reads TASK_DEADLINE_MINUTES at run time."""
+    assert ai_tasks and io_tasks and render_tasks
+    monkeypatch.setattr(get_settings(), "task_deadline_minutes", 7.5)
+    assert runtime.DEADLINES["extract_profile"] == timedelta(minutes=20)
+    for kind in set(runtime.REGISTRY) - {"extract_profile"}:
+        assert runtime.DEADLINES[kind] is None, kind
+        assert runtime.deadline_for(kind) == timedelta(minutes=7.5), kind
+    assert runtime.deadline_for("extract_profile") == timedelta(minutes=20)

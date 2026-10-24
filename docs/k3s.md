@@ -503,6 +503,7 @@ scheduler (1 replica, Recreate)
         cron:   writes the scheduled rows (ingest ticks, daily emails, ...), deduped like user work
         relay:  every RELAY_SECONDS (15s), XADDs due rows that are still queued, so a lost publish is re-sent
         reaper: a running row whose heartbeat is older than TASK_STUCK_AFTER_MINUTES (5) goes back to queued
+                (a worker beats every TASK_HEARTBEAT_SECONDS, but never past its run's deadline + 2 min)
         prune:  done/failed tasks older than TASK_PRUNE_DAYS (30; up to 5000 rows a tick), rate events, sessions
 ```
 
@@ -515,6 +516,7 @@ Which kind runs on which queue is in `backend/jobfinder/tasks/kinds.py`.
 **Failure handling.**
 - **Acks.** A worker acks a message only after its task has finished (`--ack-type when_executed`). Every outcome (done, failed, retry scheduled) acks.
 - **A worker killed mid-task** leaves its row `running` and its message unacked. Once the heartbeat is stale, the reaper requeues the row and the relay re-sends it. The old message stays pending: taskiq-redis reclaims messages idle for over 10 minutes only on a read that also fetched new messages, so on a quiet stream it comes back once new work arrives. Then it fails the claim and is dropped. Nothing waits on it, since the relay already re-sent the row.
+- **A run that hangs** (#136) has a deadline: `TASK_DEADLINE_MINUTES` (30), or its kind's own (`@ledger_task(kind, deadline=...)`; `extract_profile` 20 minutes, a full gate wait plus two CLI calls). At the deadline the worker logs `task <id> (<kind>) passed its <deadline> deadline; its stack:` with the await chain down to where it hung, cancels the run (a Claude CLI call kills its process group), and records a retryable failure with an error starting `timeout:`: queued again after the usual backoff, failed after `TASK_MAX_ATTEMPTS`. A run that ignores its cancellation gets 5 seconds to unwind and is then left behind while the timeout is recorded anyway. Whatever happens, a run stops beating 2 minutes after its deadline, so if the worker can't even record the timeout (Postgres hung), the reaper requeues the row as it would a dead worker's. Every claimed run logs one INFO line: `done in <n>s`, `will retry, failed after <n>s: <error>` or `failed after <n>s: <error>`.
 - **A valkey that hangs** rather than refuses (paused, or a network that drops packets) cannot stall a publish: it gives up after 5 seconds, the broker's lazy startup included, and the relay sends the row later. The stream connections have no read timeout (a task's synchronous work may block the event loop for longer), so TCP keepalive notices a vanished valkey instead, in about 45 seconds (idle 30s, then 3 probes 5s apart; `TCP_USER_TIMEOUT` gives up on unacknowledged writes as quickly). A valkey process that is alive but stuck still answers at the TCP level, so a worker's reads and acks wait until it recovers.
 - **A retryable Claude error** (a rate limit) sets `run_after` with a 30s/2m/8m backoff, and the relay delivers the row when it is due.
 - **Rows that were never published** (inserted by hand, or whose publish was lost) are picked up by the relay on its next ticks.
@@ -770,7 +772,7 @@ kubectl -n $NS exec deploy/api -- jobfinder tasks retry <id>      # a done or fa
 ```
 
 - **Queued and due for minutes:** that queue's worker isn't running, or the relay isn't (scheduler down, or its heartbeat stale). Check `kubectl -n $NS get pods`, the scheduler log, and the SQL in "Check the streams".
-- **Running for more than 5 minutes** with no progress: the reaper requeues it once the heartbeat is stale; if it doesn't, the scheduler isn't running.
+- **Running for more than 5 minutes** with no progress: the reaper requeues it once the heartbeat is stale; if it doesn't, the scheduler isn't running. A live worker keeps beating until the run's deadline (30 minutes; `extract_profile` 20), then cancels it, logs its stack (`passed its ... deadline` in the worker log) and queues it again; its beats stop for good 2 minutes after the deadline.
 - **Failed:** the error is on the row (`select id, kind, error from tasks where status = 'failed' order by id desc limit 20;`). Fix the cause, then `tasks retry`.
 - **Claude errors:** `kubectl -n $NS exec deploy/worker-ai -- jobfinder ai check` (exits 1 when Claude doesn't answer: a bad or expired token, or a rate limit). Replace the token on the AI setup page.
 - **valkey:** `kubectl -n $NS exec valkey-0 -- valkey-cli ping` (PONG), then the stream and consumer checks in "Check the streams". Lag that grows while a worker is at its maximum (`kubectl -n $NS get hpa`) is a backlog; lag that grows with 0 consumers listed means the workers can't reach valkey (NetworkPolicy label, or valkey restarting).
