@@ -56,8 +56,9 @@ export default function Profile() {
         ))}
       </ul>
       {saved && <p className="ok">{saved}</p>}
-      {tab === "prefs" && <StatusStep key={profile.dataUpdatedAt} initial={profile.data.status} onDone={done("Preferences")} submitLabel="Save preferences" />}
-      {tab === "background" && <BackgroundStep key={profile.dataUpdatedAt} initial={profile.data.background} onDone={done("Background")} submitLabel="Save background" />}
+      {/* Remount a form only when its saved data changes: a refetch (e.g. on window focus) must not wipe edits or re-extract. */}
+      {tab === "prefs" && <StatusStep key={JSON.stringify(profile.data.status)} initial={profile.data.status} onDone={done("Preferences")} submitLabel="Save preferences" />}
+      {tab === "background" && <BackgroundStep key={JSON.stringify(profile.data.background)} initial={profile.data.background} onDone={done("Background")} submitLabel="Save background" />}
       {tab === "sources" && <SourcesStep />}
       {tab === "answers" && <Answers />}
     </>
