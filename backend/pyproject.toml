@@ -93,7 +93,7 @@ layers = [
   "jobfinder.services | jobfinder.context",
   "jobfinder.schemas",
   "jobfinder.repositories | jobfinder.integrations | jobfinder.storage | jobfinder.profile | jobfinder.resumes",
-  "jobfinder.tasks.ledger : jobfinder.tasks.kinds : jobfinder.tasks.brokers",
+  "jobfinder.tasks.ledger : jobfinder.tasks.kinds : jobfinder.tasks.brokers : jobfinder.tasks.diagnostics",
   "jobfinder.models",
   "jobfinder.core",
 ]

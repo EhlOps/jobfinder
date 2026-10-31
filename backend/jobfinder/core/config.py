@@ -100,6 +100,7 @@ class Settings(BaseSettings):
     planner_backoff_minutes: int
     task_max_attempts: int
     task_stuck_after_minutes: int
+    task_deadline_minutes: float
     task_backoff_seconds: int
     task_heartbeat_seconds: float
     task_prune_days: int
