@@ -85,6 +85,7 @@ export default function BackgroundStep({ initial, onDone, onBack, submitLabel = 
     <form className="card" onSubmit={(e) => { e.preventDefault(); save.mutate(); }}>
       <h2>Is this right?</h2>
       <p className="muted">We pulled this from your documents. Fix anything wrong or missing — it drives your matches and cover letters.</p>
+      {!hasInitial && <p className="muted">Not saved yet. Click “{submitLabel}” to keep it.</p>}
       <Field label="Your name" hint="Used to sign your cover letters"><input value={bg.name} onChange={(e) => set("name", e.target.value)} /></Field>
       <Field label="Summary"><textarea rows={3} value={bg.summary} onChange={(e) => set("summary", e.target.value)} /></Field>
 

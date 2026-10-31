@@ -44,5 +44,15 @@ describe("background step", () => {
     await act(() => vi.advanceTimersByTimeAsync(2000));
     expect(await screen.findByRole("heading", { name: "Is this right?" })).toBeInTheDocument();
     expect(screen.getByDisplayValue("Sam Lee")).toBeInTheDocument();
+    expect(screen.getByText("Not saved yet. Click “Looks good” to keep it.")).toBeInTheDocument();
+  });
+
+  it("shows the saved background without extracting or the unsaved note", async () => {
+    const calls = mockExtract(() => "done");
+    renderApp(<BackgroundStep initial={{ ...emptyBackground, name: "Sam Lee" }} onDone={() => {}} />);
+    expect(await screen.findByRole("heading", { name: "Is this right?" })).toBeInTheDocument();
+    expect(screen.getByDisplayValue("Sam Lee")).toBeInTheDocument();
+    expect(screen.queryByText(/Not saved yet/)).not.toBeInTheDocument();
+    expect(calls.filter((c) => c.key === "POST /api/onboarding/extract")).toHaveLength(0);
   });
 });
