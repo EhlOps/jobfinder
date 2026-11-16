@@ -17,7 +17,7 @@
 # Uses the manifests in DEPLOY_K8S_DIR (default: next to this script); they must be that commit's.
 # At the end it records the tag (and DEPLOY_COMMIT, when given) as annotations on the namespace.
 # With DEPLOY_PINS_OUT=<file>, it also writes what step 1 pinned there, one `<image> <tag-or-digest>`
-# line per image (api, worker, renderer, web), for the run's summary (#118).
+# line per image (api, worker, embed, renderer, web), for the run's summary (#118).
 # Needs kubectl (KUBECONFIG pointing at the cluster) and curl. GitHub Actions reaches it through the
 # SSH forced command deploy-ssh.sh <staging|prod>; docs/k3s.md, "Staging", has the whole flow.
 set -euo pipefail
@@ -40,8 +40,8 @@ for t in ${DEPLOY_CANDIDATE_TAGS:-}; do
 done
 REGISTRY=ghcr.io/ehlops
 # image name -> a Deployment that runs it (the api image also runs the scheduler and the migrate Job;
-# the worker image runs worker-ai and worker-io)
-declare -A WORKLOAD=([api]=api [worker]=worker-ai [renderer]=renderer [web]=web)
+# the worker image runs worker-priority, worker-ai and worker-io; the embed image only worker-embed, #126)
+declare -A WORKLOAD=([api]=api [worker]=worker-ai [embed]=worker-embed [renderer]=renderer [web]=web)
 JOB_TIMEOUT=${JOB_TIMEOUT:-900}          # seconds; the Job's activeDeadlineSeconds is 900 too
 ROLLOUT_TIMEOUT=${ROLLOUT_TIMEOUT:-600s}
 
@@ -138,7 +138,7 @@ trap 'rm -rf "$work"' EXIT
   echo "resources:"
   echo "  - ../overlays/$overlay"
   echo "images:"
-  for name in api worker renderer web; do pin_image "$name"; done
+  for name in api worker embed renderer web; do pin_image "$name"; done
 } > "$work/kustomization.yaml"
 kubectl kustomize "$work" > "$work/rendered.yaml"
 # The workers' ScaledObjects (#52, #124) need KEDA's CRD, which the cluster install provides; without it phase 1

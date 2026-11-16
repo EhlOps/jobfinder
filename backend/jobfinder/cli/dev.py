@@ -2,13 +2,15 @@
 
 k3d (k3s in Docker) runs Postgres and valkey from deploy/dev in a cluster named jobfinder-dev, their
 NodePorts mapped to 127.0.0.1:DEV_PG_PORT (5433) and DEV_VALKEY_PORT (6380). `up` then migrates and runs
-the api (DEV_API_PORT, 8100, where vite proxies /api), the scheduler and the ai/io workers on the host
-with reload, their output prefixed by name; Ctrl-C stops them all. The cluster and its volumes outlive
+the api (DEV_API_PORT, 8100, where vite proxies /api), the scheduler and the workers on the host with
+reload, their output prefixed by name (worker-embed only when the `embed` extra is installed and
+EMBED_MODEL_DIR, from the environment or backend/.env, holds the model; #126); Ctrl-C stops them all. The cluster and its volumes outlive
 `up`; `down` deletes them. The cluster's kubeconfig is its own file (KUBECONFIG_PATH): this never reads
 or changes ~/.kube/config or its current context.
 
 Deliberately light: it imports no settings or database module, so it works before either exists.
 """
+import importlib.util
 import json
 import os
 import secrets
@@ -27,6 +29,7 @@ from pathlib import Path
 from typing import Annotated, NamedTuple
 
 import typer
+from dotenv import dotenv_values
 
 CLUSTER = "jobfinder-dev"
 CONTEXT = f"k3d-{CLUSTER}"  # the context name in k3d's kubeconfig
@@ -235,15 +238,37 @@ def app_env(p: Ports) -> dict[str, str]:
     )
     if not env.get("SECRET_KEY") and not has_secret_key(BACKEND / ".env"):
         env["SECRET_KEY"] = dev_secret_key()  # a fresh checkout has no backend/.env yet
+    if (model := embed_model_dir(env)) is not None:
+        env["EMBED_MODEL_DIR"] = str(model)  # resolved, so worker-embed loads exactly what was checked
     return env
 
 
-def has_secret_key(dotenv: Path) -> bool:
+def dotenv_value(dotenv: Path, name: str) -> str:
+    """NAME's value in a .env file, parsed as the settings parse it (python-dotenv); "" when unset."""
     try:
-        lines = dotenv.read_text().splitlines()
+        return (dotenv_values(dotenv).get(name) or "") if dotenv.is_file() else ""
     except OSError:
-        return False
-    return any(line.startswith("SECRET_KEY=") and line.partition("=")[2].strip() for line in lines)
+        return ""
+
+
+def has_secret_key(dotenv: Path) -> bool:
+    return bool(dotenv_value(dotenv, "SECRET_KEY"))
+
+
+def embed_model_dir(env: dict[str, str]) -> Path | None:
+    """Where worker-embed finds the model in dev, or None when it can't run here (#126).
+
+    Needs the `embed` extra (uv sync --extra embed) and EMBED_MODEL_DIR set, in the environment or
+    backend/.env, to a directory holding model.onnx. The settings' default (/opt/model) is the image's
+    path, so it counts only when it exists.
+    """
+    if not all(importlib.util.find_spec(m) for m in ("fastembed", "onnxruntime")):
+        return None
+    raw = env.get("EMBED_MODEL_DIR") or dotenv_value(BACKEND / ".env", "EMBED_MODEL_DIR") or "/opt/model"
+    path = Path(raw).expanduser()
+    if not path.is_absolute():
+        path = BACKEND / path  # the children run in backend/, where the settings resolve it
+    return path if (path / "model.onnx").is_file() else None
 
 
 def dev_secret_key() -> str:
@@ -263,9 +288,10 @@ def watched(argv: list[str]) -> list[str]:
             shlex.join(argv), "jobfinder"]
 
 
-def processes(p: Ports) -> list[tuple[str, list[str]]]:
+def processes(p: Ports, env: dict[str, str]) -> list[tuple[str, list[str]]]:
+    """The app's processes; worker-embed only when embed_model_dir finds the model."""
     py = sys.executable
-    return [
+    procs = [
         ("api", [py, "-m", "uvicorn", "jobfinder.api.app:create_app", "--factory", "--reload",
                  "--reload-dir", "jobfinder", "--host", "127.0.0.1", "--port", str(p.api)]),
         ("scheduler", watched([py, "-m", "jobfinder.scheduler"])),
@@ -273,6 +299,13 @@ def processes(p: Ports) -> list[tuple[str, list[str]]]:
         ("worker-ai", watched([py, "-m", "jobfinder.tasks", "ai"])),
         ("worker-io", watched([py, "-m", "jobfinder.tasks", "io"])),
     ]
+    if embed_model_dir(env) is None:
+        typer.echo("worker-embed not started: it needs `uv sync --extra embed` and EMBED_MODEL_DIR (environment "
+                   "or backend/.env) naming a directory with model.onnx; embedding tasks wait in their queue",
+                   err=True)
+    else:
+        procs.append(("worker-embed", watched([py, "-m", "jobfinder.tasks", "embed"])))
+    return procs
 
 
 def migrate(env: dict[str, str]) -> None:
@@ -381,7 +414,7 @@ def up(deps_only: Annotated[bool, typer.Option(
         migrate(env)
     typer.echo(f"api on http://127.0.0.1:{p.api} (frontend: npm run dev, then http://localhost:5173); "
                "Ctrl-C stops everything")
-    raise typer.Exit(supervise(processes(p), env))
+    raise typer.Exit(supervise(processes(p, env), env))
 
 
 @app.command("down")

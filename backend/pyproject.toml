@@ -26,6 +26,7 @@ dependencies = [
   "taskiq-redis>=1.2",
   "redis>=8.1",  # ClaudeGate's client (integrations/claude/gate.py); already pulled in by taskiq-redis
   "typer>=0.27",
+  "pgvector>=0.4",  # the Vector column type for job/profile embeddings (#126)
 ]
 
 [project.scripts]
@@ -37,6 +38,9 @@ jobfinder = "jobfinder.cli:app"
 jobspy = ["python-jobspy>=1.1.80"]
 # The opt-in render worker (backend/Dockerfile.renderer). Pinned to the Playwright image's version.
 renderer = ["playwright==1.63.0"]
+# worker-embed (backend/Dockerfile.embed): runs bge-small-jobfinder-v2 on CPU. Versions the model was
+# checked with (jobfinder-embedding-model docs/jobfinder-integration.md).
+embed = ["fastembed==0.9.1", "onnxruntime==1.31.0"]
 
 [dependency-groups]
 dev = [
@@ -60,6 +64,7 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 markers = [
     "real_commit: runs sessions concurrently or needs commits visible on other connections; gets a real engine on its own database, truncated per test, instead of a rolled-back transaction",
+    "embed_model: runs the real embedding model (needs the embed extra and EMBED_MODEL_DIR with model.onnx); skips otherwise",
 ]
 
 [tool.ruff]
@@ -88,7 +93,7 @@ type = "layers"
 #   context      the app context: core's infrastructure plus Claude and the document store
 #   task ledger  where services queue work (ledger.add) and the brokers that deliver it
 layers = [
-  "jobfinder.cli : jobfinder.scheduler : jobfinder.renderer : jobfinder.tasks.__main__ : jobfinder.tasks.ai : jobfinder.tasks.io : jobfinder.tasks.documents : jobfinder.tasks.render : jobfinder.tasks.runtime : jobfinder.tasks.failures",
+  "jobfinder.cli : jobfinder.scheduler : jobfinder.renderer : jobfinder.tasks.__main__ : jobfinder.tasks.ai : jobfinder.tasks.io : jobfinder.tasks.embed : jobfinder.tasks.documents : jobfinder.tasks.render : jobfinder.tasks.runtime : jobfinder.tasks.failures",
   "jobfinder.api",
   "jobfinder.services | jobfinder.context",
   "jobfinder.schemas",

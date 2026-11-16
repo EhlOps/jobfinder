@@ -41,7 +41,7 @@ def test_the_cron_table(monkeypatch, adaptive, discovery, coverage):
     before = utcnow()
     scheduler = cron.make_scheduler()
     jobs = _jobs(scheduler)
-    assert set(jobs) == {"ingest_tick", "plan_work", "daily_emails"} | ({"discover_boards"} if discovery else set()) \
+    assert set(jobs) == {"ingest_tick", "plan_work", "daily_emails", "embed_sweep"} | ({"discover_boards"} if discovery else set()) \
         | ({"score_coveted"} if coverage else set())
     assert all(args == (kind,) for kind, (args, _) in jobs.items())
     assert jobs["ingest_tick"][1] == ("interval[0:15:00]" if adaptive else "interval[3:00:00]")

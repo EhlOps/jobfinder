@@ -119,25 +119,39 @@ async def scored_since(db: AsyncSession, user_id: int, since: datetime) -> int:
     ) or 0
 
 
-async def unmatched_jobs(db: AsyncSession, user_id: int, seniorities: set[str] | None) -> list:
-    """Light rows (no description) for the active jobs not yet matched for the user, by id or by posting
-    (dedupe_hash); with `seniorities`, only jobs at one of them or of unknown seniority."""
-    matched_jobs = sa.select(JobMatch.job_id).where(JobMatch.user_id == user_id)
-    matched_hashes = (
-        sa.select(Job.dedupe_hash).join(JobMatch, JobMatch.job_id == Job.id).where(JobMatch.user_id == user_id)
+def light_columns() -> tuple:
+    """A job's columns the cheap filters and the prefilter need (no description), with its company's."""
+    return (
+        Job.id, Job.title, Job.location, Job.workplace_type, Job.salary_max, Job.salary_currency,
+        Job.posted_at, Job.dedupe_hash, Job.seniority,
+        Company.prestige_tier.label("prestige_tier"), Company.size.label("size"), Company.industry.label("industry"),
+        Company.sponsors_visas.label("sponsors_visas"),
     )
-    q = (
-        sa.select(
-            Job.id, Job.title, Job.location, Job.workplace_type, Job.salary_max, Job.salary_currency,
-            Job.posted_at, Job.dedupe_hash, Job.seniority,
-            Company.prestige_tier.label("prestige_tier"), Company.size.label("size"), Company.industry.label("industry"),
-            Company.sponsors_visas.label("sponsors_visas"),
+
+
+def candidate_filter(user_id: int, seniorities: set[str] | None, *, include_matched: bool = False):
+    """Active jobs not yet matched for the user, by id or by posting (dedupe_hash); with `seniorities`, only
+    jobs at one of them or of unknown seniority. `include_matched` keeps matched jobs (the retrieval eval)."""
+    out = [Job.is_active.is_(True)]
+    if not include_matched:
+        matched_jobs = sa.select(JobMatch.job_id).where(JobMatch.user_id == user_id)
+        matched_hashes = (
+            sa.select(Job.dedupe_hash).join(JobMatch, JobMatch.job_id == Job.id).where(JobMatch.user_id == user_id)
         )
-        .outerjoin(Company, Company.id == Job.company_id)
-        .where(Job.is_active.is_(True), Job.id.not_in(matched_jobs), Job.dedupe_hash.not_in(matched_hashes))
-    )
+        out += [Job.id.not_in(matched_jobs), Job.dedupe_hash.not_in(matched_hashes)]
     if seniorities is not None:
-        q = q.where(sa.or_(Job.seniority.is_(None), Job.seniority.in_(seniorities)))
+        out.append(sa.or_(Job.seniority.is_(None), Job.seniority.in_(seniorities)))
+    return sa.and_(*out)
+
+
+async def unmatched_jobs(db: AsyncSession, user_id: int, seniorities: set[str] | None, *,
+                         include_matched: bool = False) -> list:
+    """Light rows (no description) for the active jobs not yet matched for the user (`candidate_filter`)."""
+    q = (
+        sa.select(*light_columns())
+        .outerjoin(Company, Company.id == Job.company_id)
+        .where(candidate_filter(user_id, seniorities, include_matched=include_matched))
+    )
     return list((await db.execute(q)).all())
 
 

@@ -1,0 +1,41 @@
+# Autoscaler of worker-embed (#126) on the embed stream's backlog. Same shape as
+# worker-io-scaledobject.yaml (which explains the lag signal, the address and pausing); KEDA creates and
+# owns HPA keda-hpa-worker-embed, so worker-embed.yaml has no `replicas`.
+#
+# Pinned at 1 for now (min = max, here and in overlays/staging): one pod with a 2-CPU limit is what the
+# 4-core node can spare beside Postgres, and a backfill is a one-off that may take hours. It exists so
+# every worker has exactly one ScaledObject (.github/workflows/k8s.yml) and so a busier node, or a
+# bigger one, only has to raise maxReplicaCount.
+#
+# lagCount "10": each message is a batch of up to EMBED_BATCH texts, seconds of CPU each, so ten unread
+# batches are about a minute of work for one pod; past that another pod would help, if allowed.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: worker-embed
+  labels:
+    jobfinder.io/rollout: app   # deploy.sh phase 2, after the migrations
+spec:
+  scaleTargetRef:
+    name: worker-embed
+  # Never below 1: newly ingested postings are embedded within seconds, not after a cold start (loading
+  # the model takes a few seconds too).
+  minReplicaCount: 1
+  maxReplicaCount: 1
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        # As worker-io's: in only after the backlog has been low for 5 minutes, one pod a minute.
+        scaleDown:
+          stabilizationWindowSeconds: 300
+          policies:
+            - type: Pods
+              value: 1
+              periodSeconds: 60
+  triggers:
+    - type: redis-streams
+      metadata:
+        address: valkey.jobfinder.svc.cluster.local:6379
+        stream: jobfinder:embed               # tasks/brokers.py
+        consumerGroup: jobfinder-embed
+        lagCount: "10"                        # target lag per replica (an AverageValue)

@@ -29,7 +29,7 @@ def rel(path: Path) -> str:
 # ── commits ──────────────────────────────────────────────────────────────
 # Where `.commit` may appear (called, or handed on as a checkpoint like `checkpoint=db.commit`).
 COMMIT_BOUNDARIES = ("core/db.py", "cli/", "scheduler/", "tasks/runtime.py", "tasks/ai.py", "tasks/io.py",
-                     "tasks/documents.py", "tasks/render.py")
+                     "tasks/documents.py", "tasks/render.py", "tasks/embed.py")
 COMMIT_EXCEPTIONS = {
     "tasks/ledger.py": "_mark_published records a publish in its own short session",
     "context.py": "the AI-call recorder writes each call in its own session, whatever the caller does",
@@ -71,7 +71,7 @@ def test_a_commit_anywhere_else_is_refused(name):
 # ── core ─────────────────────────────────────────────────────────────────
 CORE = sorted((PKG / "core").glob("*.py"))
 MAX_LINES = 150
-LINE_BUDGETS = {"config.py": 160}  # Settings is the one list of every key; it grows with them
+LINE_BUDGETS = {"config.py": 170}  # Settings is the one list of every key; it grows with them
 
 
 def test_core_has_the_ten_files():

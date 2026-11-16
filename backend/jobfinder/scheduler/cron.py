@@ -20,6 +20,7 @@ log = logging.getLogger("jobfinder.scheduler")
 # A run late by up to the grace (a busy loop, a slow tick) still fires, and a backlog fires once. The job
 # store is in memory, so runs that fell while the process was down are not replayed.
 JOB_DEFAULTS = {"coalesce": True, "max_instances": 1, "misfire_grace_time": 300}
+EMBED_SWEEP_MINUTES = 5  # how stale a profile edit's query vectors may get (#126)
 
 
 def _always(s: Settings) -> bool:
@@ -56,6 +57,8 @@ TABLE = [
     # after discovery, so the outside-list signal is fresh
     Cron("score_coveted", "cron", lambda s: {"day_of_week": "sun", "hour": 6, "minute": 0},
          enabled=lambda s: s.coverage_enabled),
+    # the retrieval index (#126): postings ingest didn't queue (changed text, a backfill) and profile edits
+    Cron("embed_sweep", "interval", lambda s: {"minutes": EMBED_SWEEP_MINUTES}, first_run=timedelta(minutes=1)),
 ]
 
 

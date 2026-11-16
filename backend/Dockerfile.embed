@@ -1,0 +1,54 @@
+# worker-embed image (#126): Python + fastembed/onnxruntime (the `embed` extra) + the fine-tuned
+# embedding model, CPU only. No node and no claude CLI: this worker never calls Claude.
+#
+# The model comes from a files-only image built in the model repo (jobfinder-embedding-model):
+#   ghcr.io/ehlops/jobfinder-model:<run>  ->  /model/{model.onnx, tokenizer.json, tokenizer_config.json,
+#                                                     config.json, jobfinder_contract.json, SHA256SUMS}
+# One model run per image: upgrading the model is a new MODEL_IMAGE here plus `jobfinder ops reindex`
+# (docs/k3s.md, "Embedding model").
+# Pinned by digest (the manifest list jobfinder-embedding-model's model-image workflow pushed for tag
+# model/bge-small-jobfinder-v2, run 43793996203), so the model version is part of this repo's history.
+# The files are platform-independent, but images.yml builds for linux/arm64, so the model image must
+# offer an arm64 (or multi-platform) manifest: a FROM scratch image built for amd64 only fails here with
+# "no match for platform in manifest".
+ARG MODEL_IMAGE=ghcr.io/ehlops/jobfinder-model:bge-small-jobfinder-v2@sha256:9a335e85deb76123975f757f49a3abfc75f32b680cb086e2b42683175a068fb6
+FROM ${MODEL_IMAGE} AS model
+
+FROM python:3.11-slim-bookworm
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_PROJECT_ENVIRONMENT=/usr/local
+
+COPY --from=ghcr.io/astral-sh/uv:0.12.23 /uv /uvx /bin/
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libpq5 tini \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+RUN useradd -m -u 10001 jobfinder
+WORKDIR /app
+
+COPY pyproject.toml uv.lock* ./
+RUN uv sync --locked --no-dev --no-install-project --extra embed
+
+# Every setting's default; the app reads it from the working directory (/app).
+COPY .env.defaults ./
+COPY jobfinder ./jobfinder
+RUN uv sync --locked --no-dev --extra embed \
+    && chown -R jobfinder:jobfinder /app
+
+# The model, read-only to the app (owned by root). The build fails on a corrupt or partial copy: every
+# file SHA256SUMS lists must match (its int8 lines name a quantized variant this image doesn't ship),
+# and the runtime must import.
+COPY --from=model /model /opt/model
+RUN cd /opt/model \
+    && grep -v int8 SHA256SUMS | sha256sum -c \
+    && python -c "import fastembed, onnxruntime"
+
+USER jobfinder
+ENV EMBED_MODEL_DIR=/opt/model
+ENTRYPOINT ["tini", "--"]
+CMD ["python", "-m", "jobfinder.tasks", "embed"]

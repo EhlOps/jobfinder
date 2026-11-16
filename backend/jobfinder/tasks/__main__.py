@@ -1,8 +1,9 @@
-"""`python -m jobfinder.tasks priority|ai|io|render`: run one queue's taskiq worker (one process).
+"""`python -m jobfinder.tasks priority|ai|io|render|embed`: run one queue's taskiq worker (one process).
 
 It imports the queue's handler modules (WORKER_MODULES; @ledger_task registers each kind on its own
 queue's broker, so the process consumes only this queue's kinds), runs up to the queue's concurrency
-at once (WORKER_AI_CONCURRENCY, WORKER_IO_CONCURRENCY, RENDERER_CONCURRENCY) and acks a message only
+at once (WORKER_AI_CONCURRENCY, WORKER_IO_CONCURRENCY,
+RENDERER_CONCURRENCY, WORKER_EMBED_CONCURRENCY) and acks a message only
 after its task has run, so a killed worker's messages are redelivered. A worker for a queue in
 PRIORITY_QUEUES asks the Claude gate for permits in the priority lane, every other in bulk.
 """
@@ -22,6 +23,7 @@ WORKER_MODULES = {
     "ai": ["jobfinder.tasks.ai"],
     "io": ["jobfinder.tasks.io"],  # its tasks.documents import lands on the priority broker, unread here
     "render": ["jobfinder.tasks.render"],
+    "embed": ["jobfinder.tasks.embed"],  # #126
 }
 
 # On SIGTERM a worker waits this long for its running tasks, then exits. Each stays under its pod's

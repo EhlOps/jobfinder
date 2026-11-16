@@ -1,0 +1,188 @@
+{
+  "about": "Made-up inputs (no real user data) with the outputs bge-small-jobfinder-v2 expects. Text fields must match exactly; cosines within 1e-3. 'rule' status means the requirement goes to the rule checks, not the embedding.",
+  "model": "bge-small-jobfinder-v2",
+  "T_MET": 0.4224893665313721,
+  "T_PARTIAL": 0.222483965754509,
+  "job": {
+    "title": "Senior Backend Engineer",
+    "company_name": "Examplecorp",
+    "description_text": "Examplecorp builds scheduling software for clinics. We are a team of forty people. Our mission is to make booking a doctor as easy as ordering food. We value kindness, ownership and shipping small. Salary range $150k-$180k plus equity. This role is hybrid in Boston.\n## What you'll do\nDesign and run Go services on Postgres. Own our event pipeline on Kafka. Mentor two junior engineers. 5+ years of backend experience required. Visa sponsorship is not available."
+  },
+  "profile": {
+    "status": {
+      "target_roles": [
+        "Backend Engineer",
+        "Platform Engineer"
+      ]
+    },
+    "background": {
+      "summary": "Backend engineer who likes boring, reliable systems. Open to relocation to Boston.",
+      "skills": [
+        {
+          "name": "Go"
+        },
+        {
+          "name": "PostgreSQL"
+        },
+        {
+          "name": "go"
+        },
+        {
+          "name": "Kafka"
+        }
+      ],
+      "experience": [
+        {
+          "title": "Software Engineer",
+          "company": "Acme",
+          "summary": "Payments  backend team.",
+          "technologies": [
+            "Go",
+            "gRPC",
+            "Redis"
+          ],
+          "bullets": [
+            "3+ years of building REST APIs in Go",
+            "Cut p99 latency of the ledger service by 40%"
+          ]
+        },
+        {
+          "title": "Data Analyst",
+          "company": "Meta",
+          "summary": "Ads reporting.",
+          "technologies": [
+            "SQL",
+            "Python"
+          ]
+        },
+        {
+          "title": "Intern",
+          "company": "",
+          "summary": "Wrote internal tools.",
+          "technologies": [
+            "Python"
+          ]
+        }
+      ],
+      "projects": [
+        {
+          "name": "tinyqueue",
+          "description": "A Postgres-backed job queue in Go.",
+          "technologies": [
+            "Docker"
+          ]
+        }
+      ],
+      "certifications": [
+        "AWS Certified Developer"
+      ]
+    }
+  },
+  "facts": [
+    {
+      "question": "Have you led a team?",
+      "answer": "Yes, a team of three for a year."
+    },
+    {
+      "question": "Unanswered question?",
+      "answer": ""
+    }
+  ],
+  "requirements": [
+    "5+ years of experience building backend services",
+    "Strong experience with Go",
+    "Experience with Kafka or other event streaming systems",
+    "Experience mentoring engineers",
+    "Bachelor's degree in Computer Science",
+    "Must be authorized to work in the US",
+    "Experience with Kubernetes",
+    "Familiarity with React"
+  ],
+  "expected": {
+    "job_doc": "Senior Backend Engineer at Examplecorp. Examplecorp builds scheduling software for clinics. We are a team of forty people. Our mission is to make booking a doctor as easy as ordering food. We value kindness, ownership and shipping … ## What you'll do Design and run Go services on Postgres. Own our event pipeline on Kafka. Mentor two junior engineers.",
+    "profile_queries": [
+      "Backend Engineer. Skills: Go, PostgreSQL, Kafka, gRPC, Redis, SQL, Python, Docker",
+      "Platform Engineer. Skills: Go, PostgreSQL, Kafka, gRPC, Redis, SQL, Python, Docker",
+      "Backend engineer who likes boring, reliable systems."
+    ],
+    "evidence_items": [
+      "Go",
+      "PostgreSQL",
+      "go",
+      "Kafka",
+      "Software Engineer at Acme: Payments backend team.",
+      "building REST APIs in Go",
+      "Cut p99 latency of the ledger service by 40%",
+      "Data Analyst at Me: Ads reporting.",
+      "Intern: Wrote internal tools.",
+      "tinyqueue: A Postgres-backed job queue in Go.",
+      "Have you led a team? Yes, a team of three for a year.",
+      "AWS Certified Developer"
+    ],
+    "requirement_texts": [
+      "experience building backend services",
+      "Strong experience with Go",
+      "Experience with Kafka or other event streaming systems",
+      "Experience mentoring engineers",
+      "Bachelor's degree in Computer Science",
+      "Must be authorized to work in the US",
+      "Experience with Kubernetes",
+      "Familiarity with React"
+    ],
+    "is_rule_requirement": [
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false
+    ],
+    "requirement_max_cos": [
+      0.5421,
+      0.4748,
+      0.3615,
+      0.3317,
+      0.4205,
+      0.3883,
+      0.1337,
+      0.1834
+    ],
+    "requirement_best_evidence": [
+      "building REST APIs in Go",
+      "building REST APIs in Go",
+      "Kafka",
+      "Software Engineer at Acme: Payments backend team.",
+      "Software Engineer at Acme: Payments backend team.",
+      "Intern: Wrote internal tools.",
+      "tinyqueue: A Postgres-backed job queue in Go.",
+      "building REST APIs in Go"
+    ],
+    "requirement_status": [
+      "rule",
+      "met",
+      "partial",
+      "partial",
+      "rule",
+      "rule",
+      "unknown",
+      "unknown"
+    ],
+    "profile_query_vs_job_cos": [
+      0.8214,
+      0.684,
+      0.4156
+    ],
+    "job_doc_vector_first8": [
+      -0.0591,
+      -0.03895,
+      -0.00039,
+      -0.03487,
+      0.00611,
+      -0.06276,
+      -0.1219,
+      -0.07246
+    ]
+  }
+}

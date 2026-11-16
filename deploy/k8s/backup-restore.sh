@@ -12,6 +12,10 @@
 # Exit status 0 when every count matches. The live database keeps changing after 03:15, so run it
 # right after a backup (kubectl -n <ns> create job --from=cronjob/backup backup-now) for an exact
 # comparison; tables written since the dump show up as MISMATCH and exit 1.
+#
+# The dumps leave out the rows of the derived embedding tables (base/data/backup-cronjob.yaml, #126), so
+# the drill compares every other table and expects those empty. A real restore follows with
+# `jobfinder ops reindex` to rebuild them (docs/k3s.md, "Backups").
 set -euo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -110,7 +114,17 @@ log "restored into scratch database $scratch in $((SECONDS - start))s"
 k8s_row_counts "$NS" "$scratch" > "$work/restored"
 k8s_row_counts "$NS" jobfinder > "$work/live"
 rc=0
-compare_row_counts restored "$work/restored" live "$work/live" >&2 || rc=1
+# The derived tables (#126) are dumped without rows, so they restore empty: left out of the comparison.
+DERIVED_RE='^(job_embeddings|profile_embeddings)[|]'
+log "not compared (derived; rebuilt by jobfinder ops reindex): $(grep -E "$DERIVED_RE" "$work/live" | tr '\n' ' ')"
+# ... and must restore empty: rows there mean the dump no longer leaves them out (backup-cronjob.yaml).
+if grep -E "$DERIVED_RE" "$work/restored" | grep -Eqv '[|]0$'; then
+  log "ERROR: derived tables restored with rows: $(grep -E "$DERIVED_RE" "$work/restored" | tr '\n' ' ')"
+  rc=1
+fi
+grep -Ev "$DERIVED_RE" "$work/restored" > "$work/restored.base" || true
+grep -Ev "$DERIVED_RE" "$work/live" > "$work/live.base" || true
+compare_row_counts restored "$work/restored.base" live "$work/live.base" >&2 || rc=1
 
 # [pre-]db-<ts>.dump pairs with [pre-]files-<ts>.tar.gz.
 files="${dump/db-/files-}"
