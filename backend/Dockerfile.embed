@@ -6,11 +6,12 @@
 #                                                     config.json, jobfinder_contract.json, SHA256SUMS}
 # One model run per image: upgrading the model is a new MODEL_IMAGE here plus `jobfinder ops reindex`
 # (docs/k3s.md, "Embedding model").
-# TODO(#126): pin @sha256:<digest> once the model repo's workflow has published this run.
+# Pinned by digest (the manifest list jobfinder-embedding-model's model-image workflow pushed for tag
+# model/bge-small-jobfinder-v2, run 43793996203), so the model version is part of this repo's history.
 # The files are platform-independent, but images.yml builds for linux/arm64, so the model image must
 # offer an arm64 (or multi-platform) manifest: a FROM scratch image built for amd64 only fails here with
 # "no match for platform in manifest".
-ARG MODEL_IMAGE=ghcr.io/ehlops/jobfinder-model:bge-small-jobfinder-v2
+ARG MODEL_IMAGE=ghcr.io/ehlops/jobfinder-model:bge-small-jobfinder-v2@sha256:9a335e85deb76123975f757f49a3abfc75f32b680cb086e2b42683175a068fb6
 FROM ${MODEL_IMAGE} AS model
 
 FROM python:3.11-slim-bookworm
