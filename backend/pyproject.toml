@@ -64,6 +64,7 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 markers = [
     "real_commit: runs sessions concurrently or needs commits visible on other connections; gets a real engine on its own database, truncated per test, instead of a rolled-back transaction",
+    "embed_model: runs the real embedding model (needs the embed extra and EMBED_MODEL_DIR with model.onnx); skips otherwise",
 ]
 
 [tool.ruff]
