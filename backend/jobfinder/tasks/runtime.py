@@ -50,8 +50,8 @@ from jobfinder.tasks.brokers import BROKERS
 from jobfinder.tasks.kinds import queue_for
 
 log = logging.getLogger("jobfinder.tasks")
-# handler(db, ai, task, payload): ai is None for kinds registered with ai=False (no Claude: the io queue
-# and the renderer); payload is the validated model, or None for kinds without one.
+# handler(db, ai, task, payload): ai is None for kinds registered with ai=False (no Claude: the io queue,
+# the renderer and the embed queue); payload is the validated model, or None for kinds without one.
 LedgerHandler = Callable[[AsyncSession, Any, Task, Any], Awaitable[dict]]
 REGISTRY: dict[str, LedgerHandler] = {}
 PAYLOADS: dict[str, type[BaseModel] | None] = {}  # kind -> its payload model

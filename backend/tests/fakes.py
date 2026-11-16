@@ -303,9 +303,10 @@ class FakeRenderer:
 
 
 async def run_task(task_id: int, ai=None, session_factory=None) -> None:
-    """Deliver ledger row `task_id` to its kind's handler through tasks.runtime.execute, as worker-ai or
-    worker-io would: claim, run, finish or fail, and commit. `ai` is handed to the handler as is."""
+    """Deliver ledger row `task_id` to its kind's handler through tasks.runtime.execute, as worker-ai,
+    worker-io or worker-embed would: claim, run, finish or fail, and commit. `ai` is handed to the handler as is."""
     import jobfinder.tasks.ai  # registers the handlers
+    import jobfinder.tasks.embed
     import jobfinder.tasks.io  # noqa: F401
     from jobfinder.core.context import default_context
     from jobfinder.tasks import runtime

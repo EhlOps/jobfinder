@@ -29,7 +29,7 @@ def rel(path: Path) -> str:
 # ── commits ──────────────────────────────────────────────────────────────
 # Where `.commit` may appear (called, or handed on as a checkpoint like `checkpoint=db.commit`).
 COMMIT_BOUNDARIES = ("core/db.py", "cli/", "scheduler/", "tasks/runtime.py", "tasks/ai.py", "tasks/io.py",
-                     "tasks/documents.py", "tasks/render.py")
+                     "tasks/documents.py", "tasks/render.py", "tasks/embed.py")
 COMMIT_EXCEPTIONS = {
     "tasks/ledger.py": "_mark_published records a publish in its own short session",
     "context.py": "the AI-call recorder writes each call in its own session, whatever the caller does",

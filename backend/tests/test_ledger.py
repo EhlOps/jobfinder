@@ -217,7 +217,8 @@ async def test_a_retry_or_reap_moves_the_row_to_its_kinds_queue(db, how):
 
 def test_the_latest_queue_backfill_matches_the_kinds():
     """Migration 0028 rewrote every row's queue from tasks.kinds.QUEUES. If this fails, a kind moved
-    queues: add a migration that rewrites its rows, and point this test at it."""
+    queues: add a migration that rewrites its rows, and point this test at it. Kinds added since 0028
+    had no rows to rewrite; they are listed in NEW_SINCE_0028."""
     import importlib.util
     from pathlib import Path
 
@@ -225,7 +226,8 @@ def test_the_latest_queue_backfill_matches_the_kinds():
     spec = importlib.util.spec_from_file_location("m0028", path)
     m = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(m)
-    assert {kind: queue for queue, kinds in m.QUEUES.items() for kind in kinds} == QUEUES
+    new_since_0028 = {"index_jobs": "embed", "index_profile": "embed", "embed_sweep": "embed"}  # #126
+    assert {kind: queue for queue, kinds in m.QUEUES.items() for kind in kinds} | new_since_0028 == QUEUES
 
 
 async def test_requeue_turns_a_twin_racing_the_check_into_a_conflict(db, monkeypatch):
