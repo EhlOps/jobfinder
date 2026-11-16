@@ -18,12 +18,15 @@ labels:
 
 # The default tag for a bare `kubectl apply -k`: the build prod ran at the cutover (dev at 0f1283d,
 # which staging ran). deploy.sh replaces each with sha-<commit> or the newest ancestor that built it
-# (web was last built at b1eb96e).
+# (web was last built at b1eb96e). embed has no prod build yet: `main` until the first release that
+# builds it (deploy.sh pins whatever it finds by sha- tag or digest anyway).
 images:
   - name: ghcr.io/ehlops/jobfinder-api
     newTag: sha-0f1283d
   - name: ghcr.io/ehlops/jobfinder-worker
     newTag: sha-0f1283d
+  - name: ghcr.io/ehlops/jobfinder-embed
+    newTag: main
   - name: ghcr.io/ehlops/jobfinder-renderer
     newTag: sha-0f1283d
   - name: ghcr.io/ehlops/jobfinder-web

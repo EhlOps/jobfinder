@@ -1,5 +1,6 @@
 # Nightly backup at 03:15 UTC (#47; replaced the host-cron deploy/backup.sh, deleted in #53).
-#   db-<UTC timestamp>.dump        pg_dump -Fc of the jobfinder database
+#   db-<UTC timestamp>.dump        pg_dump -Fc of the jobfinder database, without the rows of the derived
+#                                  embedding tables (#126; their schema is kept)
 #   files-<UTC timestamp>.tar.gz   store/ and claude/ (uploaded documents, link text, the Claude token)
 # on PVC `backups` (deploy/k8s/backup-restore.sh restores the newest dump into a scratch database).
 # Each file is written as .part and renamed when complete; the newest BACKUP_KEEP of each kind
@@ -68,7 +69,13 @@ spec:
                     i=$((i + 1)); [ "$i" -lt 60 ] || { echo "postgres unreachable" >&2; exit 1; }
                     sleep 2
                   done
-                  pg_dump -h postgres -U jobfinder -d jobfinder -Fc -f "$db.part"
+                  # job_embeddings and profile_embeddings (#126) are derived from postings and profiles
+                  # by the embedding model: hundreds of MB that only repeat what the model computes. Their
+                  # tables are dumped empty; after a restore, `jobfinder ops reindex` rebuilds them
+                  # (worker-embed; docs/k3s.md, "Backups").
+                  pg_dump -h postgres -U jobfinder -d jobfinder -Fc \
+                    --exclude-table-data=job_embeddings --exclude-table-data=profile_embeddings \
+                    -f "$db.part"
                   # The archive's table of contents must read back.
                   pg_restore --list "$db.part" >/dev/null
                   mv "$db.part" "$db"
