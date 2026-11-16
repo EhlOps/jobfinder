@@ -23,5 +23,6 @@ app.add_typer(ops.questions_app, name="questions")
 app.add_typer(ops.email, name="email")
 app.add_typer(ops.ai, name="ai")
 app.add_typer(ops.tasks, name="tasks")
+app.add_typer(ops.ops, name="ops")
 app.add_typer(dev.app, name="dev")
 

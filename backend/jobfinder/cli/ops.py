@@ -1,11 +1,12 @@
-"""Operations: `ingest run`, `digest send`, `questions collect`, `email test`, `ai check`, and the task
-ledger's `tasks list|retry`. `ingest run` can take a while; on k3s run it as a one-off Job."""
+"""Operations: `ingest run`, `digest send`, `questions collect`, `email test`, `ai check`, the task
+ledger's `tasks list|retry`, and `ops eval-retrieval`. `ingest run` can take a while; on k3s run it as a one-off Job."""
 from typing import Annotated, Literal
 
 import typer
 
 from jobfinder.cli._common import fail, run, sessions, transaction
 from jobfinder.cli.boards import Source
+from jobfinder.cli.retrieval_eval import eval_retrieval
 from jobfinder.context import default_context
 from jobfinder.core.clock import utcnow
 from jobfinder.integrations.claude.claude_code import AIError
@@ -19,6 +20,8 @@ questions_app = typer.Typer(help="Clarifying questions.", no_args_is_help=True)
 email = typer.Typer(help="Outbound email.", no_args_is_help=True)
 ai = typer.Typer(help="The Claude connection.", no_args_is_help=True)
 tasks = typer.Typer(help="The task ledger: what ran, what failed, run one again.", no_args_is_help=True)
+ops = typer.Typer(help="Retrieval maintenance and evaluation (#126).", no_args_is_help=True)
+ops.command("eval-retrieval")(eval_retrieval)
 
 Email = Annotated[str | None, typer.Option(help="Only this user.")]
 
