@@ -11,6 +11,7 @@ from jobfinder.models.company import Company, CovetedTarget
 from jobfinder.models.job import Job, JobLink, JobMatch
 from jobfinder.models.cover_letter import CoverLetter
 from jobfinder.models.question import ClarifyingQuestion
+from jobfinder.models.embedding import JobEmbedding, MatchReview, ProfileEmbedding, ProfileVersion
 # isort: on
 
 __all__ = [
@@ -21,11 +22,15 @@ __all__ = [
     "CovetedTarget",
     "JSONType",
     "Job",
+    "JobEmbedding",
     "JobLink",
     "JobMatch",
+    "MatchReview",
     "PlannerState",
     "Profile",
+    "ProfileEmbedding",
     "ProfileFact",
+    "ProfileVersion",
     "RateEvent",
     "Session",
     "Task",

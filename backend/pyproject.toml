@@ -26,6 +26,7 @@ dependencies = [
   "taskiq-redis>=1.2",
   "redis>=8.1",  # ClaudeGate's client (integrations/claude/gate.py); already pulled in by taskiq-redis
   "typer>=0.27",
+  "pgvector>=0.4",  # the Vector column type for job/profile embeddings (#126); pulls in numpy
 ]
 
 [project.scripts]
@@ -37,6 +38,9 @@ jobfinder = "jobfinder.cli:app"
 jobspy = ["python-jobspy>=1.1.80"]
 # The opt-in render worker (backend/Dockerfile.renderer). Pinned to the Playwright image's version.
 renderer = ["playwright==1.63.0"]
+# worker-embed (backend/Dockerfile.embed): runs bge-small-jobfinder-v2 on CPU. Versions the model was
+# checked with (jobfinder-embedding-model docs/jobfinder-integration.md).
+embed = ["fastembed==0.9.1", "onnxruntime==1.31.0"]
 
 [dependency-groups]
 dev = [

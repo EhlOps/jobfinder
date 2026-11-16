@@ -69,6 +69,7 @@ async def _reset_schema(url):
         # Reset the whole schema (not drop_all) so tables from older migrations can't linger.
         await conn.execute(sa.text("drop schema public cascade"))
         await conn.execute(sa.text("create schema public"))
+        await conn.execute(sa.text("create extension if not exists vector"))  # pgvector, #126
         await conn.run_sync(Base.metadata.create_all)
     await eng.dispose()
 

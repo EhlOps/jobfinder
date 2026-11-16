@@ -9,11 +9,16 @@
   one, so only tests/test_claude_gate.py talks to valkey.
 - `FakeClock`, `fake_resolve_public` and `FakeRenderer` replace the clock, DNS and the renderer
   container.
+- `FakeEmbedder` replaces the embedding model (#126): bag-of-words vectors, so texts that share words
+  are close and unrelated ones are not, without fastembed or the ONNX file.
 - `run_task` delivers one ledger row in-process, the way its queue's worker would.
 - `MockWeb` and its helpers (`serve`, `redirects`, `refuse`, `handle`) replace the
   network, through respx. The `web` fixture in conftest.py hands a test one that is already active.
 """
 import asyncio
+import hashlib
+import math
+import re
 from contextlib import asynccontextmanager, suppress
 from datetime import datetime
 from itertools import pairwise
@@ -197,6 +202,31 @@ class FakeAuditAI:
                        AuditQuestion(question="Notice period?", why="logistics",
                                      dimension="logistics")],
         )
+
+
+class FakeEmbedder:
+    """`integrations.embed.Embedder` without a model: each lower-cased word is hashed to one of `dim`
+    buckets, and the counts are L2-normalised. Deterministic across processes (sha1, not hash()).
+    Queries get no prompt, so a query and a posting with the same words have cosine 1."""
+
+    def __init__(self, model: str = "fake-embedder", dim: int = 384):
+        self.model, self.dim = model, dim
+        self.calls: list[tuple[str, int]] = []  # (side, number of texts) per call
+
+    def _vector(self, text: str) -> list[float]:
+        v = [0.0] * self.dim
+        for word in re.findall(r"[a-z0-9+#]+", text.lower()):
+            v[int.from_bytes(hashlib.sha1(word.encode()).digest()[:4], "big") % self.dim] += 1.0
+        norm = math.sqrt(sum(x * x for x in v))
+        return [x / norm for x in v] if norm else [1.0 / math.sqrt(self.dim)] * self.dim
+
+    def embed_documents(self, texts):
+        self.calls.append(("documents", len(texts)))
+        return [self._vector(t) for t in texts]
+
+    def embed_queries(self, texts):
+        self.calls.append(("queries", len(texts)))
+        return [self._vector(t) for t in texts]
 
 
 class FakeClock:
