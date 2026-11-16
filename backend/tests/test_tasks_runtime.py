@@ -13,6 +13,7 @@ from jobfinder.integrations.claude.claude_code import AIError
 from jobfinder.models import Task
 from jobfinder.tasks import ai as ai_tasks
 from jobfinder.tasks import brokers, ledger, runtime
+from jobfinder.tasks import embed as embed_tasks
 from jobfinder.tasks import io as io_tasks
 from jobfinder.tasks import render as render_tasks
 from jobfinder.tasks.__main__ import WORKER_MODULES, worker_argv
@@ -35,7 +36,7 @@ async def _row(maker, task_id) -> Task:
 def test_each_queue_broker_carries_exactly_its_kinds():
     """Each worker consumes its own queue's broker (worker-priority priority_broker, worker-ai ai_broker,
     worker-io io_broker, ...): no kind is on two."""
-    assert ai_tasks and io_tasks and render_tasks  # imported: registered
+    assert ai_tasks and io_tasks and render_tasks and embed_tasks  # imported: registered
     for queue in brokers.BROKERS:
         registered = set(brokers.BROKERS[queue].local_task_registry)
         assert registered == {k for k, q in QUEUES.items() if q == queue}
@@ -48,7 +49,7 @@ def test_each_queue_broker_carries_exactly_its_kinds():
 
 def test_every_kind_is_registered_on_exactly_its_queues_broker():
     """@ledger_task(kind) takes the broker from kinds.QUEUES, so no handler can sit on another stream."""
-    assert ai_tasks and io_tasks and render_tasks
+    assert ai_tasks and io_tasks and render_tasks and embed_tasks
     assert set(runtime.REGISTRY) == set(QUEUES)  # every kind has a handler
     for kind in runtime.REGISTRY:
         on = [queue for queue, broker in brokers.BROKERS.items() if kind in broker.get_all_tasks()]
@@ -451,12 +452,14 @@ async def test_each_claimed_run_logs_one_outcome_line(maker, caplog):
 
 
 def test_extract_profile_has_its_own_deadline_and_every_other_kind_the_default(monkeypatch):
-    """extract_profile's worst case is a 600s gate wait plus two 240s CLI calls: 20 minutes. Every other
-    kind reads TASK_DEADLINE_MINUTES at run time."""
-    assert ai_tasks and io_tasks and render_tasks
+    """extract_profile's worst case is a 600s gate wait plus two 240s CLI calls: 20 minutes. The embed
+    kinds (#126) have their own short ones. Every other kind reads TASK_DEADLINE_MINUTES at run time."""
+    assert ai_tasks and io_tasks and render_tasks and embed_tasks
     monkeypatch.setattr(get_settings(), "task_deadline_minutes", 7.5)
-    assert runtime.DEADLINES["extract_profile"] == timedelta(minutes=20)
-    for kind in set(runtime.REGISTRY) - {"extract_profile"}:
+    own = {"extract_profile": timedelta(minutes=20), "index_jobs": timedelta(minutes=15),
+           "index_profile": timedelta(minutes=5), "embed_sweep": timedelta(minutes=5)}
+    assert {kind: runtime.DEADLINES[kind] for kind in own} == own
+    for kind in set(runtime.REGISTRY) - set(own):
         assert runtime.DEADLINES[kind] is None, kind
         assert runtime.deadline_for(kind) == timedelta(minutes=7.5), kind
     assert runtime.deadline_for("extract_profile") == timedelta(minutes=20)

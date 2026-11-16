@@ -1,5 +1,6 @@
-"""Operations: `ingest run`, `digest send`, `questions collect`, `email test`, `ai check`, and the task
-ledger's `tasks list|retry`. `ingest run` can take a while; on k3s run it as a one-off Job."""
+"""Operations: `ingest run`, `digest send`, `questions collect`, `email test`, `ai check`, the task
+ledger's `tasks list|retry`, and `ops reindex` (the retrieval index, #126). `ingest run` can take a
+while; on k3s run it as a one-off Job."""
 from typing import Annotated, Literal
 
 import typer
@@ -8,10 +9,12 @@ from jobfinder.cli._common import fail, run, sessions, transaction
 from jobfinder.cli.boards import Source
 from jobfinder.context import default_context
 from jobfinder.core.clock import utcnow
+from jobfinder.core.config import settings
 from jobfinder.integrations.claude.claude_code import AIError
 from jobfinder.integrations.smtp import EmailError, send_email
 from jobfinder.services import accounts, daily, digest, questions, task_admin
 from jobfinder.services.ingestion import run_ingest
+from jobfinder.services.matching import index
 
 ingest = typer.Typer(help="Fetch jobs from the boards.", no_args_is_help=True)
 digest_app = typer.Typer(help="The daily email.", no_args_is_help=True)
@@ -19,6 +22,7 @@ questions_app = typer.Typer(help="Clarifying questions.", no_args_is_help=True)
 email = typer.Typer(help="Outbound email.", no_args_is_help=True)
 ai = typer.Typer(help="The Claude connection.", no_args_is_help=True)
 tasks = typer.Typer(help="The task ledger: what ran, what failed, run one again.", no_args_is_help=True)
+maintenance = typer.Typer(help="Maintenance of derived data.", no_args_is_help=True)
 
 Email = Annotated[str | None, typer.Option(help="Only this user.")]
 
@@ -170,3 +174,20 @@ async def _tasks_retry(task_id: int) -> None:
         task = await task_admin.retry(db, task_id)
         kind, queue = task.kind, task.queue
     typer.echo(f"Requeued task {task_id} ({kind}) on the {queue} queue")
+
+
+# ── ops ───────────────────────────────────────────────────────────────────
+@maintenance.command("reindex")
+def ops_reindex(
+    model: Annotated[str | None, typer.Option(help="The embedding model run (default: EMBED_MODEL).")] = None,
+) -> None:
+    """Delete a model's posting and profile vectors and queue an embed_sweep, which rebuilds them on
+    worker-embed. Run it after a restore: the nightly dump leaves those tables' data out."""
+    run(_reindex(model or settings.embed_model))
+
+
+async def _reindex(model: str) -> None:
+    async with transaction() as db:
+        out = await index.reindex(db, model=model)
+    typer.echo(f"Deleted {out['job_vectors_deleted']} posting and {out['profile_vectors_deleted']} profile "
+               f"vectors of {model}; queued embed_sweep (task {out['sweep_task']}) to rebuild them")

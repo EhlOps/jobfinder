@@ -6,14 +6,17 @@ from pydantic import ValidationError
 
 from jobfinder.models import Task
 from jobfinder.tasks import ai as ai_tasks
+from jobfinder.tasks import embed as embed_tasks
 from jobfinder.tasks import io as io_tasks
 from jobfinder.tasks import ledger, runtime
 from jobfinder.tasks.kinds import QUEUES
 from tests.fakes import run_task
 
 
-def test_every_ai_and_io_kind_has_a_handler():
+def test_every_ai_io_and_embed_kind_has_a_handler():
+    assert embed_tasks  # imported: registered
     assert {k for k, q in QUEUES.items() if q != "render"} <= set(runtime.REGISTRY)
+    assert {k for k, q in QUEUES.items() if q == "embed"} == {"index_jobs", "index_profile", "embed_sweep"}
 
 
 @pytest.mark.parametrize("model, payload, expected", [

@@ -5,13 +5,14 @@
 - `ai`: bulk work that calls Claude (match slices, question collection, recipe induction).
 - `io`: everything else that never calls Claude (ingest, planning, email, deterministic link resolving).
 - `render`: the renderer's headless-browser captures.
+- `embed`: the embedding model's CPU-bound indexing for retrieval (#126), run by worker-embed.
 
 worker-priority and worker-ai are the only workers that run Claude, both through the ClaudeGate
 (integrations.claude.gate): it shares the cluster's AI_MAX_CONCURRENCY permits and serves the priority
 lane first. So every kind that calls Claude belongs on `priority` or `ai`, and no other kind does (#50)."""
 from typing import Literal
 
-Queue = Literal["priority", "ai", "io", "render"]
+Queue = Literal["priority", "ai", "io", "render", "embed"]
 
 QUEUES: dict[str, Queue] = {
     "extract_profile": "priority",  # the profile page waits on these three (#124)
@@ -37,6 +38,9 @@ QUEUES: dict[str, Queue] = {
     "audit_coverage": "io",  # its resolver runs never ask Claude
     "render_capture": "render",
     "render_list": "render",
+    "index_jobs": "embed",  # postings' retrieval vectors (#126): the local model, no Claude
+    "index_profile": "embed",  # one user's profile query vectors
+    "embed_sweep": "embed",  # periodic: queues the two above where due
 }
 
 
