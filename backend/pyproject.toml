@@ -26,7 +26,7 @@ dependencies = [
   "taskiq-redis>=1.2",
   "redis>=8.1",  # ClaudeGate's client (integrations/claude/gate.py); already pulled in by taskiq-redis
   "typer>=0.27",
-  "pgvector>=0.4",  # the Vector column type for job/profile embeddings (#126); pulls in numpy
+  "pgvector>=0.4",  # the Vector column type for job/profile embeddings (#126)
 ]
 
 [project.scripts]
