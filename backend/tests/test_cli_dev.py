@@ -56,13 +56,15 @@ class Tools:
 
 @pytest.fixture
 def tools(monkeypatch, tmp_path):
-    for name in ("DEV_PG_PORT", "DEV_VALKEY_PORT", "DEV_API_PORT", "SECRET_KEY"):
+    for name in ("DEV_PG_PORT", "DEV_VALKEY_PORT", "DEV_API_PORT", "SECRET_KEY", "EMBED_MODEL_DIR"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr(dev.shutil, "which", lambda name: f"/usr/bin/{name}")
     monkeypatch.setattr(dev, "port_free", lambda port: True)
     monkeypatch.setattr(dev, "pg_answers", lambda port: True)
     monkeypatch.setattr(dev, "valkey_answers", lambda port: True)
+    # No worker-embed unless a test provides the model (the host's own backend/.env must not matter).
+    monkeypatch.setattr(dev, "embed_model_dir", lambda env: None)
     supervised = []
     monkeypatch.setattr(dev, "supervise", lambda procs, env: supervised.append((procs, env)) or 0)
     t = Tools()
@@ -108,6 +110,53 @@ def test_up_migrates_then_supervises_the_app_against_k3d(tools):
     assert "--reload" in names["api"] and names["api"][-2:] == ["--port", "8100"]
     assert names["worker-io"][-2].endswith("-m jobfinder.tasks io")
     assert names["worker-priority"][-2].endswith("-m jobfinder.tasks priority")
+    assert "EMBED_MODEL_DIR" not in run_env
+
+
+def test_worker_embed_runs_when_the_model_is_there(tools, monkeypatch, tmp_path):
+    monkeypatch.setattr(dev, "embed_model_dir", lambda env: tmp_path)
+    assert invoke_sync("dev", "up").exit_code == 0
+    [(procs, env)] = tools.supervised
+    names = dict(procs)
+    assert list(names) == ["api", "scheduler", "worker-priority", "worker-ai", "worker-io", "worker-embed"]
+    assert names["worker-embed"][-2].endswith("-m jobfinder.tasks embed")
+    assert env["EMBED_MODEL_DIR"] == str(tmp_path)
+
+
+@pytest.fixture
+def embed_installed(monkeypatch):
+    """find_spec as if the embed extra were installed (or not, with installed=False)."""
+    def install(installed=True):
+        real = dev.importlib.util.find_spec
+        monkeypatch.setattr(dev.importlib.util, "find_spec",
+                            lambda name: (object() if installed else None)
+                            if name in ("fastembed", "onnxruntime") else real(name))
+    return install
+
+
+def test_embed_model_dir_from_the_environment_or_backend_env(embed_installed, monkeypatch, tmp_path):
+    embed_installed()
+    model = tmp_path / "model"
+    model.mkdir()
+    assert dev.embed_model_dir({"EMBED_MODEL_DIR": str(model)}) is None  # no model.onnx in it yet
+    (model / "model.onnx").write_bytes(b"onnx")
+    assert dev.embed_model_dir({"EMBED_MODEL_DIR": str(model)}) == model
+    # Unset in the environment: backend/.env's value, read as the settings read it (python-dotenv).
+    backend = tmp_path / "backend"
+    backend.mkdir()
+    (backend / ".env").write_text(f"EMBED_MODEL_DIR=/nowhere\nexport EMBED_MODEL_DIR=\"{model}\"  # v2\n")
+    monkeypatch.setattr(dev, "BACKEND", backend)
+    assert dev.embed_model_dir({}) == model
+    # A relative path is the children's: under backend/.
+    (backend / "m").mkdir()
+    (backend / "m" / "model.onnx").write_bytes(b"onnx")
+    assert dev.embed_model_dir({"EMBED_MODEL_DIR": "m"}) == backend / "m"
+
+
+def test_embed_model_dir_needs_the_embed_extra(embed_installed, tmp_path):
+    (tmp_path / "model.onnx").write_bytes(b"onnx")
+    embed_installed(False)
+    assert dev.embed_model_dir({"EMBED_MODEL_DIR": str(tmp_path)}) is None
 
 
 def test_ports_come_from_the_environment(tools, monkeypatch):
