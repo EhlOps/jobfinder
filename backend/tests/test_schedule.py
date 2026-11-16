@@ -155,7 +155,7 @@ async def test_churn_counts_postings_after_the_backlog(maker, monkeypatch, clock
     monkeypatch.setitem(ingestion.ATS_FETCHERS, "greenhouse", returning(postings(200)))
     await ingestion.ingest_boards(maker)
     async with maker() as db:  # pretend that backlog arrived a month ago
-        await db.execute(sa.update(Job).values(first_seen_at=sa.func.now() - timedelta(days=30)))
+        await db.execute(sa.update(Job).values(first_seen_at=T0 - timedelta(days=30)))
         await db.commit()
     clock.now = T0 + timedelta(days=1)
     await ingestion.ingest_boards(maker, all_boards=True)
