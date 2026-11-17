@@ -30,7 +30,7 @@ jobs:
         working-directory: backend
     services:
       postgres:
-        image: postgres:16  # same major version as deploy/k8s/base/postgres
+        image: pgvector/pgvector:0.8.7-pg16-trixie  # same server image as deploy/k8s/base/postgres (#126)
         env:
           POSTGRES_USER: jobfinder
           POSTGRES_PASSWORD: jobfinder

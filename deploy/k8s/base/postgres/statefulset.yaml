@@ -1,5 +1,6 @@
 # One replica on one node: a plain StatefulSet with a local-path volume (#36 Q2 draft default).
-# postgres:16, the major version prod's data was dumped from at the cutover (#47).
+# postgres:16, the major version prod's data was dumped from at the cutover (#47); the pgvector build of it
+# since #126 (pgvector/pgvector, Debian trixie like postgres:16.15: same glibc 2.41, so collations match).
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -29,7 +30,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: postgres
-          image: postgres:16.15
+          image: pgvector/pgvector:0.8.7-pg16-trixie@sha256:c28c0b700f3f1b5eec14082b31ad6e7c8a566d14386323609c615315e7c0ffc8
           ports:
             - name: postgres
               containerPort: 5432

@@ -4,7 +4,7 @@ the process environment; later wins. Paths are relative to the working directory
 No default lives in Python: a missing key or bad value stops startup naming every such key. Env names
 are the field names in upper case. Read `settings.x` (loaded on first use) or `get_settings()`."""
 from functools import lru_cache
-from typing import Annotated, cast
+from typing import Annotated, Literal, cast
 
 from pydantic import AfterValidator, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -87,6 +87,12 @@ class Settings(BaseSettings):
     match_daily_llm_budget: int
     match_slice_jobs: int
     match_min_prefilter: float
+    match_retrieval: Literal["prefilter", "vector"]
+    match_retrieval_k: int
+    embed_model: str
+    embed_model_dir: str
+    embed_batch: int
+    embed_threads: int
     digest_min_score: int
     digest_max_matches: int
     digest_send_window_hours: int
@@ -100,6 +106,7 @@ class Settings(BaseSettings):
     planner_backoff_minutes: int
     task_max_attempts: int
     task_stuck_after_minutes: int
+    task_deadline_minutes: float
     task_backoff_seconds: int
     task_heartbeat_seconds: float
     task_prune_days: int
@@ -108,6 +115,7 @@ class Settings(BaseSettings):
     worker_priority_concurrency: int
     worker_ai_concurrency: int
     worker_io_concurrency: int
+    worker_embed_concurrency: int
     relay_seconds: float
     password_link_ttl_minutes: int
     link_requests_per_email_hour: int

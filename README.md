@@ -133,7 +133,11 @@ cd backend && uv sync && uv run jobfinder dev
 
 - the api on `127.0.0.1:8100` (`/healthz`, `/docs`),
 - the scheduler,
-- worker-priority, worker-ai and worker-io.
+- worker-priority, worker-ai and worker-io,
+- worker-embed, the embedding model (#126), only when it can run: install the extra
+  (`uv sync --extra embed`) and set `EMBED_MODEL_DIR` (shell or `backend/.env`) to a directory holding the
+  model's files (`model.onnx`, the tokenizer, `jobfinder_contract.json`). Without it, `jobfinder dev` says so and
+  embedding tasks wait in their queue.
 
 Their output is interleaved with a prefix per process. Ctrl-C stops them; the cluster keeps running, so the next
 `jobfinder dev` starts quickly.
@@ -184,7 +188,7 @@ change:
 |---|---|
 | `backend` | `ruff`, `pytest -n auto` and `lint-imports` against a Postgres service |
 | `k8s` | Renders every overlay with kustomize, validates it with kubeconform, and checks the scaling rules (every `worker-*` Deployment has one KEDA ScaledObject and no `replicas`; each trigger reads its own namespace's valkey) |
-| `images` | Builds the images whose directory changed and, on a push, pushes them to ghcr.io, then calls `deploy-staging` (dev) or `deploy-prod` (main) |
+| `images` | Builds the images whose directory changed (`jobfinder-{api,worker,embed,renderer}` from `backend/`, `jobfinder-web` from `frontend/`) and, on a push, pushes them to ghcr.io, then calls `deploy-staging` (dev) or `deploy-prod` (main). The embed image copies the model from `ghcr.io/ehlops/jobfinder-model`, which this repo must be allowed to read ([docs/k3s.md, "Embedding model"](docs/k3s.md#embedding-model-126)) |
 
 The frontend's tests and typecheck are not in CI; run them before you push. The image build runs `tsc` as part of
 `npm run build`.
@@ -400,6 +404,7 @@ the one-time setup, scaling, logs and troubleshooting are in [docs/k3s.md](docs/
 ### Backups
 
 A CronJob in each namespace backs up nightly at 03:15 UTC (a Postgres dump plus the `store` and `claude-auth`
-files, newest 14 kept) to the node-local `backups` PVC; every prod release also takes a pre-deploy backup
+files, newest 14 kept; the derived embedding tables are dumped empty and rebuilt with `jobfinder ops reindex` after
+a restore) to the node-local `backups` PVC; every prod release also takes a pre-deploy backup
 (`pre-*`, newest 5 kept). `deploy/k8s/backup-restore.sh <namespace>` proves a dump
 restores. Copy them off the box regularly. See [docs/k3s.md, "Backups"](docs/k3s.md#backups-47).

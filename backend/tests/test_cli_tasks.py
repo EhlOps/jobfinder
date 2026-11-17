@@ -9,8 +9,8 @@ pytestmark = pytest.mark.real_commit
 
 async def _failed_task(maker, kind="ingest_tick") -> int:
     async with maker() as db:
-        task = await ledger.add(db, kind)
-        await ledger.fail(db, task, "boom", retry=False)
+        task = await ledger.claim(db, (await ledger.add(db, kind)).id)
+        await ledger.fail(db, task, "boom", retry=False, attempt=task.attempts)
         await db.commit()
         return task.id
 

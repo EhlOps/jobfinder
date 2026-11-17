@@ -111,10 +111,14 @@ async def ingest_source(db: AsyncSession, ai, task: Task, p: IngestSourceArgs) -
 
 async def _changed(db: AsyncSession, stats) -> dict:
     """The board's follow-up, as the whole run's was: plan when jobs changed (or always, off the adaptive
-    schedule). Queued PLAN_COALESCE out, so the boards of one tick finishing together share one plan."""
+    schedule). Queued PLAN_COALESCE out, so the boards of one tick finishing together share one plan.
+    New postings also queue index_jobs (#126) right away, so retrieval sees them soon; changed ones are
+    left to the periodic embed_sweep."""
     from jobfinder.core.clock import utcnow
     from jobfinder.core.config import settings
 
+    if stats.new:  # rerun: a running index_jobs may have checked for stale postings before these committed
+        await ledger.add(db, "index_jobs", rerun=True)
     if not settings.adaptive_schedule_enabled or stats.new or stats.deactivated:
         await _plan(db, run_after=utcnow() + PLAN_COALESCE)
     return stats.__dict__

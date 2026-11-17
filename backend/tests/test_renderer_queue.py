@@ -77,7 +77,7 @@ async def test_a_render_claimed_at_the_deadline_is_waited_for(maker, monkeypatch
         await db.commit()
     await asyncio.sleep(0.3)  # past the first deadline: still running
     async with maker() as db:
-        await ledger.finish(db, await db.get(Task, task.id), {"final_url": "https://a.example/"})
+        await ledger.finish(db, await db.get(Task, task.id), {"final_url": "https://a.example/"}, attempt=1)
         await db.commit()
     assert await waiter == {"final_url": "https://a.example/"}
 

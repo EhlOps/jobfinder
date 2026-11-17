@@ -9,11 +9,16 @@
   one, so only tests/test_claude_gate.py talks to valkey.
 - `FakeClock`, `fake_resolve_public` and `FakeRenderer` replace the clock, DNS and the renderer
   container.
+- `FakeEmbedder` replaces the embedding model (#126): bag-of-words vectors, so texts that share words
+  are close and unrelated ones are not, without fastembed or the ONNX file.
 - `run_task` delivers one ledger row in-process, the way its queue's worker would.
 - `MockWeb` and its helpers (`serve`, `redirects`, `refuse`, `handle`) replace the
   network, through respx. The `web` fixture in conftest.py hands a test one that is already active.
 """
 import asyncio
+import hashlib
+import math
+import re
 from contextlib import asynccontextmanager, suppress
 from datetime import datetime
 from itertools import pairwise
@@ -199,6 +204,31 @@ class FakeAuditAI:
         )
 
 
+class FakeEmbedder:
+    """`integrations.embed.Embedder` without a model: each lower-cased word is hashed to one of `dim`
+    buckets, and the counts are L2-normalised. Deterministic across processes (sha1, not hash()).
+    Queries get no prompt, so a query and a posting with the same words have cosine 1."""
+
+    def __init__(self, model: str = "fake-embedder", dim: int = 384):
+        self.model, self.dim = model, dim
+        self.calls: list[tuple[str, int]] = []  # (side, number of texts) per call
+
+    def _vector(self, text: str) -> list[float]:
+        v = [0.0] * self.dim
+        for word in re.findall(r"[a-z0-9+#]+", text.lower()):
+            v[int.from_bytes(hashlib.sha1(word.encode()).digest()[:4], "big") % self.dim] += 1.0
+        norm = math.sqrt(sum(x * x for x in v))
+        return [x / norm for x in v] if norm else [1.0 / math.sqrt(self.dim)] * self.dim
+
+    def embed_documents(self, texts):
+        self.calls.append(("documents", len(texts)))
+        return [self._vector(t) for t in texts]
+
+    def embed_queries(self, texts):
+        self.calls.append(("queries", len(texts)))
+        return [self._vector(t) for t in texts]
+
+
 class FakeClock:
     """A settable `now()`: monkeypatch it in for a module's clock, then move `.now` by hand."""
 
@@ -252,9 +282,9 @@ class FakeRenderer:
                 if t:
                     self.seen.append((t.kind, t.payload))
                     if self.fail:
-                        await ledger.fail(db, t, self.fail, retry=False)
+                        await ledger.fail(db, t, self.fail, retry=False, attempt=t.attempts)
                     else:
-                        await ledger.finish(db, t, self.results[t.kind])
+                        await ledger.finish(db, t, self.results[t.kind], attempt=t.attempts)
                 await db.commit()
                 if t:
                     continue
@@ -273,9 +303,10 @@ class FakeRenderer:
 
 
 async def run_task(task_id: int, ai=None, session_factory=None) -> None:
-    """Deliver ledger row `task_id` to its kind's handler through tasks.runtime.execute, as worker-ai or
-    worker-io would: claim, run, finish or fail, and commit. `ai` is handed to the handler as is."""
+    """Deliver ledger row `task_id` to its kind's handler through tasks.runtime.execute, as worker-ai,
+    worker-io or worker-embed would: claim, run, finish or fail, and commit. `ai` is handed to the handler as is."""
     import jobfinder.tasks.ai  # registers the handlers
+    import jobfinder.tasks.embed
     import jobfinder.tasks.io  # noqa: F401
     from jobfinder.core.context import default_context
     from jobfinder.tasks import runtime

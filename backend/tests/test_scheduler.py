@@ -21,7 +21,7 @@ def test_scheduler_has_ingest_and_daily_email_jobs(monkeypatch):
     monkeypatch.setattr(get_settings(), "coverage_enabled", False)
     sched = cron.make_scheduler()
     jobs = {j.id: j for j in sched.get_jobs()}
-    assert set(jobs) == {"ingest_tick", "daily_emails", "plan_work"}
+    assert set(jobs) == {"ingest_tick", "daily_emails", "plan_work", "embed_sweep"}
     assert jobs["ingest_tick"].args == ("ingest_tick",) and jobs["daily_emails"].args == ("daily_emails",)
     assert "interval[3:00:00]" in str(jobs["ingest_tick"].trigger)
     assert "minute='5'" in str(jobs["daily_emails"].trigger) and "hour" not in str(jobs["daily_emails"].trigger).replace("minute", "")
@@ -39,7 +39,7 @@ def test_scheduler_adds_weekly_discovery_when_enabled(monkeypatch):
     monkeypatch.setattr(get_settings(), "discovery_enabled", True)
     monkeypatch.setattr(get_settings(), "coverage_enabled", False)
     jobs = {j.id: j for j in cron.make_scheduler().get_jobs()}
-    assert set(jobs) == {"ingest_tick", "daily_emails", "plan_work", "discover_boards"}
+    assert set(jobs) == {"ingest_tick", "daily_emails", "plan_work", "discover_boards", "embed_sweep"}
     assert jobs["discover_boards"].args == ("discover_boards",)
     assert "day_of_week='sun'" in str(jobs["discover_boards"].trigger)
 
@@ -53,6 +53,7 @@ def test_scheduler_adds_weekly_coveted_score_when_enabled(monkeypatch):
 
 def test_every_scheduled_kind_has_a_handler():
     import jobfinder.tasks.ai
+    import jobfinder.tasks.embed
     import jobfinder.tasks.io  # noqa: F401  (registers their handlers)
 
     assert {c.kind for c in cron.TABLE} | {"collect_questions", "match_user"} <= set(REGISTRY)
@@ -162,7 +163,7 @@ async def test_recently_planned_users_wait_for_the_gap(maker):
         u = await _setup(db, "a@x.com", last_run_ago=timedelta(hours=30))
         await planner.plan(db, NOW)
         for t in await _tasks(db):
-            await ledger.finish(db, t, {})
+            await ledger.finish(db, await ledger.claim(db, t.id), {}, attempt=1)
         await db.commit()
         await planner.plan(db, NOW + timedelta(minutes=15))  # still stale, but planned a moment ago
         assert len(await _tasks(db)) == 1

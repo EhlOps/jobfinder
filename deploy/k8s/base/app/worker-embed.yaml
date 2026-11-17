@@ -1,0 +1,90 @@
+# worker-embed (#126): the taskiq worker on stream `jobfinder:embed`. It runs the fine-tuned embedding
+# model (bge-small-jobfinder-v2, fastembed/onnxruntime on CPU) to keep job_embeddings and
+# profile_embeddings current; matching then picks each profile's top new jobs by pgvector
+# nearest-neighbour search instead of sending every new posting to Claude.
+# Its own image, ghcr.io/ehlops/jobfinder-embed (backend/Dockerfile.embed): the worker image's code plus
+# the `embed` extra and the model files at /opt/model (EMBED_MODEL_DIR), without node or the claude CLI.
+# No volumes beyond /tmp: it reads postings and profiles from Postgres and writes vectors back.
+#
+# CPU: each batch is CPU-bound for seconds (EMBED_BATCH texts, EMBED_THREADS onnxruntime threads, one
+# task at a time: WORKER_EMBED_CONCURRENCY). The limit of 2 CPUs keeps a backfill (every posting, ~130k
+# on prod) from starving Postgres and the other workers on the 4-core node; it then just takes longer.
+# Recreate: one pod at a time, so a rollout never runs two backfills side by side; messages wait in the
+# stream meanwhile.
+# Replicas: KEDA (worker-embed-scaledobject.yaml) holds it at 1 (min = max), so no `replicas` here.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker-embed
+  labels:
+    jobfinder.io/rollout: app
+spec:
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: worker-embed
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: worker-embed
+        app.kubernetes.io/component: worker
+        jobfinder.io/postgres-client: "true"
+        jobfinder.io/valkey-client: "true"   # consumes jobfinder:embed
+    spec:
+      automountServiceAccountToken: false
+      # The worker waits up to 50s for its running batch on SIGTERM (DEFAULT_WAIT_TASKS_SECONDS,
+      # tasks/__main__.py), under this grace; the reaper requeues anything cut off.
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        # The image's `jobfinder` user (backend/Dockerfile.embed).
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: worker-embed
+          image: ghcr.io/ehlops/jobfinder-embed
+          # tini (the image's entrypoint), then one taskiq worker process for the embed queue.
+          args: ["python", "-m", "jobfinder.tasks", "embed"]
+          envFrom:
+            - configMapRef:
+                name: jobfinder-config
+            - secretRef:
+                name: jobfinder-env
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: POSTGRES_PASSWORD
+          # No HTTP endpoint; see worker-ai.yaml.
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "grep -qs 'jobfinder[.]tasks' /proc/[0-9]*/cmdline"]
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 250m
+              # Python, onnxruntime and the fp32 model (~130 MB on disk, a few hundred MB loaded), plus a
+              # batch's activations at up to 512 tokens per text.
+              memory: 1Gi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            # Temp files (fastembed's cache directory defaults to $TMPDIR/fastembed_cache).
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 256Mi

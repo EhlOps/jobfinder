@@ -19,7 +19,8 @@ deploy/k8s/
     app/                # #43: web, api, renderer, smtp, migrate Job, Ingress, config overrides;
                         # #48: scheduler, worker-ai, worker-io (the task platform);
                         # #52, #124: a KEDA ScaledObject per worker (on its stream's backlog;
-                        # prod's maxima, overlays/staging lowers them); #124: worker-priority, the priority lane
+                        # prod's maxima, overlays/staging lowers them); #124: worker-priority, the priority lane;
+                        # #126: worker-embed (the embedding model on CPU, its own image, held at 1)
   overlays/
     staging/            # namespace `jobfinder-staging`; sealed secrets, mailpit, staging config
     prod/               # namespace `jobfinder` (the base default); sealed secrets, Gmail relay, prod config
@@ -28,7 +29,8 @@ deploy/k8s/
   deploy-ssh.sh         # #43, #118: SSH forced command GitHub Actions deploys through (deploy-ssh.sh staging|prod):
                         # checks, staging gate, pre-deploy backup, smoke checks, auto image rollback (prod)
   staging-restore.sh    # #43: copy prod's database (namespace jobfinder) into staging
-  backup-restore.sh     # #47: restore drill of the newest backup into a scratch database
+  backup-restore.sh     # #47: restore drill of the newest backup into a scratch database (the derived
+                        # embedding tables are dumped empty, #126: `jobfinder ops reindex` after a real restore)
   pg-lib.sh             # #47: row-count, stream and KEDA-pause helpers the scripts above share
 ```
 
@@ -49,8 +51,11 @@ touches an environment.
 `commonLabels:`), which leaves selectors alone: Deployment selectors are
 immutable, so changing a common label later must not touch them.
 
-**Images.** GHCR images (`ghcr.io/ehlops/jobfinder-*`) are public, so no
-`imagePullSecret` is needed. Each overlay's `images:` block names a default
+**Images.** GHCR images (`ghcr.io/ehlops/jobfinder-{api,worker,embed,renderer,web}`)
+are public, so no `imagePullSecret` is needed (a new package such as
+`jobfinder-embed`, #126, starts private: the owner makes it public once after its
+first push; `docs/k3s.md`, "Embedding model", also lists the model image's access
+grant). Each overlay's `images:` block names a default
 tag (`dev`/`main`); `deploy.sh` layers a pin per image on top at deploy time:
 `sha-<commit>` when that commit built the image, otherwise the image the
 Deployment already runs, otherwise the current digest of `dev`/`main`. Deploy
@@ -169,4 +174,4 @@ kubectl create secret generic jobfinder-env --namespace jobfinder-staging \
 
 Pods read the Secret at start: after applying a new one, `kubectl -n
 jobfinder-staging rollout restart deploy/api deploy/scheduler deploy/worker-priority deploy/worker-ai
-deploy/worker-io`.
+deploy/worker-io deploy/worker-embed`.
