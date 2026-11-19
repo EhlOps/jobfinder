@@ -78,7 +78,7 @@ class MatchReview(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     job_id: Mapped[int] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"))
     profile_version: Mapped[int] = mapped_column(Integer)
-    engine: Mapped[str] = mapped_column(String(16))  # prefilter|vector: what picked the job (MATCH_RETRIEVAL)
+    engine: Mapped[str] = mapped_column(String(16))  # prefilter|vector|hybrid: what picked the job (MATCH_RETRIEVAL)
     model: Mapped[str | None] = mapped_column(String(64), nullable=True)  # embedding run, vector engine only
     retrieval_rank: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 0-based, in the run's order
     retrieval_score: Mapped[float | None] = mapped_column(Float, nullable=True)  # max cosine, vector engine

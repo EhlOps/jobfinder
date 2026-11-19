@@ -1,6 +1,6 @@
 """The whole retrieval path with the real model (#126): embed_sweep queues the indexing tasks, worker-embed's
 handlers embed the postings and the profile with bge-small-jobfinder-v2, then match_user retrieves by vector and
-Claude (faked) scores the nearest ones. Same postings as test_retrieval_e2e, but no hand-made vectors: this is
+Claude (faked) scores the nearest ones (or, with `hybrid`, the prefilter's best by the blend). Same postings as test_retrieval_e2e, but no hand-made vectors: this is
 what proves the real model ranks a backend engineer's postings first and the hard filters still hold.
 
 Needs the `embed` extra and EMBED_MODEL_DIR pointing at the model directory; skips otherwise. Run it with
@@ -44,7 +44,9 @@ async def _drain(maker, ai=None):
         await run_task(tid, ai, maker)
 
 
-async def test_real_model_indexes_then_retrieves_the_backend_postings(maker):
+@pytest.mark.parametrize("engine", ["vector", "hybrid"])
+async def test_real_model_indexes_then_retrieves_the_backend_postings(maker, monkeypatch, engine):
+    monkeypatch.setattr(get_settings(), "match_retrieval", engine)
     async with maker() as db:
         jobs = []
         for field, postings in FIELDS.items():
@@ -82,11 +84,13 @@ async def test_real_model_indexes_then_retrieves_the_backend_postings(maker):
     await _drain(maker, ai)
 
     assert len(ai.calls) == 5
-    assert set(ai.calls) <= BACKEND_TITLES, ai.calls  # the model put backend postings nearest
+    assert set(ai.calls) <= BACKEND_TITLES, ai.calls  # the model (and the prefilter) put backend postings first
     assert not set(ai.calls) & set(EXCLUDED)  # remote, no-visa and closed never reach Claude
     async with maker() as db:
         rows = list(await db.scalars(sa.select(MatchReview).order_by(MatchReview.id)))
     assert [(r.engine, r.model, r.retrieval_rank) for r in rows] == [
-        ("vector", settings.embed_model, i) for i in range(5)]
+        (engine, settings.embed_model, i) for i in range(5)]
     scores = [r.retrieval_score for r in rows]
-    assert scores == sorted(scores, reverse=True) and scores[-1] > 0.3
+    assert min(scores) > 0.3
+    if engine == "vector":
+        assert scores == sorted(scores, reverse=True)

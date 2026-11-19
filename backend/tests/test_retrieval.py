@@ -254,7 +254,7 @@ def test_rank_work_with_the_vector_engine_interleaves_new_and_stale_by_position(
 
 
 @pytest.mark.real_commit
-async def test_eval_retrieval_compares_both_engines(maker):
+async def test_eval_retrieval_compares_the_engines(maker):
     async with maker() as db:
         u = await backend_user(db)
         await topical_jobs(db)
@@ -272,10 +272,144 @@ async def test_eval_retrieval_compares_both_engines(maker):
     report = json.loads(r.stdout)
     (row,) = report["users"]
     assert report["model"] == MODEL and row["user_id"] == u.id and row["labelled"] == 2
-    # matched jobs count as labelled: both engines' top 2 are the two scored backend jobs
-    assert row["overlap"] == 2
+    # matched jobs count as labelled: every engine's top 2 are the two scored backend jobs
     for engine in ("prefilter", "vector"):
         assert (row[engine]["scored"], row[engine]["mean_llm"], row[engine]["good_share"]) == (2, 80.0, 1.0)
-        assert row[engine]["best_ranks"] == [1, 2]
-    # the prefilter's cutoff drops some off-topic jobs; the vector engine keeps all five, closest first
-    assert row["vector"]["candidates"] == 5 > row["prefilter"]["candidates"]
+        assert row[engine]["best_ranks"] == [1, 2] and row[engine]["overlap"] == 2
+    # the hybrid engine ranks the prefilter's three jobs in its own order: Platform Engineer drops to third
+    assert row["hybrid"]["best_ranks"] == [1, 3] and row["hybrid"]["overlap"] == 1
+    # the prefilter's cutoff drops some off-topic jobs; the vector engine keeps all five, closest first; the
+    # hybrid engine reorders the prefilter's
+    assert row["vector"]["candidates"] == 5 > row["prefilter"]["candidates"] == row["hybrid"]["candidates"]
+    assert row["labels_version"] == row["profile_version"] == 3
+    async with maker() as db:
+        (await db.get(Profile, u.id)).version = 4  # edited since: no labels at the new version
+        await db.commit()
+        await index_profile(db, u.id)
+    report = json.loads((await invoke("ops", "eval-retrieval", "--json")).stdout)
+    assert report["users"][0]["labelled"] == 0
+    r = await invoke("ops", "eval-retrieval", "--json", "--labels-version", "3")
+    (row,) = json.loads(r.stdout)["users"]
+    assert (row["profile_version"], row["labels_version"], row["labelled"]) == (4, 3, 2)
+    assert row["hybrid"]["good_share"] == 1.0
+
+
+# ── hybrid: the prefilter's pool, ordered by the blend ───────────────────────
+@pytest.fixture
+def hybrid(monkeypatch):
+    monkeypatch.setattr(get_settings(), "match_retrieval", "hybrid")
+    monkeypatch.setattr(get_settings(), "match_hybrid_weight", 0.5)
+
+
+async def title_vs_content_jobs(db):
+    """The prefilter likes the first (its title is the target role) and the model the second (its text is the
+    profile's skills); the third is middling on both."""
+    jobs = [
+        await make_job(db, "Backend Engineer", description_text="Croissants, laminated dough and early mornings."),
+        await make_job(db, "Software Developer", description_text="Python Postgres Kafka. Python Postgres Kafka."),
+        await make_job(db, "Backend Developer", description_text="Python services."),
+    ]
+    await index_jobs(db, *jobs)
+    return jobs
+
+
+def _z(xs):
+    m = sum(xs) / len(xs)
+    sd = (sum((x - m) ** 2 for x in xs) / len(xs)) ** 0.5 or 1.0
+    return [(x - m) / sd for x in xs]
+
+
+async def test_pool_cosines_is_the_exact_best_cosine_over_the_query_vectors(maker):
+    async with maker() as db:
+        u = await make_user(db, {**STATUS, "target_roles": ["Backend Engineer", "Registered Nurse"]}, BACKEND)
+        await index_profile(db, u.id)
+        backend, _platform, nurse, sales, _chef = await topical_jobs(db)
+        unindexed = await make_job(db, "Backend Engineer Unindexed")
+        await index_jobs(db, sales, model="other-model")
+        got = await retrieval_repo.pool_cosines(db, u.id, 3, MODEL, [backend.id, nurse.id, sales.id, unindexed.id])
+        assert set(got) == {backend.id, nurse.id, sales.id}  # no vector, no entry; one per job across models
+        near = {r.id: r.retrieval_score for r in await retrieval_repo.nearest_unmatched_jobs(db, u.id, 3, MODEL, 50, None)}
+        for job_id, cos in got.items():
+            assert cos == pytest.approx(near[job_id])  # the same max cosine the HNSW path reports
+        assert await retrieval_repo.pool_cosines(db, u.id, 3, MODEL, []) == {}
+        assert await retrieval_repo.pool_cosines(db, u.id, 2, MODEL, [backend.id]) == {}  # another version
+
+
+def test_blend_z_scores_both_and_a_job_without_a_vector_counts_as_average():
+    cands = [_c(1, 80, 0, retrieval=0.2), _c(2, 40, 0, retrieval=0.8), _c(3, 60, 0, retrieval=0.5), _c(4, 60, 0)]
+    b = service.Blend.fit(cands, 0.5)
+    zp, zc = _z([80, 40, 60, 60]), _z([0.2, 0.8, 0.5])
+    expected = [0.5 * zc[0] + 0.5 * zp[0], 0.5 * zc[1] + 0.5 * zp[1], 0.5 * zc[2] + 0.5 * zp[2], 0.5 * zp[3]]
+    assert [b(c) for c in cands] == pytest.approx(expected)
+    assert max(cands, key=service.Blend.fit(cands, 0)).job_id == 1  # weight 0: the prefilter's order
+    assert max(cands, key=service.Blend.fit(cands, 1)).job_id == 2  # weight 1: the cosine's
+    assert service.Blend.fit(cands, 7).weight == 1.0  # clamped
+    same = [_c(1, 50, 0, retrieval=0.5), _c(2, 50, 0, retrieval=0.5)]
+    assert [service.Blend.fit(same, 0.5)(c) for c in same] == [0, 0]  # sd 0: no division by zero
+
+
+async def test_hybrid_keeps_the_prefilter_pool_and_orders_it_by_the_blend(maker, hybrid):
+    async with maker() as db:
+        u = await backend_user(db)
+        jobs = await title_vs_content_jobs(db)
+        await topical_jobs(db)
+        p = await db.get(Profile, u.id)
+        pool = await service.prefilter_candidates(db, u.id, p)
+        r = await service.retrieve(db, u.id, p)
+        assert r.engine == "hybrid" and r.model == MODEL
+        assert {c.job_id for c in r.candidates} == {c.job_id for c in pool}  # same jobs, same cutoff
+        zp, zc = _z([c.score for c in r.candidates]), _z([c.retrieval_score for c in r.candidates])
+        blends = [0.5 * a + 0.5 * b for a, b in zip(zc, zp, strict=True)]
+        assert [c.blend for c in r.candidates] == pytest.approx(blends)
+        assert blends == sorted(blends, reverse=True)
+        order = [c.job_id for c in r.candidates]
+        assert order != [c.job_id for c in pool]  # the blend really reorders
+        assert order.index(jobs[1].id) < order.index(jobs[0].id)  # skills-heavy text beats a bare title match
+        ai = FakeScoringAI()
+        await service.match_user(db, ai, u.id, budget=2)
+        rows = await reviews(db)
+        assert [(r.engine, r.model, r.retrieval_rank) for r in rows] == [("hybrid", MODEL, 0), ("hybrid", MODEL, 1)]
+        assert [r.job_id for r in rows] == order[:2] and all(r.retrieval_score is not None for r in rows)
+
+
+async def test_hybrid_without_a_background_or_vectors_uses_the_prefilter(maker, hybrid, caplog):
+    caplog.set_level(logging.INFO, "jobfinder.services.matching")
+    async with maker() as db:
+        titles_only = await make_user(db, STATUS, {}, email="titles@x.com")
+        await index_profile(db, titles_only.id)
+        unindexed = await make_user(db, STATUS, BACKEND, email="new@x.com")
+        await topical_jobs(db)
+        for u in (titles_only, unindexed):
+            r = await service.retrieve(db, u.id, await db.get(Profile, u.id))
+            assert r.engine == "prefilter" and r.model is None and all(c.blend is None for c in r.candidates)
+        assert f"user {titles_only.id}: no background skills or summary, retrieving by prefilter" in caplog.text
+        assert f"user {unindexed.id}: profile version 3 has no test-embedder query vectors yet" in caplog.text
+
+
+async def test_hybrid_blends_stale_rescores_with_the_new_jobs(maker, hybrid):
+    async with maker() as db:
+        u = await backend_user(db)
+        jobs = await title_vs_content_jobs(db)
+        await service.match_user(db, FakeScoringAI(), u.id, budget=1)  # the blend's best, at version 3
+        first = (await reviews(db))[0].job_id
+        p = await db.get(Profile, u.id)
+        p.version = 4
+        await db.commit()
+        await index_profile(db, u.id)
+        ai = FakeScoringAI()
+        await service.match_user(db, ai, u.id, budget=3)
+        new = [r for r in await reviews(db) if r.profile_version == 4]
+        # the stale re-score keeps its place by the blend: still first, with its cosine on the label
+        assert new[0].job_id == first and new[0].retrieval_rank == 0 and new[0].retrieval_score is not None
+        assert {r.job_id for r in new} == {j.id for j in jobs} and all(r.engine == "hybrid" for r in new)
+
+
+def test_rank_work_with_the_hybrid_engine_orders_tier_two_by_the_blend():
+    stale = [_c(1, 10, 5, match_id=101), _c(2, 90, 5, match_id=102), _c(3, 5, 1, match_id=103, saved=True),
+             _c(4, 50, 9, match_id=104), _c(5, 1, 1, match_id=105, saved=True)]
+    new = [_c(6, 1, 1), _c(7, 99, 10), _c(8, 50, 0)]
+    for c, b in zip(stale + new, (0.9, -1.0, 2.0, 0.5, 0.0, 1.2, -0.3, 0.7), strict=True):
+        c.blend = b
+    order = [w.job_id for w in service.rank_work(stale, new, answered={105, 101}, engine="hybrid")]
+    # answered by stored score (1 before 5), saved (3), then tier 2 by blend: 6 (1.2), 8 (0.7), 4 (0.5), 7, 2
+    assert order == [1, 5, 3, 6, 8, 4, 7, 2]

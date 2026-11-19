@@ -87,8 +87,9 @@ class Settings(BaseSettings):
     match_daily_llm_budget: int
     match_slice_jobs: int
     match_min_prefilter: float
-    match_retrieval: Literal["prefilter", "vector"]
+    match_retrieval: Literal["prefilter", "vector", "hybrid"]
     match_retrieval_k: int
+    match_hybrid_weight: float
     embed_model: str
     embed_model_dir: str
     embed_batch: int
