@@ -4,6 +4,7 @@ leaves behind (`match_reviews`), and the reads `jobfinder ops eval-retrieval` co
 Only reads `job_embeddings` and `profile_embeddings`; the indexing tasks write them.
 """
 import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jobfinder.models import Company, Job, JobMatch
@@ -64,6 +65,24 @@ async def nearest_unmatched_jobs(
         .order_by(best.c.dist, Job.id)
     )
     return list(rows.all())
+
+
+async def pool_cosines(db: AsyncSession, user_id: int, profile_version: int, model: str,
+                       job_ids: list[int]) -> dict[int, float]:
+    """{job_id: max cosine to the profile version's query vectors} for the given jobs, exact (no HNSW, no k):
+    the hybrid engine scores the prefilter's whole pool. Jobs without a `model` vector yet are left out."""
+    if not job_ids:
+        return {}
+    query = ProfileEmbedding
+    rows = await db.execute(
+        sa.select(JobEmbedding.job_id, sa.func.max(1 - JobEmbedding.embedding.cosine_distance(query.embedding)))
+        .join(query, sa.and_(query.model == JobEmbedding.model, query.user_id == user_id,
+                             query.profile_version == profile_version))
+        .where(JobEmbedding.model == model,
+               JobEmbedding.job_id == sa.any_(sa.bindparam("ids", job_ids, type_=ARRAY(sa.Integer))))
+        .group_by(JobEmbedding.job_id)
+    )
+    return {job_id: float(cos) for job_id, cos in rows.all()}
 
 
 async def add_review(db: AsyncSession, values: dict) -> None:

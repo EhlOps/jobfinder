@@ -60,6 +60,9 @@ configMapGenerator:
       - RESOLVER_LLM_ENABLED=false
       - COVERAGE_ENABLED=false
       - DISCOVERY_ENABLED=false
+      # Retrieval (#126): the prefilter's jobs, ordered by prefilter score and embedding cosine together.
+      # Back to today's engine: MATCH_RETRIEVAL=prefilter.
+      - MATCH_RETRIEVAL=hybrid
 
 patches:
   # Postfix relays only to the sink (networkpolicy-smtp.yaml blocks everything else anyway).

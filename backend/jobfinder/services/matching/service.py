@@ -3,8 +3,9 @@ slice at a time.
 
 Retrieval (MATCH_RETRIEVAL) picks the jobs worth Claude's time: `prefilter` scores every unmatched job with the
 heuristic prefilter and keeps the ones over MATCH_MIN_PREFILTER; `vector` (#126) takes the profile's nearest
-postings by embedding (EMBED_MODEL) and keeps them all, closest first, once the hard filters pass them. Every
-Claude score also leaves a `match_reviews` label saying which engine picked the job and where it ranked."""
+postings by embedding (EMBED_MODEL) and keeps them all, closest first, once the hard filters pass them; `hybrid`
+keeps the prefilter's jobs but orders them by a blend of both scores (`Blend`). Every Claude score also leaves a
+`match_reviews` label saying which engine picked the job and where it ranked."""
 from __future__ import annotations
 
 import asyncio
@@ -13,6 +14,7 @@ from collections import Counter
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from statistics import fmean, pstdev
 from typing import NamedTuple
 
 from jobfinder.core.config import settings
@@ -34,7 +36,7 @@ UNLIMITED = 10**9  # remaining budget for users who turned the daily limit off
 
 
 BATCH = 500  # jobs whose descriptions are loaded and scored at a time
-PREFILTER, VECTOR = "prefilter", "vector"  # the retrieval engines (MATCH_RETRIEVAL), as match_reviews.engine
+PREFILTER, VECTOR, HYBRID = "prefilter", "vector", "hybrid"  # the engines (MATCH_RETRIEVAL), as match_reviews.engine
 
 
 @dataclass
@@ -47,7 +49,8 @@ class Candidate:
     dedupe_hash: str
     match_id: int | None = None
     saved: bool = False
-    retrieval_score: float | None = None  # max cosine to the profile's query vectors (vector engine only)
+    retrieval_score: float | None = None  # max cosine to the profile's query vectors (vector and hybrid engines)
+    blend: float | None = None  # the hybrid engine's ordering score (Blend)
 
 
 class Work(NamedTuple):
@@ -62,13 +65,14 @@ class Work(NamedTuple):
 
 @dataclass
 class Retrieval:
-    """What `retrieve` picked, and how: `engine` is the one actually used (vector falls back to prefilter)."""
+    """What `retrieve` picked, and how: `engine` is the one actually used (vector and hybrid fall back to
+    prefilter)."""
     engine: str
     candidates: list[Candidate]
 
     @property
     def model(self) -> str | None:
-        return settings.embed_model if self.engine == VECTOR else None
+        return settings.embed_model if self.engine in (VECTOR, HYBRID) else None
 
 
 def job_payload(job: Job, company: Company | None) -> dict:
@@ -123,16 +127,32 @@ async def find_candidates(db: AsyncSession, user_id: int, profile: Profile) -> l
     return (await retrieve(db, user_id, profile)).candidates
 
 
-async def retrieve(db: AsyncSession, user_id: int, profile: Profile, *, include_matched: bool = False) -> Retrieval:
-    """Candidates by the configured engine (MATCH_RETRIEVAL). `vector` needs the current profile version's
-    query vectors for EMBED_MODEL; until the indexing sweep has made them, this run uses the prefilter.
-    `include_matched` keeps already-matched jobs (only `jobfinder ops eval-retrieval` wants them)."""
-    if settings.match_retrieval == VECTOR:
+async def retrieve(db: AsyncSession, user_id: int, profile: Profile, *, include_matched: bool = False,
+                   stale: list[Candidate] | None = None) -> Retrieval:
+    """Candidates by the configured engine (MATCH_RETRIEVAL). `vector` and `hybrid` need the current profile
+    version's query vectors for EMBED_MODEL; until the indexing sweep has made them, this run uses the prefilter.
+    `hybrid` also uses the prefilter for a profile without a background (no skills or summary): its query
+    vectors are bare job titles, too weak to reorder by. `stale` (match_user's re-scores) get the hybrid
+    engine's blend too, so rank_work can order them with the new jobs. `include_matched` keeps already-matched
+    jobs (only `jobfinder ops eval-retrieval` wants them)."""
+    engine = settings.match_retrieval
+    if engine == HYBRID and not has_background(profile):
+        log.info("user %s: no background skills or summary, retrieving by prefilter", user_id)
+    elif engine in (VECTOR, HYBRID):
         if await retrieval_repo.has_query_vectors(db, user_id, profile.version, settings.embed_model):
+            if engine == HYBRID:
+                return Retrieval(HYBRID, await hybrid_candidates(db, user_id, profile, include_matched=include_matched,
+                                                                 stale=stale))
             return Retrieval(VECTOR, await vector_candidates(db, user_id, profile, include_matched=include_matched))
         log.info("user %s: profile version %s has no %s query vectors yet, retrieving by prefilter",
                  user_id, profile.version, settings.embed_model)
     return Retrieval(PREFILTER, await prefilter_candidates(db, user_id, profile, include_matched=include_matched))
+
+
+def has_background(profile: Profile) -> bool:
+    """Whether the profile's query vectors carry more than its target roles (what profile_queries embeds)."""
+    background = profile.background or {}
+    return bool(pf.profile_skills(background) or background.get("summary"))
 
 
 @dataclass
@@ -211,6 +231,49 @@ async def vector_candidates(db: AsyncSession, user_id: int, profile: Profile, *,
     return _one_per_posting(sorted(scored, key=lambda c: (-c.retrieval_score, -c.posted_ts)))
 
 
+@dataclass(frozen=True)
+class Blend:
+    """The hybrid engine's ordering score: w * z(cosine) + (1 - w) * z(prefilter), w = MATCH_HYBRID_WEIGHT. Each
+    score is z-scored with the mean and sd of the jobs being ranked, so neither scale dominates. A job without a
+    vector yet (newly ingested, before embed_sweep reaches it) gets z(cosine) = 0: exactly average."""
+    weight: float
+    pre: tuple[float, float]  # mean, sd
+    cos: tuple[float, float]
+
+    @classmethod
+    def fit(cls, candidates: list[Candidate], weight: float) -> Blend:
+        return cls(min(1.0, max(0.0, weight)), _mean_sd([c.score for c in candidates]),
+                   _mean_sd([c.retrieval_score for c in candidates if c.retrieval_score is not None]))
+
+    def __call__(self, c: Candidate) -> float:
+        z_pre = (c.score - self.pre[0]) / self.pre[1]
+        z_cos = 0.0 if c.retrieval_score is None else (c.retrieval_score - self.cos[0]) / self.cos[1]
+        return self.weight * z_cos + (1 - self.weight) * z_pre
+
+
+def _mean_sd(xs: list[float]) -> tuple[float, float]:
+    if not xs:
+        return 0.0, 1.0
+    return fmean(xs), pstdev(xs) or 1.0
+
+
+async def hybrid_candidates(db: AsyncSession, user_id: int, profile: Profile, *, include_matched: bool = False,
+                            stale: list[Candidate] | None = None) -> list[Candidate]:
+    """The prefilter's candidates (same hard filters, same MATCH_MIN_PREFILTER cutoff), each with its exact
+    cosine to the profile, ordered by `Blend` (then newest posting). The blend is fitted over the candidates and
+    `stale` together, and set on both."""
+    pool = await prefilter_candidates(db, user_id, profile, include_matched=include_matched)
+    everything = pool + (stale or [])
+    cosine = await retrieval_repo.pool_cosines(db, user_id, profile.version, settings.embed_model,
+                                               [c.job_id for c in everything])
+    for c in everything:
+        c.retrieval_score = cosine.get(c.job_id)
+    blend = Blend.fit(everything, settings.match_hybrid_weight)
+    for c in everything:
+        c.blend = blend(c)
+    return sorted(pool, key=lambda c: (-c.blend, -c.posted_ts))
+
+
 async def hydrate(db: AsyncSession, candidates: list[Candidate]) -> list[Work]:
     """Load the full job and company rows for the candidates that will actually be scored (order kept).
     `candidates` is the head of the ranked list, so a candidate's index in it is its rank."""
@@ -241,6 +304,7 @@ def rank_work(stale: list[Candidate], candidates: list[Candidate], answered: set
 
     Tiers 0 and 1 (stale only) go by stored prefilter score, then newest posting. In tier 2:
     - prefilter engine: stale and new together by prefilter score, then newest posting;
+    - hybrid engine: the same, by the blend (`retrieve` set it on both) instead of the prefilter score;
     - vector engine: the two scores aren't comparable (cosine vs prefilter), so the lists are interleaved by
       position: new candidates keep `retrieve`'s order (closest first), stale ones their stored order (prefilter
       score, then newest), and at each position the new candidate goes first.
@@ -248,6 +312,9 @@ def rank_work(stale: list[Candidate], candidates: list[Candidate], answered: set
     def tier(w: Candidate) -> int:
         return 0 if w.match_id in answered else 1 if w.saved else 2
 
+    if engine == HYBRID:
+        return sorted(stale + candidates, key=lambda w: (
+            tier(w), -(w.blend if tier(w) == 2 and w.blend is not None else w.score), -w.posted_ts))
     if engine != VECTOR:
         return sorted(stale + candidates, key=lambda w: (tier(w), -w.score, -w.posted_ts))
     pos: dict[int, int] = {}  # id(work) -> its position within its tier, in its own list's order
@@ -370,8 +437,9 @@ async def match_user(
 
     # Ranked afresh every slice, so jobs that arrived since the last one compete right away.
     answered = await matches_repo.answered_match_ids(db, user_id)
-    retrieval = await retrieve(db, user_id, profile)
-    ranked = rank_work(await find_stale(db, user_id, version), retrieval.candidates, answered, retrieval.engine)
+    stale = await find_stale(db, user_id, version)
+    retrieval = await retrieve(db, user_id, profile, stale=stale)
+    ranked = rank_work(stale, retrieval.candidates, answered, retrieval.engine)
     take = min(left, limit) if limit is not None else left
     work = await hydrate(db, ranked[: max(0, take)])  # only what gets scored is loaded in full
     batch_size = max(1, settings.ai_max_concurrency)
